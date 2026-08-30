@@ -29,9 +29,11 @@ import type {
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import { Remote, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
+import { AuthorizationController } from './authorization.ts'
 import { CredentialsController } from './credentials.ts'
 import type { AgentPresetDirectoryOpenValue, SettingsDocumentOpenValue } from './types.ts'
 
+export { AuthorizationController } from './authorization.ts'
 export { CredentialsController } from './credentials.ts'
 export type * from './types.ts'
 
@@ -109,6 +111,7 @@ export class SettingsController extends TypertRemoteService {
     this.openTextFile = internals.openTextFile ?? openNativeTextFile
     this.canOpenPath = internals.canOpenPath
       ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()))
+    ctx.plugin(AuthorizationController)
     ctx.plugin(CredentialsController)
   }
 

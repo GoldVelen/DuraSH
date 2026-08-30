@@ -1,0 +1,117 @@
+/* Sign-in area: the flow list and one attempt's progress per flow. */
+
+.signIn {
+  margin: 0 0 20px;
+}
+
+.signInTitle {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.signInIntro {
+  margin: 0 0 10px;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.flowList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flowRow {
+  padding: 10px 12px;
+  border: 1px solid var(--dsh-border, rgba(127, 127, 127, 0.35));
+  border-radius: 8px;
+}
+
+.flowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flowName {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.flowActions {
+  display: flex;
+  gap: 6px;
+}
+
+.attempt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  margin-top: 8px;
+}
+
+.noticeLine {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.noticeCode {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--dsh-code-bg, rgba(127, 127, 127, 0.18));
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--dsh-prompt-bg, rgba(127, 127, 127, 0.1));
+}
+
+.promptMessage {
+  margin: 0;
+  font-size: 12px;
+}
+
+.promptOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.promptAnswer {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.promptInput {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dsh-border, rgba(127, 127, 127, 0.35));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+
+.outcome {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.85;
+}

@@ -23,6 +23,8 @@ import { deriveKeyRef, messageOf, protocolChoices, providerUsable } from './stor
 import type { ModelsSettingsStore, ModelsWire, ProviderRow } from './store.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
+import { SignInSection } from './SignInSection.tsx'
+import type { SignInStore } from './sign-in-store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -33,7 +35,11 @@ export interface ModelsSectionInjected {
   hooks: {
     /** Page snapshot bound by the UI renderer as useSnapshot. */
     snapshot: ModelsSettingsStore['store']
+    /** Sign-in area snapshot bound by the UI renderer as useSnapshot. */
+    signIn: SignInStore['store']
   }
+  /** The sign-in area controller (flows and their live attempts). */
+  signIn: SignInStore
   /** Wire faces the editor writes through. */
   api: ModelsWire
   /** Settings schema and immutable path callbacks. */
@@ -198,17 +204,18 @@ export function providerCopy(template: string, target: ProviderIdentity): string
  * @returns the section, or null while the shell has not injected yet.
  */
 export function ModelsSection(props: ModelsSectionProps): ReactNode {
-  const { controller, useSnapshot, api, schema, t, renderSlot } = props
+  const { controller, useSnapshot, useSignIn, signIn, api, schema, t, renderSlot } = props
   if (
-    controller === undefined || useSnapshot === undefined || api === undefined
-    || schema === undefined || t === undefined
+    controller === undefined || useSnapshot === undefined || useSignIn === undefined || signIn === undefined
+    || api === undefined || schema === undefined || t === undefined
   ) return null
-  return <Loaded injected={{ controller, useSnapshot, api, schema, t }} renderSlot={renderSlot} />
+  return <Loaded injected={{ controller, useSnapshot, useSignIn, signIn, api, schema, t }} renderSlot={renderSlot} />
 }
 
 function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderSlot: ModelsRenderSlot }): ReactNode {
-  const { controller, api, schema, t } = injected
+  const { controller, useSignIn, signIn, api, schema, t } = injected
   const state = injected.useSnapshot(snapshot => snapshot)
+  const signInState = injected.useSignIn(snapshot => snapshot)
   const [editing, setEditing] = useState<EditorTarget | undefined>(undefined)
   const [adding, setAdding] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<EditorTarget | undefined>(undefined)
@@ -314,6 +321,9 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
       <h2 className={styles['title']}>{t('title')}</h2>
       <p className={styles['intro']}>{t('intro')}</p>
       {!state.writable && state.status === 'ready' ? <p className={styles['notice']}>{t('readOnly')}</p> : null}
+      {signInState.status !== 'error'
+        ? <SignInSection controller={signIn} useSignIn={useSignIn} t={t} />
+        : null}
       {savedIdentity === undefined
         ? null
         : (

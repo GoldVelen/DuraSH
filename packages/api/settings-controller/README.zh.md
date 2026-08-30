@@ -8,7 +8,7 @@ kind: "package-reference"
 
 ## 概述
 
-`@deepseek-ai/dsh-api-settings-controller` 为浏览器配置界面提供生成的 `ctx.remote.settings` 与 `ctx.remote.credentials` namespace。它返回脱敏的 settings 与凭据元数据，支持 settings 与凭据写入而不返回密钥值，并在 Host 桌面打开由 provider 持有的 settings 或 Agent preset 位置。provider 缺失时，namespace 仍会注册，并返回可操作的配置错误。
+`@deepseek-ai/dsh-api-settings-controller` 为浏览器配置面暴露生成的 `ctx.remote.settings`、`ctx.remote.credentials` 与 `ctx.remote.authorization` 命名空间。它返回脱敏的 settings 与凭据元数据，支持 settings 与凭据写入而不返回密钥值，并在 Host 桌面打开由 provider 持有的 settings 或 Agent preset 位置。provider 缺失时，namespace 仍会注册，并返回可操作的配置错误。
 
 ## 目录
 
@@ -29,7 +29,8 @@ kind: "package-reference"
 
 `settings.describe()` 返回部署信息，以及在 `redactSecrets: true` 下读取的所有 namespace。`settings.update`、`settings.replace` 与 `settings.mutate` 暴露 settings service 的三种写入操作，并返回该 namespace 的新脱敏视图；过期写入使用 `settings-conflict`，其他 provider 拒绝使用 `settings-rejected`。
 
-`settings.openSettingsDocument()` 准备 provider 持有的文档，并用原生文本编辑器意图将其打开。`settings.canOpenAgentPresetDirectory()` 在 preset 页面显示时报告原生打开能力。`settings.openAgentPresetDirectory(id)` 只解析用户创作的 preset，并在原生打开不可用时返回目录路径；两个打开方法都不接受浏览器提供的文件系统目标。
+`authorization.describe()` 列出每个已注册的登录流与其被宿主跟踪的尝试，页面轮询一份快照即可同时得到可登录项与尝试进度。`authorization.begin({ key, method? })` 以宿主持有的交互启动一次尝试并立即应答——尝试会等一个人几分钟，因此没有任何请求保持挂起；`authorization.respond({ key, promptId, value | declined })` 回答待答提问，`authorization.cancel({ key })` 撤回尝试。通知按保留上限累积，同一时刻只有一个待答提问，密钥回答只朝这个方向传输。尝试状态属于宿主：重新加载的页面通过 `describe` 重新加入同一尝试；已有尝试运行时再次 begin 报 `conflict`。
+
 
 -----
 

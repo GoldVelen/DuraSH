@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-browser-sign-in-surface.md
+2026-08-31-browser-sign-in-surface.md: 39dea216e76cc5b3f594cb39cd33b5803396473f
+2026-08-31-browser-sign-in-surface.zh.md: 3e3db169e460e81d28d46f74f1767af4866c4da9

@@ -1,5 +1,5 @@
 ---
-description: "Models settings and product-onboarding plugin for the dsh web client: provider rows, API-key management, model lists, and the DeepSeek first-run dialogs."
+description: "Models settings and product-onboarding plugin for the dsh web client: provider rows, API-key management, subscription sign-in, model lists, and the DeepSeek first-run dialogs."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-settings-models` is the Models settings page of the dsh web client: users configure API keys (stored write-only under the profile's credential reference), edit each provider's model list, and hand-declare custom pi-ai routes, with provider rows and one editor card at a time. The page joins the provider directory, the settings document, and the credential descriptions into one shared snapshot, so a row's state stays consistent across all three. It also walks first-run users through two ordered dialogs — a versioned internal-testing notice and the conditional official-DeepSeek credential step.
+`dsh-client-ui-settings-models` is the Models settings page of the dsh web client: users configure API keys (stored write-only under the profile's credential reference), sign in with subscription providers, edit each provider's model list, and hand-declare custom pi-ai routes, with provider rows and one editor card at a time. The page joins the provider directory, the settings document, and the credential descriptions into one shared snapshot, so a row's state stays consistent across all three. It also walks first-run users through two ordered dialogs — a versioned internal-testing notice and the conditional official-DeepSeek credential step.
 
 ## Table of Contents
 
@@ -38,6 +38,10 @@ The collapsed 自定义设置 fold carries the curated extras: `baseURL` for bot
 ### Adding and deleting providers
 
 The add flow is a card carrying the dormant-directory provider select — a bare-mounted `llm-pi-ai` offers its whole installed catalog before any route exists. **Add a custom provider** declares a route pi-ai does not ship; the create card asks for a unique **Provider ID**, an endpoint, a protocol, and at least one uniquely-identified model, because nothing can default those. **Fetch available models** asks the `llm/discoverModels` Remote about the endpoint the form shows, so adding a provider is one pass instead of save-then-return; the reply opens a picker rather than being written, and nothing is written until **Add selected**. A row is deletable only when the user layer alone carries it (removal restores the composition base), and its confirmation dialog names the provider.
+
+### Account sign-in
+
+The **Account sign-in** area lists every sign-in flow the Host registers — the subscription providers the pi-ai adapter ships logins for (ChatGPT Plus/Pro, Grok/X, Claude Pro/Max, and the other OAuth catalog entries). **Sign in** starts the Host-side attempt and the area renders its progress: the page to open, a device code to type, and the one pending question, answered inline or declined; **Cancel sign-in** withdraws. The attempt state lives on the Host, so reloading the page rejoins the running attempt, and a finished attempt stays visible until the next one starts. After a sign-in succeeds, the provider joins the page through the ordinary add flow with its key left blank — provider-native authentication then resolves the stored grant. The area renders nothing when the Host registers no flows, such as a composition without the authorization service.
 
 ### First-run dialogs
 

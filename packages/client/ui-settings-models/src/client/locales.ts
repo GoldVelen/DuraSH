@@ -99,6 +99,16 @@ export const en = {
   onboardingSave: 'Save and continue',
   onboardingSaving: 'Saving…',
   keyRequired: 'Enter an API key to continue.',
+  signInTitle: 'Account sign-in',
+  signInIntro: 'Sign in with a subscription account, or add the provider below with an API key.',
+  signInAction: 'Sign in',
+  signInCancelAttempt: 'Cancel sign-in',
+  signInOpenPage: 'Open the sign-in page',
+  signInSubmit: 'Submit',
+  signInDecline: 'Skip',
+  signInAuthorized: 'Signed in. Add or enable the provider below to use its models.',
+  signInCancelled: 'Sign-in cancelled.',
+  signInFailed: 'Sign-in failed',
 }
 
 /** The settings.models namespace key union. */
@@ -203,4 +213,14 @@ export const zh: { [Key in keyof typeof en]: string } = {
   onboardingSave: '保存并继续',
   onboardingSaving: '保存中…',
   keyRequired: '请输入 API 密钥后继续。',
+  signInTitle: '账号登录',
+  signInIntro: '使用订阅账号登录，或在下方用 API 密钥添加提供方。',
+  signInAction: '登录',
+  signInCancelAttempt: '取消登录',
+  signInOpenPage: '打开登录页',
+  signInSubmit: '提交',
+  signInDecline: '跳过',
+  signInAuthorized: '已登录。在下方添加或启用该提供方即可使用其模型。',
+  signInCancelled: '登录已取消。',
+  signInFailed: '登录失败',
 }

@@ -543,6 +543,39 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'authorizationController',
+    summary: 'Host service backing the generated `ctx.remote.authorization` namespace.',
+    description: 'Host service backing the generated `ctx.remote.authorization` namespace. It carries the wire obligations the authorization seam itself does not: the long-running attempt is started without a hanging request, its notices and prompts are projected for polling, and every refusal maps to a stable code. Prompts travel one way per question — a `secret` answer is typed into `respond` and never read back.',
+    methods: [
+      {
+        signature: '@Remote describe(): Promise<AuthorizationDescribeValue>',
+        description: 'Snapshot every registered flow and every tracked attempt.',
+        parameters: [],
+        returns: 'the flows a sign-in surface offers, and the attempts it may be watching.',
+        throws: ['TypertRemoteFailure when no authorization service is mounted.'],
+      },
+      {
+        signature: '@Remote begin(request: { key: string; method?: string }): Promise<{ started: true }>',
+        description: 'Start one authorization attempt without waiting for it to finish.',
+        parameters: [{ name: 'request', description: 'the credential key whose flow to run, and optionally the method; defaults to the flow\'s first.' }],
+        returns: 'confirmation that the attempt started; poll `describe` for its progress.',
+        throws: ['TypertRemoteFailure `bad-request` for a malformed payload, `not-found` when no flow claims the key, or `conflict` when an attempt is already running.'],
+      },
+      {
+        signature: '@Remote respond(request: { key: string; promptId: string; value?: string; declined?: true }): Promise<void>',
+        description: 'Answer the pending prompt of one running attempt.',
+        parameters: [{ name: 'request', description: 'the key, the prompt id from `describe`, and either the answer or a decline.' }],
+        throws: ['TypertRemoteFailure `bad-request` for a malformed payload or a stale prompt id, `not-found` when no running attempt exists for the key.'],
+      },
+      {
+        signature: '@Remote cancel(request: { key: string }): Promise<void>',
+        description: 'Withdraw the running attempt for a key, if any.',
+        parameters: [{ name: 'request', description: 'the key whose attempt should stop.' }],
+        throws: ['TypertRemoteFailure `bad-request` for a malformed payload.'],
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -3552,12 +3585,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AuthorizationAttemptView',
+    declaration: 'export interface AuthorizationAttemptView {\n    readonly key: string;\n    readonly status: \'running\' | \'authorized\' | \'cancelled\' | \'failed\';\n    readonly notices: readonly {\n        readonly message: string;\n        readonly url?: string;\n        readonly code?: string;\n    }[];\n    readonly pendingPrompt?: AuthorizationPromptView;\n    readonly message?: string;\n}',
+  },
+  {
+    name: 'AuthorizationDescribeValue',
+    declaration: 'export interface AuthorizationDescribeValue {\n    readonly flows: readonly AuthorizationFlowView[];\n    readonly attempts: readonly AuthorizationAttemptView[];\n}',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
   {
     name: 'AuthorizationFlow',
     declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: readonly [\n        AuthorizationMethod,\n        ...AuthorizationMethod[]\n    ];\n    run(session: AuthorizationSession): Promise<void>;\n}',
+  },
+  {
+    name: 'AuthorizationFlowView',
+    declaration: 'export interface AuthorizationFlowView {\n    readonly key: string;\n    readonly label: string;\n    readonly methods: readonly {\n        readonly id: string;\n        readonly label: string;\n    }[];\n    readonly inFlight: boolean;\n}',
   },
   {
     name: 'AuthorizationInteraction',
@@ -3582,6 +3627,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AuthorizationPromptOption',
     declaration: 'export interface AuthorizationPromptOption {\n    id: string;\n    label: string;\n    description?: string;\n}',
+  },
+  {
+    name: 'AuthorizationPromptView',
+    declaration: 'export interface AuthorizationPromptView {\n    readonly id: string;\n    readonly kind: \'text\' | \'secret\' | \'select\';\n    readonly message: string;\n    readonly options?: readonly {\n        readonly id: string;\n        readonly label: string;\n        readonly description?: string;\n    }[];\n    readonly placeholder?: string;\n}',
   },
   {
     name: 'AuthorizationRequest',

@@ -19,6 +19,7 @@ import { ModelsSection } from './ModelsSection.tsx'
 import type { ModelsSectionInjected } from './ModelsSection.tsx'
 import { DeepSeekOnboardingDialog } from './DeepSeekOnboardingDialog.tsx'
 import type { DeepSeekOnboardingInjected } from './DeepSeekOnboardingDialog.tsx'
+import { SignInStore } from './sign-in-store.ts'
 import { WelcomeNotice } from './WelcomeNotice.tsx'
 import type { WelcomeNoticeInjected } from './WelcomeNotice.tsx'
 import { decodeWelcomeSection, WelcomeNoticeStore } from './welcome-store.ts'
@@ -80,14 +81,17 @@ export function apply(ctx: ClientContext): void {
     credentials: ctx.remote.credentials,
     llm: ctx.remote.llm,
     settings: ctx.remote.settings,
+    authorization: ctx.remote.authorization,
   }
+  const signInController = new SignInStore(wire.authorization)
   const controller = new ModelsSettingsStore(wire, schema, ctx.settingsScope.describe())
   // Registration-time text (the nav label thunk) and the inject faces share
   // one bound translate; copy freshness rides the locale revision.
   const t = ctx.locale.bind(NS) as ModelsSectionInjected['t']
   const injected = (): ModelsSectionInjected => ({
     controller,
-    hooks: { snapshot: controller.store },
+    hooks: { snapshot: controller.store, signIn: signInController.store },
+    signIn: signInController,
     api: wire,
     schema,
     t,
@@ -126,6 +130,7 @@ export function apply(ctx: ClientContext): void {
     ]
     return () => {
       welcomeController.dispose()
+      signInController.dispose()
       for (const dispose of disposers) dispose()
     }
   }, 'ui-settings-models: pushed invalidations')

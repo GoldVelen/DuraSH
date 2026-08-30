@@ -320,7 +320,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/api/settings-controller/src/index.ts:41`](../packages/api/settings-controller/src/index.ts)
+Source: [`packages/api/settings-controller/src/index.ts:43`](../packages/api/settings-controller/src/index.ts)
 
 <a id="deepseek-aidsh-attachment-local"></a>
 

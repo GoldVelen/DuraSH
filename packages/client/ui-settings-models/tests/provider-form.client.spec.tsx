@@ -6,6 +6,9 @@ import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { JsonValue, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import { ModelsSection, providerCopy } from '../src/client/ModelsSection.tsx'
+import { SignInStore } from '../src/client/sign-in-store.ts'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
+import type { SignInState } from '../src/client/sign-in-store.ts'
 import type { ModelsSectionInjected, ModelsSectionProps } from '../src/client/ModelsSection.tsx'
 import { CustomProviderCard } from '../src/client/CustomProviderCard.tsx'
 import { formatCapacity, parseCapacity } from '../src/client/DeepSeekModelsEditor.tsx'
@@ -17,6 +20,20 @@ import { settingsSchema } from './settings-schema.client.ts'
 afterEach(cleanup)
 
 const t: ModelsSectionInjected['t'] = key => en[key]
+
+/** A no-flow sign-in inject: the area renders nothing under this fixture. */
+function signInInjects(): {
+  signIn: SignInStore
+  useSignIn: SnapshotSelectorHook<SignInState>
+} {
+  const signIn = new SignInStore({
+    describe: () => Promise.resolve({ ok: true as const, value: { flows: [], attempts: [] } }),
+    begin: () => Promise.resolve({ ok: true as const, value: { started: true } }),
+    respond: () => Promise.resolve({ ok: true as const, value: undefined }),
+    cancel: () => Promise.resolve({ ok: true as const, value: undefined }),
+  })
+  return { signIn, useSignIn: bindSnapshotSelector(signIn.store) }
+}
 
 const PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages']
 
@@ -154,9 +171,12 @@ async function mountSection(options: Parameters<typeof scriptedFace>[0] = {}) {
   const controller = new ModelsSettingsStore(
     scripted.face as unknown as WireFace, settingsSchema, new SettingsDescribeMirror(scripted.face as never))
   await controller.load()
+  const signInInject = signInInjects()
+  await signInInject.signIn.refresh()
   const injected: ModelsSectionProps = {
     controller,
     useSnapshot: bindSnapshotSelector(controller.store),
+    ...signInInject,
     api: scripted.face as never,
     schema: settingsSchema,
     t,
@@ -676,6 +696,7 @@ describe('provider rows', () => {
     render(<ModelsSection
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
+      {...signInInjects()}
       api={scripted.face as never}
       schema={settingsSchema}
       t={t}

@@ -122,6 +122,49 @@ async begin(request: AuthorizationRequest): Promise<AuthorizationOutcome>
 
 Source: [`packages/credentials/authorization/src/index.ts`](../../packages/credentials/authorization/src/index.ts)
 
+<a id="ctxauthorizationcontroller--authorizationcontroller"></a>
+
+### `ctx.authorizationController` — `AuthorizationController`
+
+Host service backing the generated `ctx.remote.authorization` namespace. It carries the wire obligations the authorization seam itself does not: the long-running attempt is started without a hanging request, its notices and prompts are projected for polling, and every refusal maps to a stable code. Prompts travel one way per question — a `secret` answer is typed into `respond` and never read back.
+
+```ts cordis-catalog
+/**
+ * Snapshot every registered flow and every tracked attempt.
+ * @returns the flows a sign-in surface offers, and the attempts it may be watching.
+ * @throws TypertRemoteFailure when no authorization service is mounted.
+ */
+@Remote describe(): Promise<AuthorizationDescribeValue>
+
+/**
+ * Start one authorization attempt without waiting for it to finish.
+ * @param request - the credential key whose flow to run, and optionally the
+ *   method; defaults to the flow's first.
+ * @returns confirmation that the attempt started; poll `describe` for its progress.
+ * @throws TypertRemoteFailure `bad-request` for a malformed payload, `not-found`
+ *   when no flow claims the key, or `conflict` when an attempt is already running.
+ */
+@Remote begin(request: { key: string; method?: string }): Promise<{ started: true }>
+
+/**
+ * Answer the pending prompt of one running attempt.
+ * @param request - the key, the prompt id from `describe`, and either the
+ *   answer or a decline.
+ * @throws TypertRemoteFailure `bad-request` for a malformed payload or a stale
+ *   prompt id, `not-found` when no running attempt exists for the key.
+ */
+@Remote respond(request: { key: string; promptId: string; value?: string; declined?: true }): Promise<void>
+
+/**
+ * Withdraw the running attempt for a key, if any.
+ * @param request - the key whose attempt should stop.
+ * @throws TypertRemoteFailure `bad-request` for a malformed payload.
+ */
+@Remote cancel(request: { key: string }): Promise<void>
+```
+
+Source: [`packages/api/settings-controller/src/authorization.ts`](../../packages/api/settings-controller/src/authorization.ts)
+
 <a id="ctxcredentials--credentialprovider-abstract-seam"></a>
 
 ### `ctx.credentials` — `CredentialProvider` (abstract seam)

@@ -322,7 +322,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/api/settings-controller/src/index.ts:41`](../packages/api/settings-controller/src/index.ts)
+来源：[`packages/api/settings-controller/src/index.ts:43`](../packages/api/settings-controller/src/index.ts)
 
 <a id="deepseek-aidsh-attachment-local"></a>
 

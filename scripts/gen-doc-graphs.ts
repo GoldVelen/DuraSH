@@ -171,6 +171,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Lists the Session composition\'s user-invocable skills without activating a cold Agent.',
   },
   {
+    key: 'authorizationController',
+    pkg: 'api-settings-controller',
+    title: 'Host sign-in-surface Remote controller',
+    mode: 'core',
+    note: 'Projects the authorization seam onto the generated Remote namespace: the long-running attempt starts without a hanging request, and notices, prompts, and settlements live here, not on the seam Definition.',
+  },
+  {
     key: 'credentialsController',
     pkg: 'api-settings-controller',
     title: 'Host credential-surface Remote controller',

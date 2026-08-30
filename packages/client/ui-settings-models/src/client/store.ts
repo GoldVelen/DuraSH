@@ -21,6 +21,8 @@ import type { SettingsSchemaOperations } from './schema-operations.ts'
  */
 const PROBE_ROUTE = '\u0000probe'
 
+import type { ModelsAuthorization } from './sign-in-store.ts'
+
 /** The credentials Remote methods the Models page reads and writes through. */
 export type ModelsCredentials = Pick<ClientRemote['credentials'], 'describe' | 'set' | 'unset'>
 
@@ -83,6 +85,8 @@ export interface ModelsWire {
   credentials: ModelsCredentials
   /** Provider directory reads and draft endpoint discovery. */
   llm: ModelsLlm
+  /** Registered sign-in flows and their live attempts (the sign-in area's wire). */
+  authorization: ModelsAuthorization
 }
 
 /** One provider row the page renders. */

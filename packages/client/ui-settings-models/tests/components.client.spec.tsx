@@ -16,6 +16,23 @@ import {
 import { apiKeyFailure } from '../src/client/apiKey.ts'
 import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { deriveKeyRef, ModelsSettingsStore } from '../src/client/store.ts'
+import { SignInStore } from '../src/client/sign-in-store.ts'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
+import type { SignInState } from '../src/client/sign-in-store.ts'
+
+/** A no-flow sign-in inject: the area renders nothing under this fixture. */
+function signInInjects(): {
+  signIn: SignInStore
+  useSignIn: SnapshotSelectorHook<SignInState>
+} {
+  const signIn = new SignInStore({
+    describe: () => Promise.resolve({ ok: true as const, value: { flows: [], attempts: [] } }),
+    begin: () => Promise.resolve({ ok: true as const, value: { started: true } }),
+    respond: () => Promise.resolve({ ok: true as const, value: undefined }),
+    cancel: () => Promise.resolve({ ok: true as const, value: undefined }),
+  })
+  return { signIn, useSignIn: bindSnapshotSelector(signIn.store) }
+}
 import type { ProviderRow } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
 import { settingsSchema } from './settings-schema.client.ts'
@@ -218,9 +235,20 @@ async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
   const controller = new ModelsSettingsStore(face as unknown as WireFace, settingsSchema, mirror)
   await controller.load()
   const renderSlot = stubRenderSlot()
+  const signIn = new SignInStore({
+    describe: () => Promise.resolve({ ok: true as const, value: { flows: [], attempts: [] } }),
+    begin: () => Promise.resolve({ ok: true as const, value: { started: true } }),
+    respond: () => Promise.resolve({ ok: true as const, value: undefined }),
+    cancel: () => Promise.resolve({ ok: true as const, value: undefined }),
+  })
+  // Pre-warm so the mounted section renders once: the store is already current,
+  // and the poll cadence stays dormant for the life of a fast test.
+  await signIn.refresh()
   const injected: ModelsSectionProps = {
     controller,
     useSnapshot: bindSnapshotSelector(controller.store),
+    useSignIn: bindSnapshotSelector(signIn.store),
+    signIn,
     api: face as never,
     schema: settingsSchema,
     t,
@@ -356,6 +384,7 @@ describe('ModelsSection', () => {
     render(<ModelsSection
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
+      {...signInInjects()}
       api={face as never}
       schema={settingsSchema}
       t={t}
@@ -381,6 +410,7 @@ describe('ModelsSection', () => {
     render(<ModelsSection
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
+      {...signInInjects()}
       api={face as never}
       schema={settingsSchema}
       t={t}
@@ -1112,6 +1142,7 @@ describe('ModelsSection', () => {
       render(<ModelsSection
         controller={controller}
         useSnapshot={bindSnapshotSelector(controller.store)}
+        {...signInInjects()}
         api={face as never}
         schema={settingsSchema}
         t={t}
@@ -1252,6 +1283,7 @@ describe('ModelsSection', () => {
     render(<ModelsSection
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
+      {...signInInjects()}
       api={face.face as never}
       schema={settingsSchema}
       t={t}
@@ -1275,6 +1307,7 @@ describe('ModelsSection', () => {
     render(<ModelsSection
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
+      {...signInInjects()}
       api={face as never}
       schema={settingsSchema}
       t={t}
@@ -1337,6 +1370,7 @@ describe('ModelsSection', () => {
     render(<ModelsSection
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
+      {...signInInjects()}
       api={face as never}
       schema={settingsSchema}
       t={t}

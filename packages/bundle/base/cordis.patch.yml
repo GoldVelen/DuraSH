@@ -97,6 +97,12 @@
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
 
+    # Interactive credential sign-in (OAuth device codes, browser grants): the
+    # seam the llm-pi-ai flows register into. Inert until a surface starts an
+    # attempt; without it the web Models page has no login to offer.
+    - id: authorization
+      name: '@deepseek-ai/dsh-authorization'
+
     # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
     # models in the picker) until a `llm-pi-ai:` settings section supplies provider
     # profiles — then those routes register live, keys resolving per request

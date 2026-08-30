@@ -21,6 +21,9 @@
       "path": "../../credentials/credentials"
     },
     {
+      "path": "../../credentials/authorization"
+    },
+    {
       "path": "../../core/session"
     },
     {
