@@ -22,6 +22,7 @@ import type { SettingsSchemaOperations } from './schema-operations.ts'
 const PROBE_ROUTE = '\u0000probe'
 
 import type { ModelsAuthorization } from './sign-in-store.ts'
+export type { ModelsAuthorization }
 
 /** The credentials Remote methods the Models page reads and writes through. */
 export type ModelsCredentials = Pick<ClientRemote['credentials'], 'describe' | 'set' | 'unset'>

@@ -19,6 +19,7 @@ import { ModelsSection } from './ModelsSection.tsx'
 import type { ModelsSectionInjected } from './ModelsSection.tsx'
 import { DeepSeekOnboardingDialog } from './DeepSeekOnboardingDialog.tsx'
 import type { DeepSeekOnboardingInjected } from './DeepSeekOnboardingDialog.tsx'
+import type { ModelsAuthorization } from './store.ts'
 import { SignInStore } from './sign-in-store.ts'
 import { WelcomeNotice } from './WelcomeNotice.tsx'
 import type { WelcomeNoticeInjected } from './WelcomeNotice.tsx'
@@ -72,16 +73,39 @@ export const inject = [
  * pushed invalidation (settings, credentials, or provider topology).
  * @param ctx - client root context.
  */
+
+/** The authorization Remote namespace, or undefined when the composition mounts none. */
+function authorizationRemoteOf(ctx: ClientContext): ModelsAuthorization | undefined {
+  try {
+    return ctx.remote.authorization
+  } catch {
+    return undefined
+  }
+}
+
+/** The no-flow wire: every answer succeeds with nothing offered. */
+function absentSignInWire(): ModelsAuthorization {
+  return {
+    describe: () => Promise.resolve({ ok: true as const, value: { flows: [], attempts: [] } }),
+    begin: () => Promise.resolve({ ok: true as const, value: { started: true } }),
+    respond: () => Promise.resolve({ ok: true as const, value: undefined }),
+    cancel: () => Promise.resolve({ ok: true as const, value: undefined }),
+  }
+}
+
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-models: copy dictionaries')
 
   const schema = createSettingsSchemaOperations(ctx.settingsSchema)
   // Every configuration operation rides its owning Remote namespace.
+  // The sign-in namespace mounts with the authorization contribution; a
+  // composition or fixture without it renders no sign-in area instead of a
+  // broken page.
   const wire: ModelsWire = {
     credentials: ctx.remote.credentials,
     llm: ctx.remote.llm,
     settings: ctx.remote.settings,
-    authorization: ctx.remote.authorization,
+    authorization: authorizationRemoteOf(ctx) ?? absentSignInWire(),
   }
   const signInController = new SignInStore(wire.authorization)
   const controller = new ModelsSettingsStore(wire, schema, ctx.settingsScope.describe())
