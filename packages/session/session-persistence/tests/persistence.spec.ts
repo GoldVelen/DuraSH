@@ -48,6 +48,11 @@ function legacyFallbackHeader(seq = 0): SessionEvent {
   } as unknown as SessionEvent
 }
 
+/** A retired workflow run-state mirror from the 0.1.1-era orchestrator writer. */
+function inertRunState(type: string, seq: number, data: Record<string, unknown>): SessionEvent {
+  return { type, seq, time: 1, data } as unknown as SessionEvent
+}
+
 /** Optional plugin config: an EXTERNAL store shared across backend instances. */
 interface MemoryConfig { store?: MemoryStore }
 
@@ -2160,6 +2165,61 @@ describe('SessionPersistence service registration', () => {
 
     await expect(ctx.sessionPersistence.load(id))
       .rejects.toThrow('unsupported legacy mode/set event at seq 0')
+    await fiber.dispose()
+  })
+
+  it('passes retired workflow run-state mirrors through load without refusing the turn', async () => {
+    const id = SessionId('legacy-inert-runs')
+    const m = meta(id, '/legacy')
+    const store: MemoryStore = new Map([[id, {
+      meta: m,
+      events: [
+        ...oneTurnLog(),
+        inertRunState('runs/dispatched', oneTurnLog().length, {
+          runId: 'workflow:9d4c:implementation:1:x',
+          callId: 'call_legacy|fc_024a',
+        }),
+        inertRunState('workflow/start', oneTurnLog().length + 1, {
+          workflowId: 'workflow:9d4c', status: 'planning', round: 0, modelVisible: false, units: [],
+        }),
+        inertRunState('workflow/change', oneTurnLog().length + 2, {
+          workflowId: 'workflow:9d4c', status: 'planning', round: 0, modelVisible: false, units: [],
+        }),
+      ],
+    }]])
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const fiber = await ctx.plugin(MemoryPersistence, { store })
+
+    // The mirrors ride the stream untouched: `seq` must stay contiguous from 0
+    // so a later resume can append at `seq = log.length`.
+    const loaded = await ctx.sessionPersistence.load(id)
+    expect(loaded.events).toHaveLength(oneTurnLog().length + 3)
+    expect(loaded.events.slice(-3).map(event => event.type))
+      .toEqual(['runs/dispatched', 'workflow/start', 'workflow/change'])
+    expect(loaded.events.every((event, index) => event.seq === index)).toBe(true)
+    await fiber.dispose()
+  })
+
+  it('still refuses a retired-domain session carrying an unknown type outside the inert set', async () => {
+    const id = SessionId('legacy-inert-with-unknown')
+    const m = meta(id, '/legacy')
+    const store: MemoryStore = new Map([[id, {
+      meta: m,
+      events: [
+        ...oneTurnLog(),
+        inertRunState('workflow/change', 100, {
+          workflowId: 'workflow:9d4c', status: 'planning', round: 0, modelVisible: false, units: [],
+        }),
+        inertRunState('runs/future', 101, { runId: 'workflow:future' }),
+      ],
+    }]])
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const fiber = await ctx.plugin(MemoryPersistence, { store })
+
+    await expect(ctx.sessionPersistence.load(id))
+      .rejects.toThrow('contains event type "runs/future" (seq 101) unknown to this harness')
     await fiber.dispose()
   })
 

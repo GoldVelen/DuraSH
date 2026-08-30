@@ -292,6 +292,24 @@ function assertSupportedEvents(events: readonly SessionEvent[], id: SessionId): 
   }
 }
 
+/**
+ * Durable session-stream records of the retired workflow-orchestrator runs
+ * domain, last written by the 0.1.1-era harness before run state moved to the
+ * storage `runs` unit. Their declaring type pinned `modelVisible: false`, so
+ * they never carried a fact a reconstructed model request reads, and this
+ * build never re-emits them — which is also why they stay outside
+ * {@link KNOWN_SESSION_EVENT_TYPES}. The guard lets them through instead of
+ * refusing: `seq` must stay contiguous from 0 (the `seq = log.length` contract
+ * forbids dropping stored records), event folds ignore types outside their
+ * branches by the merge-extensible default, and every other unknown type
+ * still refuses.
+ */
+const INERT_LEGACY_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'runs/dispatched',
+  'workflow/start',
+  'workflow/change',
+])
+
 /** Return an object record without widening arrays into message payloads. */
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -1130,15 +1148,19 @@ export class PersistenceCoordinator<TornMarker = unknown> {
   }
 
   /**
-   * Refuse a log containing an event type this build does not know: silently
-   * skipping an unknown event could reconstruct a wrong session. Runs on
-   * NORMALIZED events — after `snapshotStoredEvents`/`adoptStoredEvents` has
-   * upgraded the legacy shapes this build still reads and rejected the ones it
-   * does not, so those keep their specific diagnostics.
+   * Route stored events through the vocabulary gate: known types reconstruct,
+   * the proven-inert legacy run-state mirrors pass through untouched (they
+   * ride the stream so `seq` stays contiguous from 0), and everything else
+   * refuses — silently skipping an unknown event could reconstruct a wrong
+   * session. Runs on NORMALIZED events — after
+   * `snapshotStoredEvents`/`adoptStoredEvents` has upgraded the legacy shapes
+   * this build still reads and rejected the ones it does not, so those keep
+   * their specific diagnostics.
    */
   private assertEventsSupported(meta: SessionHeader, events: readonly SessionEvent[]): void {
     for (const event of events) {
       if (KNOWN_SESSION_EVENT_TYPES.has(event.type)) continue
+      if (INERT_LEGACY_EVENT_TYPES.has(event.type)) continue
       throw this.unsupported(meta, `session "${meta.id}" contains event type "${event.type}" (seq ${event.seq}) unknown to this harness; refusing to interpret the log — it was likely written by a newer harness`)
     }
   }

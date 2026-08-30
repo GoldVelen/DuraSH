@@ -14,6 +14,8 @@ Status: implemented
 
 每个会话事件类型都是读取必需项。受支持的 legacy 记录归一化后，`PersistenceCoordinator` 会将每个事件类型与 `KNOWN_SESSION_EVENT_TYPES` 比较；后者是从本仓库声明的所有 `SessionEventMap` 成员生成的集合。任何未知类型都以 `SessionFormatUnsupportedError` 拒绝重建；诊断会列出事件与序号，指明日志可能由更新的写入方生成，并在后端拥有独立原始产物时附上该路径。该守卫仍只在读取侧生效，因为在实时事件已提交后拒绝追加会中断持久化，使会话无法在下次加载时报告不受支持的日志。
 
+守卫附带一个窄例外：`INERT_LEGACY_EVENT_TYPES` 集合让三个 workflow 运行状态镜像（`runs/dispatched`、`workflow/start`、`workflow/change`）原样通过重建。0.1.1 时代的 workflow orchestrator 曾把它们追加进会话流，之后运行状态的持久化权威移到了 storage `runs` 单元；其声明类型将 `modelVisible` 固定为 `false`，因此它们从不携带重建模型请求会读取的事实。选择透传而非丢弃，是因为 `seq` 必须从 0 连续——`seq = log.length` 契约禁止移除已存储记录——且事件折叠层按 merge-extensible 默认忽略分支之外的类型。它们不进生成已知集合，因为当前构建从不重新发出。这正是被否决的跳过断言所缺少的前提：一个由写入方证明其仅具信息价值的既定事件类别，在单一咽喉点放行，其余未知类型仍照常拒绝。
+
 `SessionEvent` 没有可选的未知事件跳过字段。JSONL 继续序列化相同的事件对象，因为生产追加路径从未发出该字段，`SESSION_FORMAT_VERSION` 仍为 `0`。SQLite 提供方将被复用的 `ignorable` 列替换为 schema 18 的 `is_packed` 判别值：标量逻辑事件存储 `0`，打包分片行存储 `1`，与物理分片标签同名的事件在协调器应用已知类型守卫之前仍可明确解码。
 
 `SESSION_FORMAT_VERSION` 仍是单个单调整数。当较旧运行时无法完全正确地解释某项结构或语义变更时，写入方必须升版本：会话 header 字段、事件 envelope 字段、核心事件语义或 `SurfaceEventType`/`SurfaceOp` 机制。仅新增事件类型无需升版本，因为较旧读取器会拒绝该确切的未知类型，而不是误读日志。版本相等时正常读取；版本不等时当前以分方向诊断拒绝。n→n+1 升级器链仍推迟到第一个真实 v0→v1 步骤提供可测的输入和输出时建立。未来的查看升级属于内存转换，只有用户继续会话时才持久替换；缺失的步骤会保留源产物以供原始查看。
