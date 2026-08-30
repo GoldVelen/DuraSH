@@ -21,10 +21,10 @@
 | workflow 脚本、资源上限、取消、成员生命周期事件 | 继承最新 DSH | `@deepseek-ai/dsh-workflow`、worker-thread engine、workflow tool 与 workflow-run UI |
 | 主上游与依赖漂移检测 | 本地已实现 | 定时同步 workflow、来源 manifest、漂移脚本与零冷却 Dependabot；公共仓库启用 Actions 后才正式运行 |
 | 受 CI 门禁保护的上游自动合并 | 已准备，未启用 | 需要公共仓库分支保护与 `UPSTREAM.md` 记录的 opt-in 仓库变量 |
-| 旧分叉中的独立持久化 Run store | 未迁移 | 最新 DSH 把 workflow 生命周期记录在父 Session 中，但没有旧 RunStore 控制面 |
-| 固定“实施 → 协调 → 三路审查 → 汇总”流水线 | 未迁移 | 最新 DSH 提供通用 workflow 接口，不提供这项产品策略 |
-| 带持久 blocker `needs_replan` 停机的有界自动返工 | 未迁移 | 历史行为只存在于旧分叉，必须作为产品插件在当前 workflow 接口上重做 |
-| 重启后恢复与独立取消/quiescence | 未迁移 | 当前 engine 具备有界取消；持久化编排恢复仍未关闭 |
+| 旧分叉中的独立持久化 Run store | 有界闭环已实现 | `@durash/dsh-reliability-loop` 在 `reliability-loop` storage domain 中为每个循环保留一条持久记录；旧分叉的通用 RunStore 控制面仍未对齐 |
+| 固定“实施 → 协调 → 三路审查 → 汇总”流水线 | 未迁移 | 最新 DSH 提供通用 workflow 接口，不提供这项产品策略；已发布的循环只有一个实施者加一个审查者 |
+| 带持久 blocker 停机的有界自动返工 | 有界闭环已实现 | 一轮返工，以携带最终审查反馈的持久 `blocked` 停机收尾；旧分叉在该停机之外的 `needs_replan` 轮次词汇未迁移 |
+| 重启后恢复与独立取消/quiescence | 有界闭环已实现 | `resume()` 只重跑记录中第一个未完成阶段；取消与运行时拆卸都收敛到持久终态记录，不遗留后台写入者（聚焦回归在循环包内） |
 | 旧分叉的 token 剪枝/压缩与溢出重试策略 | 未迁移 | 当前 DSH 有通用 compaction/token-meter 服务，但尚未证明与旧 workflow 专用策略等价 |
 | DuraSH npm 发行版 | 未准备 | 源码运行已支持；DuraSH 自有包已标记为 private 并从继承的 DSH release family 排除，因此既不宣传 npm 包，也不会被意外发布 |
 
@@ -36,7 +36,7 @@
 
 最新上游迁移与产品外壳都是真实落地，但可靠性引擎**尚未完全融合**。复用当前 DSH workflow 接口与 UI 是正确方向；把旧的约 1.8 万行编排栈直接复制到一个领先一千多个上游提交的新基线上，会重新制造硬分叉，因此明确拒绝。
 
-下一实施里程碑是一个纵向闭环：在当前生命周期事件之上建立产品自有持久状态，完成一轮有界审查返工、重启恢复及聚焦恢复回归。完成之前，DuraSH 不能声称新基线已经提供持久收敛能力。
+可靠性引擎的第一个纵向切片已经落地：`@durash/dsh-reliability-loop` 在当前 workflow 生命周期之上维护产品自有的持久循环状态，完成一轮有界审查返工，重启后不重跑已完成尝试即可恢复，取消后收敛，并配有基于真实引擎与真实存储后端的聚焦回归。引擎整体仍未迁移：循环还没有面向模型的入口、没有成员级持久进度、没有协调或三路审查阶段，workflow 引擎自身也依旧没有日志。
 
 ## Core-fork 例外
 

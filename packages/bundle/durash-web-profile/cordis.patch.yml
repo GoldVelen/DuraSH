@@ -1,7 +1,17 @@
 # DuraSH is an additive product layer over the current upstream web profile.
 # The official brand row remains present but registers nothing in a `durash`
-# client build; this product-owned row fills the same generic slots.
+# client build; this product-owned row fills the same generic slots. The
+# reliability loop is the product-owned bounded implement/review engine whose
+# durable state rides the storage family the base bundle already mounts. The
+# web app ships the workflow engine row disabled; the durash product profile
+# re-enables the engine (not the model-facing workflow/ralph tools) because
+# the reliability loop drives its runs.
 
 - insert:
     - id: ui-brand-durash
       name: '@durash/dsh-client-ui-brand'
+    - id: reliability-loop
+      name: '@durash/dsh-reliability-loop'
+
+- id: workflow-worker-thread
+  disabled: false

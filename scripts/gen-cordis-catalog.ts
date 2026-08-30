@@ -84,6 +84,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   llm: 'llm-streaming.md',
   lsp: 'lsp.md',
   messageFeedback: 'feedback.md',
+  reliabilityLoopRuntime: 'reliability-loop.md',
   permissionPresets: 'permission-presets.md',
   planMode: 'plan.md',
   terminals: 'terminal.md',
@@ -237,6 +238,15 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  ReliabilityLoopId: 'reliability-loop.md',
+  ReliabilityLoopStage: 'reliability-loop.md',
+  ReliabilityLoopRecord: 'reliability-loop.md',
+  ReliabilityLoopHandle: 'reliability-loop.md',
+  ReliabilityLoopStartRequest: 'reliability-loop.md',
+  ImplementAttempt: 'reliability-loop.md',
+  ReviewAttempt: 'reliability-loop.md',
+  ImplementReport: 'reliability-loop.md',
+  ReviewReport: 'reliability-loop.md',
   Agent: 'core.md',
   AgentCancelCause: 'core.md',
   AgentFactory: 'core.md',

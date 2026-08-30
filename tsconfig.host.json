@@ -301,6 +301,7 @@
     { "path": "./packages/workflow/workflow-worker-thread" },
     { "path": "./packages/workflow/tool-workflow" },
     { "path": "./packages/workflow/tool-ralph" },
+    { "path": "./packages/reliability/durash-reliability-loop" },
     { "path": "./packages/webhook/webhook" },
     { "path": "./packages/webhook/webhook-github" },
     { "path": "./packages/todo/tool-todo" },

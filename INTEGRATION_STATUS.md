@@ -21,10 +21,10 @@ This document separates current source truth from the older DSH fork's accepted 
 | Workflow scripts, resource caps, cancellation, member lifecycle events | Inherited from latest DSH | `@deepseek-ai/dsh-workflow`, worker-thread engine, workflow tool, and workflow-run UI |
 | Primary-upstream and dependency drift detection | Implemented locally | Scheduled sync workflow, source manifest, drift script, and zero-cooldown Dependabot configuration; becomes operational after the public repository enables Actions |
 | CI-gated automatic upstream merge | Prepared, not active | Requires public repository branch protection and the opt-in repository variable documented in `UPSTREAM.md` |
-| Independent durable Run store from the older fork | Not migrated | Latest DSH records workflow lifecycle in the parent Session, but does not provide the old independent RunStore control plane |
-| Fixed implementation → coordinator → three reviews → aggregation pipeline | Not migrated | Latest DSH provides a general workflow seam, not this product policy |
-| Bounded automatic rework with persistent-blocker `needs_replan` stop | Not migrated | Historical behavior exists only in the older fork and must be reimplemented as a product-owned plugin over the current workflow seam |
-| Restart-safe resume and independent cancel/quiescence | Not migrated | Current engine cancellation is bounded; durable post-restart orchestration recovery remains open |
+| Independent durable Run store from the older fork | Implemented for the bounded loop | `@durash/dsh-reliability-loop` keeps one durable record per loop in the `reliability-loop` storage domain; the old fork's general RunStore control plane remains unmatched |
+| Fixed implementation → coordinator → three reviews → aggregation pipeline | Not migrated | Latest DSH provides a general workflow seam, not this product policy; the shipped loop is one implementer plus one reviewer |
+| Bounded automatic rework with persistent-blocker stop | Implemented for the bounded loop | One rework round with a durable `blocked` stop carrying the final reviewer feedback; the old fork's `needs_replan` round vocabulary beyond that stop is not migrated |
+| Restart-safe resume and independent cancel/quiescence | Implemented for the bounded loop | `resume()` re-runs only the record's first unsettled stage; cancellation and runtime teardown reach durable terminal records with no background writer (focused regressions in the loop package) |
 | Older fork's token pruning/compaction and overflow retry policy | Not migrated | Current DSH has generic compaction/token-meter services; equivalence with the old workflow-specific policy is not established |
 | DuraSH npm distribution | Not prepared | Source execution is supported; DuraSH-owned packages are marked private and excluded from the inherited DSH release family, so no npm package is advertised or accidentally published |
 
@@ -36,7 +36,7 @@ The live 2026-08-30 audit confirms that the primary DSH branch is current. It al
 
 The latest-upstream migration and product shell are real, but the reliability engine is **not yet fully fused**. Reusing the current DSH workflow seam and UI is the correct direction; copying the older 18k-line orchestration stack onto a baseline more than one thousand upstream commits newer would recreate a hard fork and is explicitly rejected.
 
-The next implementation milestone is one vertical slice: durable product-owned workflow state over the current lifecycle events, one bounded review/rework round, restart recovery, and focused recovery regressions. Only then may DuraSH claim that durable convergence is available on the new base.
+The first vertical slice of the reliability engine is now real: `@durash/dsh-reliability-loop` keeps product-owned durable loop state over the current workflow lifecycle, runs one bounded review/rework round, recovers from restart without re-running settled attempts, and converges after cancellation, with focused regressions over the real engine and storage backend. The engine as a whole is not migrated: the loop has no model-facing entry point, no member-level durable progress, and no coordination or three-way review stages, and the workflow engine itself still journals nothing.
 
 ## Core-fork exceptions
 

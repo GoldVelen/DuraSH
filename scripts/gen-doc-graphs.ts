@@ -307,6 +307,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns WorkspaceId-branded records over the domain facility; stable sessionIds accounts drive Host RPC and GUI projections.',
   },
   {
+    key: 'reliabilityLoopRuntime',
+    pkg: 'durash-reliability-loop',
+    title: 'DuraSH reliability loop runtime',
+    mode: 'core',
+    note: 'Drives one bounded implement-review-rework cycle over the workflow engine with the whole state machine in one durable `reliability_loop` domain record; owns start/resume single ownership, bounded handoffs, and cancellation quiescence.',
+  },
+  {
     key: 'sessionQuery',
     pkg: 'session-query',
     title: 'Session reads, traces, filters, and search',

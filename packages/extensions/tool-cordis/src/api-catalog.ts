@@ -1282,6 +1282,39 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'reliabilityLoopRuntime',
+    summary: 'The reliability-loop runtime.',
+    description: 'The reliability-loop runtime. One live driver owns one loop; the runtime enforces that single ownership and cancels every live loop to quiescence before its domain closes at teardown.',
+    methods: [
+      {
+        signature: 'async start(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>',
+        description: 'Start one loop: write its durable record first, then drive the first stage. The caller owns the returned handle and defines its own interval over `result`.',
+        parameters: [{ name: 'request', description: 'the parent agent and the bounded objective.' }],
+        returns: 'the live loop handle.',
+        throws: ['when the objective is empty or over the handoff bound.'],
+      },
+      {
+        signature: 'resume(loopId: ReliabilityLoopId, parent: Agent): ReliabilityLoopHandle',
+        description: 'Resume one interrupted loop after a restart: drive the state machine from its record\'s current stage. Settled attempts are never re-run; the first unsettled stage re-runs exactly once because the driver owns the loop exclusively.',
+        parameters: [{ name: 'loopId', description: 'the interrupted loop\'s id.' }, { name: 'parent', description: 'the agent on whose behalf the resumed stages run.' }],
+        returns: 'the live loop handle.',
+        throws: ['when the loop is unknown, already settled, or already owned by a live driver.'],
+      },
+      {
+        signature: 'list(): ReliabilityLoopRecord[]',
+        description: 'Every durable loop record, in storage order.',
+        parameters: [],
+        returns: 'the record snapshot.',
+      },
+      {
+        signature: 'get(loopId: ReliabilityLoopId): ReliabilityLoopRecord | undefined',
+        description: 'Read one loop\'s durable record.',
+        parameters: [{ name: 'loopId', description: 'the loop\'s id.' }],
+        returns: 'the record, or `undefined` when unknown.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -4107,6 +4140,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ImageVariantId = Branded<\'ImageVariantId\'>;',
   },
   {
+    name: 'ImplementAttempt',
+    declaration: 'export interface ImplementAttempt {\n    readonly round: LoopRound;\n    readonly summary: string;\n    readonly agentsStarted: number;\n}',
+  },
+  {
     name: 'IndexInjection',
     declaration: 'export type IndexInjection = {\n    kind: \'global\';\n    name: string;\n    value: unknown;\n} | {\n    kind: \'script\';\n    placement: IndexInjectionPlacement;\n    text: string;\n} | {\n    kind: \'script-src\';\n    placement: IndexInjectionPlacement;\n    src: string;\n} | {\n    kind: \'script-preload\';\n    src: string;\n} | {\n    kind: \'style\';\n    text: string;\n} | {\n    kind: \'html\';\n    placement: IndexInjectionPlacement;\n    html: string;\n};',
   },
@@ -4297,6 +4334,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LlmRuntime',
     declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+  },
+  {
+    name: 'LoopRound',
+    declaration: 'export type LoopRound = 1 | 2;',
   },
   {
     name: 'LspHover',
@@ -4603,6 +4644,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
   },
   {
+    name: 'ReliabilityLoopHandle',
+    declaration: 'export interface ReliabilityLoopHandle {\n    readonly loopId: ReliabilityLoopId;\n    readonly result: Promise<ReliabilityLoopRecord>;\n    cancel(reason?: string): void;\n    dispose(): Promise<void>;\n}',
+  },
+  {
+    name: 'ReliabilityLoopId',
+    declaration: 'export type ReliabilityLoopId = Branded<\'ReliabilityLoopId\'>;',
+  },
+  {
+    name: 'ReliabilityLoopRecord',
+    declaration: 'export interface ReliabilityLoopRecord {\n    readonly loopId: ReliabilityLoopId;\n    readonly objective: string;\n    readonly createdAt: string;\n    readonly stage: ReliabilityLoopStage;\n    readonly implement?: ImplementAttempt | undefined;\n    readonly review?: ReviewAttempt | undefined;\n    readonly settledAt?: string | undefined;\n    readonly error?: string | undefined;\n}',
+  },
+  {
+    name: 'ReliabilityLoopStage',
+    declaration: 'export type ReliabilityLoopStage = \'implementing\' | \'reviewing\' | \'rework-implementing\' | \'rework-reviewing\' | \'completed\' | \'blocked\' | \'failed\' | \'cancelled\';',
+  },
+  {
+    name: 'ReliabilityLoopStartRequest',
+    declaration: 'export interface ReliabilityLoopStartRequest {\n    parent: Agent;\n    objective: string;\n}',
+  },
+  {
     name: 'RemoteEventHostInfo',
     declaration: 'export interface RemoteEventHostInfo {\n    readonly home: string;\n}',
   },
@@ -4661,6 +4722,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResumeAgentOptions',
     declaration: 'export interface ResumeAgentOptions {\n    readonly resumeSessionId: SessionId;\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+  },
+  {
+    name: 'ReviewAttempt',
+    declaration: 'export interface ReviewAttempt {\n    readonly round: LoopRound;\n    readonly verdict: ReviewVerdict;\n    readonly feedback: string;\n    readonly agentsStarted: number;\n}',
+  },
+  {
+    name: 'ReviewVerdict',
+    declaration: 'export type ReviewVerdict = \'approved\' | \'changes-requested\';',
   },
   {
     name: 'RunnerFailureRule',

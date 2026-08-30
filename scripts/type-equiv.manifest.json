@@ -2010,6 +2010,51 @@
       "doc": "packages/client/ui-conversation/README.md",
       "symbol": "ComposerChainProps",
       "source": "packages/client/ui-conversation/src/client/contract/slots.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityLoopId",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "LoopRound",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReviewVerdict",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityLoopStage",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ImplementAttempt",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReviewAttempt",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityLoopRecord",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityLoopStartRequest",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityLoopHandle",
+      "source": "packages/reliability/durash-reliability-loop/src/types.ts"
     }
   ]
 }

@@ -3399,6 +3399,26 @@ export interface Config {
 
 Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages/workflow/workflow-worker-thread/src/index.ts)
 
+<a id="durashdsh-reliability-loop"></a>
+
+## `@durash/dsh-reliability-loop`
+
+Requires: `workflowEngine` · `storageDomain`
+
+```ts config-catalog
+/** Config: the deployment-owned loop bounds. */
+export interface Config {
+  /**
+   * Maximum characters of any artifact crossing a stage boundary — the
+   * objective, an implementation summary, reviewer feedback. A longer
+   * artifact fails the stage loud (default 16384).
+   */
+  maxHandoffChars?: number
+}
+```
+
+Source: [`packages/reliability/durash-reliability-loop/src/index.ts:36`](../packages/reliability/durash-reliability-loop/src/index.ts)
+
 ## Loadable plugins with no config
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.

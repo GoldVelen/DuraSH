@@ -30,6 +30,7 @@ packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
   subagent/    subagent capability: Service Definition + providers + delegation Consumers
   bundle/      installable dsh --profile patch-layer bundles
   workflow/    workflow capability + worker-thread provider + tool Consumer
+  reliability/ DuraSH-owned reliability engine: the bounded implement/review loop with durable state
   webhook/     webhook ingress
   todo/        todo_write tool
   plan/        plan mode as logged state

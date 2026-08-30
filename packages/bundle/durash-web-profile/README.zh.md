@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-本包是应用在当前上游 `dsh-base` 与 `dsh-web-app` bundle 之后的 DuraSH 产品叠加层。它加入产品自有的浏览器品牌插件，并保持上游官方品牌包不变。这样可以缩小后续合并上游时的冲突，并让所有下游自有 row 都集中显示在一个 patch 层中。
+本包是应用在当前上游 `dsh-base` 与 `dsh-web-app` bundle 之后的 DuraSH 产品叠加层。它加入产品自有的浏览器品牌插件与可靠性循环运行时，并重新启用上游 workflow 引擎 row（web app 默认关闭该行），使闭环可以驱动其阶段 run。上游官方品牌包与保持关闭的 `workflow`/`ralph` 工具不变。这样可以缩小后续合并上游时的冲突，并让所有下游自有 row 都集中显示在一个 patch 层中。
 
 ## 目录
 
@@ -35,7 +35,7 @@ kind: "package-bundle"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`cordis.patch.yml` 插入一行 `@durash/dsh-client-ui-brand`。产品层保持增量：只有不存在兼容的上游扩展点时才允许替换上游 row，并且必须先在仓库融合状态文档中记录精确例外。
+`cordis.patch.yml` 插入 `@durash/dsh-client-ui-brand` 与 `@durash/dsh-reliability-loop` 运行时两行，并重置 `workflow-worker-thread` 行的 `disabled` 标志。产品层保持增量：只有不存在兼容的上游扩展点时才允许替换上游 row，并且必须先在仓库融合状态文档中记录精确例外。
 
 </details>
 
@@ -45,6 +45,7 @@ kind: "package-bundle"
 ## 进一步探索
 
 - [DuraSH 浏览器品牌](../../client/ui-brand-durash/README.zh.md)——本 bundle 插入的产品自有槽位填充包。
+- [DuraSH 可靠性闭环](../../reliability/durash-reliability-loop/README.zh.md)——本 bundle 组合进 `durash` profile 的宿主侧可靠性运行时。
 - [Profile 组合](../../boot/app-boot/README.zh.md#profiles)——启动时采用的有序 bundle 与 patch 语义。
 - [融合状态](../../../INTEGRATION_STATUS.md)——产品的已实现、继承与未迁移边界。
 
@@ -53,7 +54,7 @@ kind: "package-bundle"
 <a id="model-experience"></a>
 ## 模型体验
 
-无，因为本 overlay 只添加浏览器身份，不贡献提示词段落、工具、消息或模型请求字段。
+无，因为本 overlay 只添加浏览器身份与宿主侧可靠性服务，不贡献提示词段落、工具、消息或模型请求字段。
 
 #### KV Cache 影响
 
@@ -63,7 +64,7 @@ kind: "package-bundle"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **只负责品牌与组合**——持久 workflow 可靠性仍是独立的产品插件里程碑，不能从本 profile 推断其已经完成。
+- **只负责品牌与组合**——本 overlay 组合了可靠性循环运行时，但没有为它提供面向模型的消费者；循环入口仍是程序化的。
 - **目前仅支持源码发行**——DuraSH npm 可执行文件与发布 family 尚未设计，也未对外宣传。
 
 <a id="dev-note"></a>

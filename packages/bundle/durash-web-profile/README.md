@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package is the DuraSH product overlay applied after the current upstream `dsh-base` and `dsh-web-app` bundles. It adds the product-owned browser-brand plugin and leaves the upstream official-brand package unchanged. That separation keeps upstream merges small and makes every downstream-owned row visible in one patch layer.
+This package is the DuraSH product overlay applied after the current upstream `dsh-base` and `dsh-web-app` bundles. It adds the product-owned browser-brand plugin and the reliability-loop runtime, and re-enables the upstream workflow-engine row (the web app ships it disabled) so the loop can drive its stage runs. The upstream official-brand package and the disabled `workflow`/`ralph` tools are unchanged. That separation keeps upstream merges small and makes every downstream-owned row visible in one patch layer.
 
 ## Table of Contents
 
@@ -35,7 +35,7 @@ Build the client with `pnpm run build:durash`, then start the source checkout wi
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`cordis.patch.yml` inserts one `@durash/dsh-client-ui-brand` row. The product layer remains additive: replacing an upstream row is permitted only when no compatible extension point exists, and the exact exception must first be recorded in the repository's integration-status document.
+`cordis.patch.yml` inserts the `@durash/dsh-client-ui-brand` row and the `@durash/dsh-reliability-loop` runtime row. The product layer remains additive: replacing an upstream row is permitted only when no compatible extension point exists, and the exact exception must first be recorded in the repository's integration-status document.
 
 </details>
 
@@ -45,6 +45,7 @@ Build the client with `pnpm run build:durash`, then start the source checkout wi
 ## Further Exploration
 
 - [DuraSH browser brand](../../client/ui-brand-durash/README.md) — the product-owned slot occupants this bundle inserts.
+- [DuraSH reliability loop](../../reliability/durash-reliability-loop/README.md) — the host-side reliability runtime this bundle composes into the `durash` profile.
 - [Profile composition](../../boot/app-boot/README.md#profiles) — the ordered bundle and patch semantics used at startup.
 - [Integration status](../../../INTEGRATION_STATUS.md) — the implemented, inherited, and not-migrated product boundaries.
 
@@ -53,7 +54,7 @@ Build the client with `pnpm run build:durash`, then start the source checkout wi
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as this overlay adds browser identity only and contributes no prompt section, tool, message, or model request field.
+None, as this overlay adds browser identity and a host-side reliability service only, contributing no prompt section, tool, message, or model request field.
 
 #### KV Cache effect
 
@@ -63,7 +64,7 @@ None; this package neither assembles nor sends a provider request.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Brand and composition only** — durable workflow reliability remains a separate product plugin milestone and cannot be inferred from this profile.
+- **Brand and composition only** — this overlay composes the reliability-loop runtime but supplies no model-facing consumer for it; loop entry points remain programmatic.
 - **Source distribution only** — the DuraSH npm executable and publication family are not yet designed or advertised.
 
 <a id="dev-note"></a>

@@ -55,7 +55,9 @@ const durashPackagePrefix = '@durash/'
 /** Private packages that participate in workspace checks but not releases. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** Downstream packages intentionally distributed only as part of the source checkout. */
-const durashSourceOnlyPackageDirectory = /^packages\/(?:bundle\/durash-web-profile|client\/ui-brand-durash)$/
+const durashSourceOnlyPackageDirectory = new RegExp(
+  '^packages/(?:bundle/durash-web-profile|client/ui-brand-durash|reliability/durash-reliability-loop)$',
+)
 /** npm namespace reserved for private experimental packages. */
 const experimentalPackageNamePrefix = '@deepseek-ai/dsh-experimental-'
 /** Directories whose packages this repository publishes: one release member each. */
