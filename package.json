@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "build": "tsx scripts/build.ts",
+    "build:durash": "tsx scripts/build.ts --profile durash",
     "build:official": "tsx scripts/build.ts --profile official",
     "build:lib": "npm run build:lib:host && npm run build:lib:client",
     "build:lib:host": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -b tsconfig.host.json && tsdown --env.DSH_BUILD_FACE host",
@@ -46,6 +47,8 @@
     "test:web": "npm run build && npm run test:web:built",
     "test:web:refresh": "npm run build && DSH_SNAPSHOT=refresh vitest run --config vitest.web.config.ts",
     "test:web:built": "vitest run --config vitest.web.config.ts",
+    "test:durash:built": "vitest run --config vitest.web.config.ts apps/web/tests/durash-brand.e2e.ts",
+    "test:durash": "pnpm run build:durash && pnpm run test:durash:built",
     "test:web:ci": "tsx scripts/run-web-snapshots.ts",
     "test:web:perf": "npm run build && npm run test:web:perf:built",
     "test:web:perf:built": "DSH_SNAPSHOT=replay vitest run --config vitest.web.perf.config.ts",
@@ -152,6 +155,7 @@
     "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
     "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
     "dev:web": "tsx scripts/dev-web.ts --poll",
+    "check:upstream-sources": "tsx scripts/check-upstream-sources.ts",
     "postinstall": "node scripts/install-lefthook.mjs"
   },
   "devDependencies": {

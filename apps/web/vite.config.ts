@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { copyFile, readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
@@ -62,6 +62,21 @@ function emitPreviewPage(): Plugin {
       if (anchor === -1) throw new Error('vite: built index.html lost its module entry tag')
       const tag = `<script type="module" crossorigin src="./${bootstrapFile}"></script>`
       await writeFile(src('./dist/preview.html'), `${page.slice(0, anchor)}${tag}${page.slice(anchor)}`)
+    },
+  }
+}
+
+/** Replace upstream install metadata only for the explicitly selected DuraSH artifact profile. */
+function emitDurashIdentity(): Plugin {
+  return {
+    name: 'durash-emit-product-identity',
+    apply: 'build',
+    async closeBundle() {
+      if (process.env.DSH_CLIENT_BUILD_PROFILE !== 'durash') return
+      await Promise.all([
+        copyFile(src('./identity/durash/favicon.svg'), src('./dist/favicon.svg')),
+        copyFile(src('./identity/durash/manifest.webmanifest'), src('./dist/manifest.webmanifest')),
+      ])
     },
   }
 }
@@ -141,7 +156,7 @@ export default defineConfig({
   // Relative asset URLs: preview.html mounts the same output under any base
   // directory, and the served index resolves identically from the site root.
   base: './',
-  plugins: [rejectStandaloneServe(), clientDocumentTitle(), react(), emitPreviewPage()],
+  plugins: [rejectStandaloneServe(), clientDocumentTitle(), react(), emitPreviewPage(), emitDurashIdentity()],
   build: {
     // The worker bootstrap holds its page at top-level await; Vite's default
     // `modules` target (es2020-era) rejects that syntax.

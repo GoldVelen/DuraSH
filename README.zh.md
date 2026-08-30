@@ -1,75 +1,63 @@
-# DeepSeek Harness
+# DuraSH
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+DuraSH 是构建在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`DSH`）之上的独立可靠性发行版。它把上游作为基座，通过插件与 profile 叠加产品自有能力，并把上游漂移显式暴露出来，避免悄悄退化成陈旧分叉。
+
+DuraSH 不是 DeepSeek 官方产品，也未获得 DeepSeek 背书。
 
 它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
 
-文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+本次迁移采用当时已验证的最新上游版本：`dsh-v0.1.2-alpha.1` / `cd5ef8148158`。精确边界见[上游策略](UPSTREAM.md)、[融合状态](INTEGRATION_STATUS.md)与[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
 
 ## 开发者预览
 
-DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+DuraSH 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
 
-运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
+运行本项目前，请阅读[安全说明](SAFETY.zh.md)。独立品牌/profile 与持续更新控制已经落地；旧分叉中的持久化审查返工引擎仍在迁移到最新 DSH workflow 接口，不能把当前预览版理解成“所有可靠性能力都已完成”。
+
+<a id="run-from-source"></a>
 
 <a id="run"></a>
 
 ## 运行
 
-### 通过 `npm` 运行
+### 从源码运行 DuraSH profile
 
-安装 `Node.js`，然后运行：
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
-
-<a id="run-from-source"></a>
-
-### 从源码运行
-
-如需从仓库源码运行：
+DuraSH 目前尚未发布 npm 版本。在当前 checkout 中运行：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
 pnpm install
-pnpm run build
-pnpm dsh web
+pnpm run build:durash
+pnpm dsh --profile durash
 ```
 
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
+Web UI 默认启动在 `http://127.0.0.1:3080`。上游 `web`、SDK 与 headless 运行 profile 以及官方客户端构建保持不变；DuraSH 是附加 profile，而不是给上游内部实现整体改名。
+
+## 哪些内容属于 DuraSH？
+
+- DuraSH 名称、标志、favicon、wordmark 与 `durash` 构建/profile；
+- 在最新 DSH Web bundle 之后组合下游插件的产品叠加层；
+- 官方上游自动同步与依赖新鲜度策略；
+- [融合状态](INTEGRATION_STATUS.md)中明确标为“已实现”的可靠性能力。
+
+其余代码继续保留原始上游所有权与许可证。尤其是当前的 DSH workflow 执行、UI 与插件基础设施，除非融合状态另有说明，仍属于上游代码。
+
+## 持续跟进最新版本
+
+仓库每六小时检查一次官方 DSH 分支；出现变化时准备一个受 CI 门禁保护的同步 PR。同一审计会检查每个 vendored 公共包发行版，并在存在漂移时维持唯一一个 review Issue。Dependabot 每日检查普通 registry 与 GitHub Actions 依赖，不设置人为冷却期。只有通过兼容性检查的更新才会合入；这里的“最新”指最新已验证版本，不是把未经测试的代码直接交给用户。
 
 ## 社区与支持
 
-- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
+- 通过 [GitHub Issues](https://github.com/GoldVelen/DuraSH/issues)提交反馈与缺陷报告，通过 [GitHub Discussions](https://github.com/GoldVelen/DuraSH/discussions)交流问题与想法。
+- 按 [SECURITY.md](SECURITY.md) 中的私密流程报告漏洞或需要保密的行为准则问题。
+- 所有项目参与者都必须遵守[行为准则](CODE_OF_CONDUCT.md)。
 - 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群：扫码添加企微小助手并填写入群问卷，完成后小助手会邀请你入群。
-
-<table>
-  <thead>
-    <tr>
-      <th align="center">企微小助手</th>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-assistant.png" alt="DeepSeek Harness 企微小助手二维码" width="180" height="180"></td>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
+- 每次同步上游代码或接入新的开源项目后，都要更新 [OPEN_SOURCE_ATTRIBUTION.md](OPEN_SOURCE_ATTRIBUTION.md)。
 
 ## 参与贡献
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
+参见[贡献指南](CONTRIBUTING.zh.md)。
 
 ## 开发
 
@@ -81,4 +69,4 @@ pnpm dsh web
 
 [MIT](LICENSE)
 
-第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。仓库级开源引用与上游来源见 [OPEN_SOURCE_ATTRIBUTION.md](OPEN_SOURCE_ATTRIBUTION.md)。

@@ -265,6 +265,7 @@
     { "path": "./packages/bundle/acp-app" },
     { "path": "./packages/bundle/base" },
     { "path": "./packages/bundle/headless" },
+    { "path": "./packages/bundle/durash-web-profile" },
     { "path": "./packages/bundle/sdk-app" },
     { "path": "./packages/bundle/sdk-minimal" },
     { "path": "./packages/bundle/web-app" },

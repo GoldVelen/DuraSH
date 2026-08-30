@@ -1,23 +1,32 @@
-# Contributing
+# Contributing to DuraSH
 
 English | [中文](CONTRIBUTING.zh.md)
 
-Thank you for your interest in contributing to DeepSeek Harness!
+DuraSH welcomes bug reports, documentation improvements, plugins, tests, and focused code contributions. The project is a developer preview, so proposals should preserve the distinction between DuraSH-owned reliability features and inherited DeepSeek Harness behavior.
 
-We deeply believe in the power of open source communities, and that belief has shaped this project from the very beginning.
+## Before contributing
 
-DeepSeek Harness is still at an early stage and under active development. We are sorry that we cannot accept external pull requests at the moment. However, contributing code to this repository is far from the only way to help. There are many other ways to get involved:
+- Search existing issues and discussions before opening a new one.
+- Report vulnerabilities privately through the process in [SECURITY.md](SECURITY.md); do not publish exploit details in an issue.
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md) in every project space.
+- Use English or Chinese. Update both files when changing an existing bilingual document.
 
-- Identify and report issues or bugs in GitHub Discussions:
-  - Upvote discussions that you would like to bring to the team's attention. We are a very small team and may not be able to reply to every post, but we monitor them and consider them when allocating resources.
-- Contribute to the ecosystem:
-  - Create a plugin that excites you and share it with others:
-    - Associate your GitHub project with the `dsh-plugin` topic to help others discover your plugin.
-  - Write blog posts and how-to guides about DeepSeek Harness.
-  - Answer questions and help other members of the community.
+## Choose the right repository
 
-DeepSeek Harness is designed to be deeply customizable. We do not believe that packages in the official repository are inherently more important than packages created by the community. You may consider this repository an idea, an official showcase, and a source of inspiration, but not a mandate from us.
+Changes to the DuraSH brand, product profile, update controls, or reliability capabilities belong here. A generally useful DeepSeek Harness improvement should normally be proposed to [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) first. If DuraSH needs a temporary downstream change, document its upstream limitation and removal condition in [INTEGRATION_STATUS.md](INTEGRATION_STATUS.md).
 
-We have already seen exciting projects emerge from the community, and we hope to see the ecosystem continue to grow in its own directions.
+Do not edit vendored dependencies directly. Follow [vendor/README.md](vendor/README.md), preserve upstream licenses, and update [OPEN_SOURCE_ATTRIBUTION.md](OPEN_SOURCE_ATTRIBUTION.md) when integrating another project.
 
-Into the unknown.
+## Development workflow
+
+1. Fork the repository and create a focused branch.
+2. Install the declared toolchain and dependencies with `pnpm install`.
+3. Make the smallest complete change and add the focused regression evidence that owns the behavior.
+4. Run the relevant checks described in [AGENTS.md](AGENTS.md) and [docs/testing.md](docs/testing.md). Product-profile changes must at least preserve both the official build and the DuraSH composition.
+5. Open a pull request, link the related issue when one exists, and state the user-visible result, validation, and remaining limits.
+
+Never commit credentials, private logs, local databases, personal data, or machine-specific absolute paths. Use synthetic examples and redact diagnostic output before attaching it to an issue or pull request.
+
+## License
+
+By submitting a contribution, you agree that it is licensed under the repository's [MIT License](LICENSE) and that you have the right to provide it. Retain all applicable third-party copyright and license notices.

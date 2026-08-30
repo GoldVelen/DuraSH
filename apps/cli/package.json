@@ -24,6 +24,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@durash/dsh-web-profile": "workspace:^",
     "@deepseek-ai/cordis-plugin-hmr": "workspace:^",
     "@deepseek-ai/cordis-plugin-include": "workspace:^",
     "@deepseek-ai/cordis-plugin-loader": "workspace:^",

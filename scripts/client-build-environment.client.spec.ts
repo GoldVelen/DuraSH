@@ -8,6 +8,7 @@ import {
   assertClientBuildEnvironment,
   clientBuildEnvironmentDefines,
   clientBuildProcessEnvironment,
+  durashClientBuildEnvironment,
   officialClientBuildEnvironment,
   readClientBuildRecord,
   repositoryClientBuildEnvironment,
@@ -125,6 +126,15 @@ describe('client build environment', () => {
       })
     }).toThrow(/DSH_CLIENT_VERSION/)
     expect(() => { resolveClientBuildEnvironment({}, 'unknown') }).toThrow(/unknown client build profile/)
+    expect(resolveClientBuildEnvironment({
+      DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+      DSH_CLIENT_VERSION: '1.2.3',
+    }, 'durash')).toEqual({
+      DSH_CLIENT_BUILD_PROFILE: 'durash',
+      DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+      DSH_CLIENT_TITLE: 'DuraSH',
+      DSH_CLIENT_VERSION: '1.2.3',
+    })
     expect(clientBuildProcessEnvironment(parent, {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
@@ -160,6 +170,12 @@ describe('client build environment', () => {
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: commit,
       DSH_CLIENT_TITLE: 'DeepSeek Harness',
+      DSH_CLIENT_VERSION: '1.2.3-rc.4',
+    })
+    expect(durashClientBuildEnvironment(fixtureRoot)).toEqual({
+      DSH_CLIENT_BUILD_PROFILE: 'durash',
+      DSH_CLIENT_COMMIT_HASH: commit,
+      DSH_CLIENT_TITLE: 'DuraSH',
       DSH_CLIENT_VERSION: '1.2.3-rc.4',
     })
 

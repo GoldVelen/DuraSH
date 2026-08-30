@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   checkExperimentalDependencyIsolation,
   checkExperimentalManifest,
+  checkWorkspaceManifest,
   expectedDshPackageFiles,
   type WorkspaceManifest,
 } from './check-workspace-constraints.ts'
@@ -12,6 +13,32 @@ const experimental: WorkspaceManifest = {
   dir: 'packages/experimental/prototype',
   manifest: { name: '@deepseek-ai/dsh-experimental-prototype', private: true },
 }
+
+describe('DuraSH source-only package constraints', () => {
+  const sourcePackage: WorkspaceManifest = {
+    dir: 'packages/bundle/durash-web-profile',
+    manifest: {
+      name: '@durash/dsh-web-profile',
+      private: true,
+      repository: {
+        type: 'git',
+        url: 'git+https://github.com/GoldVelen/DuraSH.git',
+        directory: 'packages/bundle/durash-web-profile',
+      },
+    },
+  }
+
+  it('requires the npm publication guard', () => {
+    expect(checkWorkspaceManifest(sourcePackage).filter(error => error.includes('source-only DuraSH'))).toEqual([])
+    expect(checkWorkspaceManifest({
+      ...sourcePackage,
+      manifest: { ...sourcePackage.manifest, private: false, publishConfig: { access: 'public' } },
+    }).filter(error => error.includes('source-only DuraSH'))).toEqual([
+      'packages/bundle/durash-web-profile/package.json: @durash/dsh-web-profile: source-only DuraSH package must set "private": true',
+      'packages/bundle/durash-web-profile/package.json: @durash/dsh-web-profile: source-only DuraSH package must not set publishConfig',
+    ])
+  })
+})
 
 describe('experimental workspace constraints', () => {
   it('requires the experimental package-name prefix', () => {

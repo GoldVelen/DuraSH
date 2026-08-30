@@ -1,0 +1,40 @@
+name: DuraSH product
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: durash-product-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-compose:
+    name: build and compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install the recorded toolchain
+        run: pnpm install --frozen-lockfile
+
+      - name: Build DuraSH artifacts
+        run: pnpm run build:durash
+
+      - name: Boot the assembled DuraSH browser composition
+        run: pnpm run test:durash:built

@@ -1,0 +1,7 @@
+# DuraSH is an additive product layer over the current upstream web profile.
+# The official brand row remains present but registers nothing in a `durash`
+# client build; this product-owned row fills the same generic slots.
+
+- insert:
+    - id: ui-brand-durash
+      name: '@durash/dsh-client-ui-brand'

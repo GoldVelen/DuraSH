@@ -1,0 +1,206 @@
+name: Sync verified upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: durash-upstream-sync
+  cancel-in-progress: false
+
+env:
+  PRIMARY_UPSTREAM: https://github.com/deepseek-ai/deepseek-harness.git
+  PRIMARY_REF: master
+  SYNC_BRANCH: automation/upstream-sync
+
+jobs:
+  synchronize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the public default branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install the recorded toolchain
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit every recorded source
+        id: audit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pnpm run check:upstream-sources -- --json > upstream-drift.json
+          {
+            echo '| Source | Kind | Policy | Target | Recorded | Latest | Status |'
+            echo '| --- | --- | --- | --- | --- | --- | --- |'
+            jq -r '.[] | "| \(.name) | \(.kind) | \(.syncMode) | \(if .kind == "github" then "\(.repository)@\(.ref)" else .package end) | `\(if .kind == "github" then .baseline[0:12] else .baseline end)` | `\(if .kind == "github" then .latest[0:12] else .latest end)` | \(if .inSync then "up-to-date" else "drift" end) |"' upstream-drift.json
+          } | tee upstream-drift.md >> "$GITHUB_STEP_SUMMARY"
+          vendored_drift="$(jq '[.[] | select(.syncMode == "vendored-review" and (.inSync | not))] | length' upstream-drift.json)"
+          echo "vendored-drift=$vendored_drift" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the source-drift report
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-drift
+          path: |
+            upstream-drift.json
+            upstream-drift.md
+
+      - name: Open or refresh the vendored-source review issue
+        if: steps.audit.outputs.vendored-drift != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          title='Vendored upstream updates require review'
+          {
+            echo 'The scheduled DuraSH source audit found newer public releases for locally modified vendored packages.'
+            echo
+            echo 'Follow `vendor/README.md`; do not overwrite the local modification log or merge these releases without compatibility checks.'
+            echo
+            echo '| Source | Package | Recorded | Latest |'
+            echo '| --- | --- | --- | --- |'
+            jq -r '.[] | select(.syncMode == "vendored-review" and (.inSync | not)) | "| \(.name) | `\(.package)` | `\(.baseline)` | `\(.latest)` |"' upstream-drift.json
+          } > vendored-drift-issue.md
+          issue="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$issue" ]; then
+            gh issue edit "$issue" --body-file vendored-drift-issue.md
+          else
+            gh issue create --title "$title" --body-file vendored-drift-issue.md
+          fi
+
+      - name: Close the resolved vendored-source review issue
+        if: steps.audit.outputs.vendored-drift == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title='Vendored upstream updates require review'
+          issue="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$issue" ]; then
+            gh issue close "$issue" --comment 'All recorded vendored package releases now match the latest public releases.'
+          fi
+
+      - name: Fetch the primary upstream
+        run: |
+          git remote add durash-upstream "$PRIMARY_UPSTREAM"
+          git fetch --no-tags durash-upstream "$PRIMARY_REF"
+
+      - name: Prepare the synchronization branch
+        id: prepare
+        env:
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          base_ref="origin/$BASE_BRANCH"
+          upstream_sha="$(git rev-parse "durash-upstream/$PRIMARY_REF")"
+          git fetch origin "+refs/heads/$SYNC_BRANCH:refs/remotes/origin/$SYNC_BRANCH" || true
+          remote_sync_sha="$(git rev-parse --verify "refs/remotes/origin/$SYNC_BRANCH" 2>/dev/null || true)"
+          echo "upstream-sha=$upstream_sha" >> "$GITHUB_OUTPUT"
+
+          recorded_sha="$(jq -r '.sources[] | select(.syncMode == "primary-merge") | .baseline' UPSTREAM_SOURCES.json)"
+          if git merge-base --is-ancestor "$upstream_sha" "$base_ref" && [ "$recorded_sha" = "$upstream_sha" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "DuraSH upstream bot"
+          git config user.email "durash-upstream-bot@users.noreply.github.com"
+          git switch --force-create "$SYNC_BRANCH" "$base_ref"
+
+          if ! git merge-base --is-ancestor "$upstream_sha" "$base_ref"; then
+            set +e
+            git merge --no-ff --no-commit "$upstream_sha"
+            merge_status=$?
+            set -e
+            if [ "$merge_status" -ne 0 ]; then
+              conflicts="$(git diff --name-only --diff-filter=U | paste -sd, -)"
+              git merge --abort
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "conflict=true" >> "$GITHUB_OUTPUT"
+              echo "conflict-files=$conflicts" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          pnpm run check:upstream-sources -- --write-primary-baseline "$upstream_sha"
+          git add UPSTREAM_SOURCES.json
+          short_sha="$(git rev-parse --short=12 "$upstream_sha")"
+          git commit -m "chore: 同步 DeepSeek Harness 上游 $short_sha"
+          if [ -n "$remote_sync_sha" ]; then
+            lease="--force-with-lease=refs/heads/$SYNC_BRANCH:$remote_sync_sha"
+          else
+            lease="--force-with-lease=refs/heads/$SYNC_BRANCH:"
+          fi
+          git push "$lease" origin "HEAD:refs/heads/$SYNC_BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "conflict=false" >> "$GITHUB_OUTPUT"
+
+      - name: Report a merge conflict
+        if: steps.prepare.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CONFLICT_FILES: ${{ steps.prepare.outputs.conflict-files }}
+          UPSTREAM_SHA: ${{ steps.prepare.outputs.upstream-sha }}
+        run: |
+          title="Upstream sync blocked by merge conflicts"
+          body="DeepSeek Harness $UPSTREAM_SHA could not be merged automatically. Conflicted files: ${CONFLICT_FILES:-unknown}. Resolve this against the product overlay without dropping DuraSH behavior."
+          issue="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+          exit 1
+
+      - name: Open or locate the synchronization pull request
+        if: steps.prepare.outputs.changed == 'true'
+        id: pull-request
+        env:
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          UPSTREAM_SHA: ${{ steps.prepare.outputs.upstream-sha }}
+        run: |
+          number="$(gh pr list --state open --head "$SYNC_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number // empty')"
+          if [ -z "$number" ]; then
+            url="$(gh pr create \
+              --base "$BASE_BRANCH" \
+              --head "$SYNC_BRANCH" \
+              --title "chore: 同步最新 DeepSeek Harness 上游" \
+              --body "Automated merge of DeepSeek Harness $UPSTREAM_SHA. Merge only after required compatibility and DuraSH product checks pass.")"
+            number="${url##*/}"
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Enable CI-gated auto-merge when explicitly configured
+        if: >-
+          steps.pull-request.outputs.number != '' &&
+          vars.DURASH_ENABLE_UPSTREAM_AUTOMERGE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pull-request.outputs.number }}
+        run: gh pr merge "$PR_NUMBER" --auto --merge

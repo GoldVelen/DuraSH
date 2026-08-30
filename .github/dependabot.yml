@@ -11,7 +11,8 @@ updates:
       cronjob: "0 4 * * *"
       timezone: "Asia/Shanghai"
     cooldown:
-      default-days: 30
+      default-days: 0
+    open-pull-requests-limit: 20
     labels:
       - "kind/dependency"
       - "area/infra"
@@ -23,7 +24,8 @@ updates:
       cronjob: "0 4 * * *"
       timezone: "Asia/Shanghai"
     cooldown:
-      default-days: 30
+      default-days: 0
+    open-pull-requests-limit: 20
     labels:
       - "kind/dependency"
       - "area/infra"
@@ -35,7 +37,8 @@ updates:
       cronjob: "0 4 * * *"
       timezone: "Asia/Shanghai"
     cooldown:
-      default-days: 30
+      default-days: 0
+    open-pull-requests-limit: 20
     labels:
       - "kind/dependency"
       - "area/infra"

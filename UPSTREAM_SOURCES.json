@@ -1,0 +1,124 @@
+{
+  "formatVersion": 1,
+  "sources": [
+    {
+      "id": "deepseek-harness",
+      "name": "DeepSeek Harness",
+      "kind": "github",
+      "repository": "deepseek-ai/deepseek-harness",
+      "ref": "master",
+      "baseline": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "release": "dsh-v0.1.2-alpha.1",
+      "syncMode": "primary-merge"
+    },
+    {
+      "id": "cordis-core",
+      "name": "Cordis",
+      "kind": "npm",
+      "package": "cordis",
+      "sourceRepository": "cordiverse/cordis",
+      "baseline": "4.0.0-rc.7",
+      "snapshotBaseline": "56b3d4f725681cf4556c1a8695a709cc3b6eed74",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "cordis-loader",
+      "name": "Cordis Loader",
+      "kind": "npm",
+      "package": "@cordisjs/plugin-loader",
+      "sourceRepository": "cordiverse/cordis",
+      "baseline": "1.0.0-rc.5",
+      "snapshotBaseline": "56b3d4f725681cf4556c1a8695a709cc3b6eed74",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "cordis-include",
+      "name": "Cordis Include",
+      "kind": "npm",
+      "package": "@cordisjs/plugin-include",
+      "sourceRepository": "cordiverse/cordis",
+      "baseline": "1.0.4",
+      "snapshotBaseline": "abb0a307cb1d3b0947f455d590cf5ba922d4caa4",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "cordis-group",
+      "name": "Cordis Group",
+      "kind": "npm",
+      "package": "@cordisjs/plugin-group",
+      "sourceRepository": "cordiverse/cordis",
+      "baseline": "1.0.0",
+      "snapshotBaseline": "abb0a307cb1d3b0947f455d590cf5ba922d4caa4",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "cordis-timer",
+      "name": "Cordis Timer",
+      "kind": "npm",
+      "package": "@cordisjs/plugin-timer",
+      "sourceRepository": "cordiverse/cordis",
+      "baseline": "1.1.2",
+      "snapshotBaseline": "abb0a307cb1d3b0947f455d590cf5ba922d4caa4",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "cordis-hmr",
+      "name": "Cordis HMR",
+      "kind": "npm",
+      "package": "@cordisjs/plugin-hmr",
+      "sourceRepository": "cordiverse/cordis",
+      "baseline": "1.0.15",
+      "snapshotBaseline": "abb0a307cb1d3b0947f455d590cf5ba922d4caa4",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "cordis-logger-console",
+      "name": "Cordis Console Logger",
+      "kind": "npm",
+      "package": "@cordisjs/plugin-logger-console",
+      "sourceRepository": "cordiverse/cordis",
+      "baseline": "1.0.0",
+      "snapshotBaseline": "abb0a307cb1d3b0947f455d590cf5ba922d4caa4",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "cosmokit",
+      "name": "Cosmokit",
+      "kind": "npm",
+      "package": "cosmokit",
+      "sourceRepository": "shigma/cosmokit",
+      "baseline": "1.8.1",
+      "snapshotBaseline": "16f6fc058ade66e8ac5da0033d35a8d0f279f544",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    },
+    {
+      "id": "schemastery",
+      "name": "Schemastery",
+      "kind": "npm",
+      "package": "schemastery",
+      "sourceRepository": "shigma/schemastery",
+      "baseline": "3.18.0",
+      "snapshotBaseline": "e67cee00ad725bd1534aee930a979ea3eec6f698",
+      "recordedIn": "vendor/README.md",
+      "syncMode": "vendored-review"
+    }
+  ],
+  "registryDependencies": {
+    "sourceOfTruth": [
+      "package.json",
+      "packages/*/*/package.json",
+      "python/*/pyproject.toml",
+      "pnpm-lock.yaml",
+      "python/sdk/uv.lock"
+    ],
+    "updateOwner": ".github/dependabot.yml"
+  }
+}

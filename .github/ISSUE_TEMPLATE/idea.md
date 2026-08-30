@@ -1,20 +1,20 @@
 ---
-name: Idea
-about: 记录尚未承诺实施、但具有行动可能的想法
+name: Idea / 想法
+about: Discuss a useful direction before committing to implementation / 在承诺实施前讨论有价值的方向
 title: ''
 labels: ''
 assignees: ''
 type: Idea
 ---
 
-<!-- 标题写中文行动或结果句；外露正文不超过 50 单位。 -->
-一句话说明价值假设。
+<!-- English or Chinese is welcome. 中文或英文均可。 -->
+Describe the value hypothesis in one sentence. / 用一句话说明价值假设。
 
 <details>
-<summary>价值与细节</summary>
+<summary>Value and evidence / 价值与证据</summary>
 
-- 价值假设：
-- 需要验证：
-- 可能的后续工作：
+- Value hypothesis / 价值假设：
+- Evidence needed / 需要验证：
+- Possible next step / 可能的下一步：
 
 </details>

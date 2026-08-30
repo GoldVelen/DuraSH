@@ -1,23 +1,32 @@
-# 贡献
+# 参与 DuraSH 贡献
 
 [English](CONTRIBUTING.md) | 中文
 
-感谢你愿意为 DeepSeek Harness 作出贡献！
+DuraSH 欢迎缺陷报告、文档改进、插件、测试和范围明确的代码贡献。项目仍处于开发者预览阶段，因此提案必须区分 DuraSH 自有可靠性能力与继承的 DeepSeek Harness 行为。
 
-我们深信开源社区的力量，这份信念从项目最初就塑造着 DeepSeek Harness。
+## 贡献前
 
-DeepSeek Harness 仍处于早期阶段，并在积极开发中。很抱歉，我们目前无法接受外部 PR（Pull Request）。不过，贡献代码远非帮助本仓库建设的唯一途径。你还可以通过许多其他方式参与进来：
+- 新建内容前先搜索已有 Issue 和 Discussion。
+- 按 [SECURITY.md](SECURITY.md) 中的流程私下报告漏洞；不要在 Issue 中公开利用细节。
+- 在所有项目空间遵守[行为准则](CODE_OF_CONDUCT.md)。
+- 可以使用中文或英文。修改现有双语文档时，必须同时更新两种语言。
 
-- 在 GitHub Discussions 中发现并报告问题或 bug：
-  - 为你希望引起团队关注的讨论投票。我们的团队规模很小，可能无法回复每个帖子，但我们会持续关注，并在分配资源时将这些讨论纳入考虑。
-- 为生态系统作出贡献：
-  - 创建令你感兴趣的插件，并分享给其他人：
-    - 为你的 GitHub 项目添加 `dsh-plugin` 话题，让其他人更容易找到你的插件。
-  - 撰写有关 DeepSeek Harness 的博客文章和操作指南。
-  - 回答问题并帮助其他社区成员。
+## 选择正确的仓库
 
-DeepSeek Harness 的设计支持深度定制。我们并不认为官方仓库中的包天然就比社区开发的包更重要。你可以将本仓库看作一种理念、一份官方示例以及一处灵感来源，而不是我们要求社区遵循的方向。
+DuraSH 品牌、产品 profile、更新控制或可靠性能力的变更属于本仓库。普遍适用于 DeepSeek Harness 的改进通常应先提交至 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。如果 DuraSH 必须暂时保留下游修改，请在[融合状态](INTEGRATION_STATUS.md)中记录上游限制与删除条件。
 
-我们已经看到社区中涌现出令人期待的项目，也希望生态系统继续沿着自己的方向发展。
+不要直接编辑 vendored 依赖。请遵循 [vendor/README.md](vendor/README.md)，保留上游许可证，并在接入其他项目时更新[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
 
-探索未至之境。
+## 开发流程
+
+1. Fork 本仓库并创建范围明确的分支。
+2. 使用 `pnpm install` 安装仓库声明的工具链与依赖。
+3. 完成最小完整改动，并为该行为添加直接回归证据。
+4. 运行 [AGENTS.md](AGENTS.md) 与 [docs/testing.md](docs/testing.zh.md) 要求的相关检查。产品 profile 变更至少必须同时保留官方构建与 DuraSH 组合。
+5. 创建 Pull Request；存在关联 Issue 时请链接，并说明用户可见结果、验证和剩余限制。
+
+不得提交凭据、私有日志、本地数据库、个人数据或机器专属绝对路径。使用合成示例，并在把诊断输出附到 Issue 或 Pull Request 前完成脱敏。
+
+## 许可证
+
+提交贡献即表示你同意按本仓库的 [MIT 许可证](LICENSE)提供该贡献，并确认自己有权提交。必须保留所有适用的第三方版权与许可证声明。

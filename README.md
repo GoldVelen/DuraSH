@@ -1,50 +1,57 @@
-# DeepSeek Harness
+# DuraSH
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+DuraSH is an independent reliability distribution built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`DSH`). It keeps upstream as the base, adds product-owned capabilities through plugins and profile overlays, and makes upstream drift visible instead of silently becoming an old fork.
+
+DuraSH is not an official DeepSeek product and is not endorsed by DeepSeek.
 
 It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+The current source base is the latest verified upstream release at the time of this migration: `dsh-v0.1.2-alpha.1` / `cd5ef8148158`. See [upstream policy](UPSTREAM.md), [integration status](INTEGRATION_STATUS.md), and [open-source attribution](OPEN_SOURCE_ATTRIBUTION.md) for the exact boundaries.
 
 ## Developer preview
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+DuraSH is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
 
-Review the [safety notice](SAFETY.md) before running the project.
+Review the [safety notice](SAFETY.md) before running the project. The independent brand/profile and continuous-update controls are implemented; the older fork's durable review-and-rework engine is still being migrated onto the latest DSH workflow seam. Do not interpret this preview as a claim that every reliability capability is already complete.
+
+<a id="run-from-source"></a>
 
 ## Run
 
-### Run from `npm`
+### Run the DuraSH profile from source
 
-Install `Node.js`, then run:
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
-
-### Run from source
-
-To run from a repository checkout:
+DuraSH does not yet publish an npm release. From this checkout:
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
 pnpm install
-pnpm run build
-pnpm dsh web
+pnpm run build:durash
+pnpm dsh --profile durash
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+The Web UI starts at `http://127.0.0.1:3080` by default. The upstream `web`, SDK, and headless runtime profiles and the official client build remain intact; DuraSH is an additional profile rather than a rename of upstream internals.
+
+## What is DuraSH-owned?
+
+- the DuraSH name, mark, favicon, wordmark, and `durash` build/profile;
+- the product overlay that composes downstream plugins after the latest DSH Web bundles;
+- automated primary-upstream synchronization and dependency freshness policy;
+- reliability features explicitly marked `implemented` in [INTEGRATION_STATUS.md](INTEGRATION_STATUS.md).
+
+Everything else retains its upstream ownership and license. In particular, current DSH workflow execution, UI, and plugin infrastructure remain upstream code unless the integration status says otherwise.
+
+## Staying current
+
+The repository checks the official DSH branch every six hours and prepares one CI-gated synchronization pull request when it moves. The same audit checks every vendored public package release and keeps one review issue open while drift exists. Dependabot checks ordinary registry and GitHub Actions dependencies daily with no intentional cooldown. Updates are merged only after the repository's compatibility checks pass; "latest" means latest verified, not untested code delivered directly to users.
 
 ## Community and support
 
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
+- Submit feedback and bug reports through [GitHub Issues](https://github.com/GoldVelen/DuraSH/issues), and use [GitHub Discussions](https://github.com/GoldVelen/DuraSH/discussions) for questions and ideas.
+- Report vulnerabilities and confidential conduct concerns through the private process in [SECURITY.md](SECURITY.md).
+- All project participation follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
+- Keep [OPEN_SOURCE_ATTRIBUTION.md](OPEN_SOURCE_ATTRIBUTION.md) current whenever you pull upstream code or integrate another open-source project.
 
 ## Contributing
 
@@ -60,4 +67,4 @@ For agents, follow [AGENTS.md](AGENTS.md).
 
 [MIT](LICENSE)
 
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Integrated upstream projects and repository-level attribution are disclosed in [OPEN_SOURCE_ATTRIBUTION.md](OPEN_SOURCE_ATTRIBUTION.md).

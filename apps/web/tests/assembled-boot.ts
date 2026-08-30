@@ -25,6 +25,8 @@ interface AssembledPlugin extends WebBootEntry {
 interface AssembledBootOptions {
   /** Package ids omitted from this mounted composition. */
   readonly exclude?: readonly string[]
+  /** Shipped bundle stack whose built browser graph is mounted. */
+  readonly profile?: 'web' | 'durash'
 }
 
 interface ClientPackageManifest {
@@ -51,7 +53,12 @@ interface BootComposition {
 }
 
 const REPO_ROOT = process.cwd()
-const BUNDLE_LAYERS = [
+interface BundleLayer {
+  readonly manifest: string
+  readonly patch: string
+}
+
+const WEB_BUNDLE_LAYERS = [
   {
     manifest: join(REPO_ROOT, 'packages/bundle/base/package.json'),
     patch: join(REPO_ROOT, 'packages/bundle/base/cordis.patch.yml'),
@@ -61,7 +68,14 @@ const BUNDLE_LAYERS = [
     patch: join(REPO_ROOT, 'packages/bundle/web-app/cordis.patch.yml'),
   },
 ] as const
-const bundleResolvers = BUNDLE_LAYERS.map(layer => createRequire(layer.manifest))
+const DURASH_BUNDLE_LAYERS = [
+  ...WEB_BUNDLE_LAYERS,
+  {
+    manifest: join(REPO_ROOT, 'packages/bundle/durash-web-profile/package.json'),
+    patch: join(REPO_ROOT, 'packages/bundle/durash-web-profile/cordis.patch.yml'),
+  },
+] as const
+const bundleResolvers = WEB_BUNDLE_LAYERS.map(layer => createRequire(layer.manifest))
 const webBundleResolver = bundleResolvers[1]
 if (webBundleResolver === undefined) throw new Error('assembled boot: web bundle resolver missing')
 const workspacePackageManifests = new Map(globSync('packages/*/*/package.json', { cwd: REPO_ROOT }).map((relative) => {
@@ -88,9 +102,9 @@ function resolveClientExport(packagePath: string, pkg: ClientPackageManifest): s
 const comboUrl = (ids: readonly string[], rev: string): string =>
   `/plugins/??${ids.map(id => `${id}/client.js`).join(',')}&rev=${rev}`
 
-/** Derive the assembled browser graph from the same bundle patches and package declarations as `dsh web`. */
-function loadAssembledPlugins(): readonly AssembledPlugin[] {
-  const entries = appBoot.composeEntries(BUNDLE_LAYERS.map(layer =>
+/** Derive one assembled browser graph from the named bundle patches and package declarations. */
+function loadAssembledPlugins(layers: readonly BundleLayer[]): readonly AssembledPlugin[] {
+  const entries = appBoot.composeEntries(layers.map(layer =>
     appBoot.loadOverlayPatches('assembled boot', layer.patch)))
   const plugins = new Map<string, AssembledPlugin>()
   for (const entry of entries) {
@@ -121,7 +135,8 @@ function loadAssembledPlugins(): readonly AssembledPlugin[] {
   })
 }
 
-const PLUGINS = loadAssembledPlugins()
+const WEB_PLUGINS = loadAssembledPlugins(WEB_BUNDLE_LAYERS)
+const DURASH_PLUGINS = loadAssembledPlugins(DURASH_BUNDLE_LAYERS)
 
 const BOOTSTRAP_IDS = ['@deepseek-ai/dsh-client-modules'] as const
 
@@ -254,7 +269,8 @@ export function installAssembledBootEnv(): void {
  */
 export function mountAssembledApp(search = '?fixture', options: AssembledBootOptions = {}): void {
   const excluded = new Set(options.exclude)
-  const plugins = PLUGINS.filter(plugin => !excluded.has(plugin.id))
+  const composition = options.profile === 'durash' ? DURASH_PLUGINS : WEB_PLUGINS
+  const plugins = composition.filter(plugin => !excluded.has(plugin.id))
   history.replaceState(null, '', `/${search}`)
   const root = document.createElement('div')
   root.id = 'root'

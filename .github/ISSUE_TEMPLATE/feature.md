@@ -1,20 +1,20 @@
 ---
-name: Feature
-about: 新增或有意改变可观察行为
+name: Feature request / 功能建议
+about: Propose a new or intentionally changed user-visible result / 提议新增或改变用户可见结果
 title: ''
 labels: ''
 assignees: ''
 type: Feature
 ---
 
-<!-- 标题写中文行动或结果句；外露正文不超过 50 单位。 -->
-一句话说明预期结果。
+<!-- English or Chinese is welcome. 中文或英文均可。 -->
+Describe the expected result in one sentence. / 用一句话说明预期结果。
 
 <details>
-<summary>验收与细节</summary>
+<summary>Acceptance and context / 验收与背景</summary>
 
-- 验收条件：
-- 用户或模型可见变化：
-- 测试证据：
+- Acceptance / 验收条件：
+- User-visible change / 用户可见变化：
+- Motivation and alternatives / 动机与替代方案：
 
 </details>

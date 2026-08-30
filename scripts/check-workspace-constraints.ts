@@ -48,8 +48,14 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
  * their trusted publishing against the repository that runs the workflow.
  */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+/** Source home for DuraSH-owned overlay packages. */
+const durashRepositoryUrl = 'git+https://github.com/GoldVelen/DuraSH.git'
+/** Package namespace owned by the downstream product. */
+const durashPackagePrefix = '@durash/'
 /** Private packages that participate in workspace checks but not releases. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
+/** Downstream packages intentionally distributed only as part of the source checkout. */
+const durashSourceOnlyPackageDirectory = /^packages\/(?:bundle\/durash-web-profile|client\/ui-brand-durash)$/
 /** npm namespace reserved for private experimental packages. */
 const experimentalPackageNamePrefix = '@deepseek-ai/dsh-experimental-'
 /** Directories whose packages this repository publishes: one release member each. */
@@ -294,6 +300,18 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
     }
+  } else if (durashSourceOnlyPackageDirectory.test(dir)) {
+    if (manifest.private !== true) {
+      errors.push(`${label}: source-only DuraSH package must set "private": true`)
+    }
+    if (manifest.publishConfig !== undefined) {
+      errors.push(`${label}: source-only DuraSH package must not set publishConfig`)
+    }
+    if (manifest.repository?.type !== 'git'
+      || manifest.repository.url !== durashRepositoryUrl
+      || manifest.repository.directory !== dir) {
+      errors.push(`${label}: DuraSH source package repository must use ${durashRepositoryUrl} with directory ${dir}`)
+    }
   } else if (releaseMemberDirectory.test(dir)) {
     // Release members state that they are publishable: npm refuses a private
     // package, and the repository field is how a consumer finds the source of
@@ -311,10 +329,13 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     if (manifest.publishConfig?.access !== 'public') {
       errors.push(`${label}: release member must set publishConfig.access to "public"`)
     }
+    const expectedRepositoryUrl = manifest.name?.startsWith(durashPackagePrefix) === true
+      ? durashRepositoryUrl
+      : publishedRepositoryUrl
     if (manifest.repository?.type !== 'git'
-      || manifest.repository.url !== publishedRepositoryUrl
+      || manifest.repository.url !== expectedRepositoryUrl
       || manifest.repository.directory !== dir) {
-      errors.push(`${label}: release member repository must use ${publishedRepositoryUrl} with directory ${dir}`)
+      errors.push(`${label}: release member repository must use ${expectedRepositoryUrl} with directory ${dir}`)
     }
   } else if (!experimentalPackageDirectory.test(dir) && manifest.private !== true) {
     errors.push(`${label}: package.json must set "private": true`)
@@ -324,7 +345,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     return errors
   }
 
-  if (manifest.name?.startsWith('@deepseek-ai/')) {
+  if (manifest.name?.startsWith('@deepseek-ai/') === true || manifest.name?.startsWith(durashPackagePrefix) === true) {
     const allowedSources = publicationSourceAllowlist[manifest.name] ?? []
     for (const file of manifest.files ?? []) {
       if (isForbiddenPublicationFile(file) && !allowedSources.includes(file)) {
@@ -351,7 +372,9 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     }
   }
 
-  if (dir.startsWith('packages/') && manifest.name?.startsWith('@deepseek-ai/dsh-')) {
+  if (dir.startsWith('packages/')
+    && (manifest.name?.startsWith('@deepseek-ai/dsh-') === true
+      || manifest.name?.startsWith('@durash/dsh-') === true)) {
     const peer = manifest.peerDependencies?.['@deepseek-ai/cordis']
     const dev = manifest.devDependencies?.['@deepseek-ai/cordis']
 

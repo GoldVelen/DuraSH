@@ -1,20 +1,20 @@
 ---
-name: Task
-about: 明确的非 Feature、非 Bug 工作
+name: Task / 任务
+about: Track a bounded non-feature, non-bug result / 跟踪范围明确的非功能、非缺陷结果
 title: ''
 labels: ''
 assignees: ''
 type: Task
 ---
 
-<!-- 标题写中文行动或结果句；外露正文不超过 50 单位。 -->
-一句话说明要完成的工作。
+<!-- English or Chinese is welcome. 中文或英文均可。 -->
+Describe the result in one sentence. / 用一句话说明要完成的结果。
 
 <details>
-<summary>验收与细节</summary>
+<summary>Acceptance and deliverables / 验收与交付</summary>
 
-- 验收条件：
-- 交付物：
-- 测试证据：
+- Acceptance / 验收条件：
+- Deliverable / 交付物：
+- Validation / 验证：
 
 </details>

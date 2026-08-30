@@ -131,7 +131,9 @@ export abstract class ReleaseFamily {
       const name = requireString(manifest, 'name', normalized)
       const version = requireString(manifest, 'version', normalized)
       if (name === WORKSPACE_ROOT_PACKAGE) throw new Error(`${normalized} selected the workspace root`)
-      if (!name.startsWith('@deepseek-ai/')) throw new Error(`${normalized} must name an @deepseek-ai package`)
+      if (!name.startsWith('@deepseek-ai/') && !name.startsWith('@durash/')) {
+        throw new Error(`${normalized} must name an @deepseek-ai or @durash package`)
+      }
       if (seen.has(name)) throw new Error(`${name} appears twice in release family ${this.id}`)
       seen.add(name)
       members.push({
@@ -313,6 +315,11 @@ class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
   readonly patterns = ['packages/!(experimental)/*/package.json', 'apps/*/package.json'] as const
   readonly tagPrefix = 'dsh-v'
+
+  /** Keep private downstream packages outside the inherited npm release sequence. */
+  override members(root: string): ReleaseMember[] {
+    return super.members(root).filter(member => member.manifest.private !== true)
+  }
 
   /** Require current artifacts from a complete official client build. */
   override verifyBuildArtifacts(root: string): void {

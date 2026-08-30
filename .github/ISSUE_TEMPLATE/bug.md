@@ -1,22 +1,22 @@
 ---
-name: Bug
-about: 记录现有预期行为的失效
+name: Bug report / 缺陷报告
+about: Report behavior that does not match the documented result / 报告与文档结果不符的行为
 title: ''
 labels: ''
 assignees: ''
 type: Bug
 ---
 
-<!-- 标题写中文行动或结果句；外露正文不超过 50 单位。 -->
-一句话说明错误结果。
+<!-- English or Chinese is welcome. 中文或英文均可。 -->
+Describe the incorrect result in one sentence. / 用一句话说明错误结果。
 
 <details>
-<summary>复现、预期与验收</summary>
+<summary>Reproduction and expected result / 复现与预期</summary>
 
-- 复现步骤：
-- 实际结果：
-- 预期结果：
-- 环境：
-- 验收条件：
+- Steps to reproduce / 复现步骤：
+- Actual result / 实际结果：
+- Expected result / 预期结果：
+- Environment / 环境：
+- Acceptance / 验收条件：
 
 </details>
