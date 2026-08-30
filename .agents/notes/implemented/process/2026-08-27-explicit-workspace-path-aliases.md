@@ -18,6 +18,8 @@ The cost fell hardest on the most-imported packages. `packages/util/*` sat at po
 
 The generator emits an alias only for a package whose declared name is exactly `@deepseek-ai/dsh-<directory>`, because that is the only shape a wildcard could ever have resolved: it substituted the specifier's suffix into `packages/<group>/<suffix>/src`. Packages named after something other than their directory — `@deepseek-ai/dsh-typert-protocol` at `packages/typert/protocol`, the `dsh-client-*` and `dsh-host-*` families — already carry hand-written aliases and are left alone. A specifier claimed by two package directories throws rather than picking one, because an explicit map cannot express the group-order tiebreak the wildcard used; no such collision exists today.
 
+The `@durash/dsh-*` overlay scope never had a wildcard, so it carries no wildcard-reconstruction rule: the generator maps every overlay package by its declared manifest name, and the directory may differ freely — `@durash/dsh-client-ui-brand` lives at `packages/client/ui-brand-durash` and `@durash/dsh-reliability-loop` at `packages/reliability/durash-reliability-loop`. The coverage assertion extends to the scope, so an overlay package without a mapping fails `--check` by name, and `verify-cordis-config` resolves patch rows that name overlay packages to source like every sibling.
+
 Deleting the wildcards removed the fallback that used to resolve a package nobody had aliased, so the generator also asserts coverage: every workspace package carrying a `src` directory must be mapped by a generated or hand-written alias, and `--check` names any that is not. Without it a package whose name does not match its directory could be added, skipped by the generator, and left resolving through the workspace symlink to built `lib/` output — the same artifact-plane leak the explicit aliases exist to close.
 
 The region is written by text surgery between marker comments rather than by re-serializing the file. `tsconfig.base.json` is JSONC and its hand-written aliases carry comments that explain non-obvious mappings; re-serializing would drop them.
@@ -38,7 +40,7 @@ The other four are whole packages the coverage assertion surfaced: `dsh-client-u
 
 ## Testing
 
-`scripts/gen-tsconfig-paths.spec.ts` pins that the collector maps a package to its own directory, skips packages carrying hand-written aliases, and returns a sorted list; that the renderer yields to a hand-written specifier and closes the region without a trailing comma; that the region writer replaces only the marked span and refuses a config without markers; and that neither group wildcard survives in the committed config. Two further cases pin the coverage assertion: it names an unmapped package, and it reports none against the committed config.
+`scripts/gen-tsconfig-paths.spec.ts` pins that the collector maps a package to its own directory, skips packages carrying hand-written aliases, maps overlay-scope packages by declared name, and returns a sorted list; that the renderer yields to a hand-written specifier and closes the region without a trailing comma; that the region writer replaces only the marked span and refuses a config without markers; and that neither group wildcard survives in the committed config. Two further cases pin the coverage assertion: it names an unmapped package, and it reports none against the committed config.
 
 The gate's rejection path is exercised directly: deleting one generated alias makes `verify-tsconfig-paths` exit non-zero, and restoring it makes the check pass.
 

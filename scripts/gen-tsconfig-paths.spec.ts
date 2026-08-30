@@ -27,6 +27,18 @@ describe('generated tsconfig package aliases', () => {
     // Only packages named after their directory: the rest carry hand-written
     // aliases, because the removed wildcards could never have resolved them.
     expect(aliases.some(alias => alias.specifier === '@deepseek-ai/dsh-typert-protocol')).toBe(false)
+    // Overlay-scope packages have no wildcard history, so their declared
+    // manifest name is the rule and the directory never has to match.
+    expect(aliases.find(alias => alias.specifier === '@durash/dsh-reliability-loop')).toEqual({
+      specifier: '@durash/dsh-reliability-loop',
+      source: './packages/reliability/durash-reliability-loop/src',
+      hasInvariant: true,
+    })
+    expect(aliases.find(alias => alias.specifier === '@durash/dsh-client-ui-brand')).toEqual({
+      specifier: '@durash/dsh-client-ui-brand',
+      source: './packages/client/ui-brand-durash/src',
+      hasInvariant: true,
+    })
   })
 
   it('yields to a hand-written alias and closes without a trailing comma', () => {

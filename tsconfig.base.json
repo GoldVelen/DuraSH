@@ -564,7 +564,13 @@
       "@deepseek-ai/dsh-workflow-worker-thread": ["./packages/workflow/workflow-worker-thread/src"],
       "@deepseek-ai/dsh-workflow-worker-thread/invariant": ["./packages/workflow/workflow-worker-thread/src/invariant.ts"],
       "@deepseek-ai/dsh-workspace": ["./packages/workspace/workspace/src"],
-      "@deepseek-ai/dsh-workspace/invariant": ["./packages/workspace/workspace/src/invariant.ts"]
+      "@deepseek-ai/dsh-workspace/invariant": ["./packages/workspace/workspace/src/invariant.ts"],
+      "@durash/dsh-client-ui-brand": ["./packages/client/ui-brand-durash/src"],
+      "@durash/dsh-client-ui-brand/invariant": ["./packages/client/ui-brand-durash/src/invariant.ts"],
+      "@durash/dsh-reliability-loop": ["./packages/reliability/durash-reliability-loop/src"],
+      "@durash/dsh-reliability-loop/invariant": ["./packages/reliability/durash-reliability-loop/src/invariant.ts"],
+      "@durash/dsh-web-profile": ["./packages/bundle/durash-web-profile/src"],
+      "@durash/dsh-web-profile/invariant": ["./packages/bundle/durash-web-profile/src/invariant.ts"]
       // END generated package aliases
     }
   }

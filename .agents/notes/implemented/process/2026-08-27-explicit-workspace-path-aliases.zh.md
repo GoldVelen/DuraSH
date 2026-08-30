@@ -18,6 +18,8 @@ TypeScript 与 tsx 按顺序逐个尝试这些候选、取第一个存在的，�
 
 生成器只为**声明名恰好等于 `@deepseek-ai/dsh-<目录名>`** 的包发别名，因为那是通配符唯一可能解析出的形态：它把说明符的后缀代入 `packages/<group>/<后缀>/src`。名字与目录不一致的包——`packages/typert/protocol` 上的 `@deepseek-ai/dsh-typert-protocol`、以及 `dsh-client-*` 与 `dsh-host-*` 两族——本来就有手写别名，保持不动。若某个说明符被两个包目录同时认领，生成器**抛错**而不是任选其一，因为显式映射无法表达通配符依赖的分组顺序裁决；当前不存在这种冲突。
 
+`@durash/dsh-*` 产品叠加 scope 从未有过通配符，因此也没有「通配符重建」规则：生成器按**声明的 manifest 名**为每个叠加包发别名，目录名可以自由不同——`@durash/dsh-client-ui-brand` 位于 `packages/client/ui-brand-durash`，`@durash/dsh-reliability-loop` 位于 `packages/reliability/durash-reliability-loop`。覆盖断言同样扩展到该 scope：叠加包若无映射，`--check` 会点名报错；`verify-cordis-config` 对 patch 行引用的叠加包也与其余包一样解析到源码。
+
 删除通配符也删掉了「没人写别名的包仍能解析」的兜底，因此生成器同时断言覆盖完备：每个含 `src` 的 workspace 包都必须被生成别名或手写别名映射，`--check` 会点名任何未被覆盖者。没有这条断言，一个名字与目录不一致的新包会被生成器跳过，继续经 workspace 软链解析到构建产物 `lib/`——正是显式别名要消除的产物层泄漏。
 
 该区域用标记注释之间的**定点文本改写**生成，而不是重新序列化整个文件。`tsconfig.base.json` 是 JSONC，其手写别名带有解释非显然映射的注释，重新序列化会把它们丢掉。
@@ -38,7 +40,7 @@ TypeScript 与 tsx 按顺序逐个尝试这些候选、取第一个存在的，�
 
 ## Testing
 
-`scripts/gen-tsconfig-paths.spec.ts` 钉住：收集器把包映射到它自己的目录、跳过带手写别名的包、返回有序列表；渲染器让位于手写说明符，且区域收尾不带多余逗号；区域写入器只替换标记范围，并在缺少标记时拒绝；以及提交后的配置里两条分组通配符都不复存在。另有两条用例钉住覆盖断言：它会点名未被映射的包，且对提交后的配置报告为空。
+`scripts/gen-tsconfig-paths.spec.ts` 钉住：收集器把包映射到它自己的目录、跳过带手写别名的包、按声明名映射叠加 scope 的包、返回有序列表；渲染器让位于手写说明符，且区域收尾不带多余逗号；区域写入器只替换标记范围，并在缺少标记时拒绝；以及提交后的配置里两条分组通配符都不复存在。另有两条用例钉住覆盖断言：它会点名未被映射的包，且对提交后的配置报告为空。
 
 门禁的拒绝路径被直接验证过：删掉一条生成的别名会让 `verify-tsconfig-paths` 以非零码退出，恢复后检查通过。
 

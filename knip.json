@@ -686,7 +686,8 @@
         "tests/**/*.ts"
       ],
       "ignoreDependencies": [
-        "@deepseek-ai/.+"
+        "@deepseek-ai/.+",
+        "@durash/.+"
       ]
     },
     "packages/subagent/subagent-dsh-sdk": {
@@ -773,6 +774,11 @@
     "packages/bundle/web-app": {
       "ignoreDependencies": [
         "@deepseek-ai/.+"
+      ]
+    },
+    "packages/bundle/durash-web-profile": {
+      "ignoreDependencies": [
+        "@durash/.+"
       ]
     }
   }

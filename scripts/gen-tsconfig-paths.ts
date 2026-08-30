@@ -16,6 +16,11 @@
  * package that needs an alias fails a gate rather than silently resolving
  * through a fallback that no longer exists.
  *
+ * The `@durash/dsh-*` overlay scope never had a wildcard: its packages are
+ * generated from their declared manifest names, because the scope names its
+ * directories non-uniformly (`durash-web-profile`, `ui-brand-durash`) and no
+ * directory rule could reconstruct those specifiers.
+ *
  * @module scripts/gen-tsconfig-paths
  */
 
@@ -28,8 +33,11 @@ const CONFIG = join(ROOT, 'tsconfig.base.json')
 const BEGIN = '      // BEGIN generated package aliases — pnpm run gen-tsconfig-paths'
 const END = '      // END generated package aliases'
 
-/** Package-name prefix the expanded aliases cover. */
+/** Package-name prefix whose aliases replay the removed group wildcards. */
 const PREFIX = '@deepseek-ai/dsh-'
+
+/** Package-name prefix of the DuraSH-owned overlay scope, mapped by declared name. */
+const OVERLAY_PREFIX = '@durash/dsh-'
 
 /** One workspace package the generated region maps. */
 interface PackageAlias {
@@ -68,7 +76,7 @@ interface WorkspacePackage {
 
 /**
  * Walk `packages/<group>/<directory>` once, in a stable order.
- * @returns Every directory whose manifest names a `@deepseek-ai/dsh-` package and that carries `src`.
+ * @returns Every directory whose manifest names a covered package and that carries `src`.
  */
 function workspacePackages(): WorkspacePackage[] {
   const packages = join(ROOT, 'packages')
@@ -79,7 +87,7 @@ function workspacePackages(): WorkspacePackage[] {
     for (const directory of readdirSync(groupDir).sort()) {
       const packageDir = join(groupDir, directory)
       const name = packageName(join(packageDir, 'package.json'))
-      if (name === undefined || !name.startsWith(PREFIX)) continue
+      if (name === undefined || (!name.startsWith(PREFIX) && !name.startsWith(OVERLAY_PREFIX))) continue
       if (existsSync(join(packageDir, 'src'))) found.push({ group, directory, packageDir, name })
     }
   }
@@ -87,12 +95,14 @@ function workspacePackages(): WorkspacePackage[] {
 }
 
 /**
- * Collect every package the removed wildcards could resolve.
+ * Collect every workspace package the aliases must cover.
  *
- * A wildcard substituted the specifier's suffix into `packages/<group>/<suffix>/src`,
- * so it only ever resolved a package whose declared name is exactly
- * `@deepseek-ai/dsh-<directory>`. Packages named after something other than
- * their directory already carry a hand-written alias and are skipped here.
+ * Unlike {@link collectPackageNames} this skips packages whose name does not
+ * match their directory. The generator cannot map those under the wildcard
+ * rule — only a hand-written alias can — but they still have to be mapped by
+ * something, because deleting the group wildcards removed the fallback that
+ * used to catch them. Overlay-scope packages never had a wildcard, so their
+ * declared name alone is the rule.
  *
  * @returns Aliases sorted by specifier.
  * @throws When two package directories claim one specifier, which the removed
@@ -101,12 +111,13 @@ function workspacePackages(): WorkspacePackage[] {
 export function collectPackageAliases(): PackageAlias[] {
   const bySpecifier = new Map<string, PackageAlias & { directory: string }>()
   for (const { group, directory, packageDir, name } of workspacePackages()) {
-    if (name !== `${PREFIX}${directory}`) continue
+    const overlay = name.startsWith(OVERLAY_PREFIX)
+    if (!overlay && name !== `${PREFIX}${directory}`) continue
     const previous = bySpecifier.get(name)
     if (previous !== undefined) {
       throw new Error(
         `gen-tsconfig-paths: ${name} is claimed by packages/${previous.directory} and packages/${group}/${directory}; `
-        + 'an explicit alias cannot express the group-order tiebreak the wildcard used.',
+        + 'an explicit map cannot express two source directories for one specifier.',
       )
     }
     bySpecifier.set(name, {
@@ -129,7 +140,7 @@ export function collectPackageAliases(): PackageAlias[] {
  * alias can — but they still have to be mapped by something, because deleting
  * the group wildcards removed the fallback that used to catch them.
  *
- * @returns Declared names of every `@deepseek-ai/dsh-` package carrying a `src` directory.
+ * @returns Declared names of every covered package carrying a `src` directory.
  */
 export function collectPackageNames(): string[] {
   return workspacePackages()
@@ -144,7 +155,7 @@ export function collectPackageNames(): string[] {
  */
 export function mappedSpecifiers(text: string): Set<string> {
   const keys = new Set<string>()
-  for (const match of text.matchAll(/^\s*"(@deepseek-ai\/dsh-[^"/]+)":/gm)) {
+  for (const match of text.matchAll(/^\s*"(@(?:deepseek-ai|durash)\/dsh-[^"/]+)":/gm)) {
     const key = match[1]
     if (key !== undefined) keys.add(key)
   }
@@ -217,7 +228,7 @@ function handWrittenSpecifiers(text: string): Set<string> {
   const end = text.indexOf(END)
   const outside = begin < 0 || end < begin ? text : text.slice(0, begin) + text.slice(end)
   const keys = new Set<string>()
-  for (const match of outside.matchAll(/^\s*"(@deepseek-ai\/[^"]+)":/gm)) {
+  for (const match of outside.matchAll(/^\s*"(@(?:deepseek-ai|durash)\/[^"]+)":/gm)) {
     const key = match[1]
     if (key !== undefined) keys.add(key)
   }
