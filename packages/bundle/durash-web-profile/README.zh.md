@@ -53,14 +53,15 @@ kind: "package-bundle"
 <a id="model-experience"></a>
 ## 模型体验
 
-无。本 overlay 只添加浏览器身份，不贡献提示词段落、工具、消息或模型请求字段。
+无，因为本 overlay 只添加浏览器身份，不贡献提示词段落、工具、消息或模型请求字段。
 
 #### KV Cache 影响
 
 无；本包既不组装也不发送提供方请求。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **只负责品牌与组合**——持久 workflow 可靠性仍是独立的产品插件里程碑，不能从本 profile 推断其已经完成。
 - **目前仅支持源码发行**——DuraSH npm 可执行文件与发布 family 尚未设计，也未对外宣传。

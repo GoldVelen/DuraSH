@@ -67,8 +67,9 @@ None, as this package contributes browser presentation only; nothing here reache
 
 None; this package neither assembles nor sends a provider request.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 These limits identify the distribution surfaces this package deliberately does not own.
 

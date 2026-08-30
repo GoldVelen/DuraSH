@@ -67,8 +67,9 @@ SVG 标志只使用几何路径，因此不依赖已安装或远程托管的字�
 
 无；本包既不组装也不发送提供方请求。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
+
+<a id="known-limitations-and-deferred-work"></a>
 
 以下限制指出本包有意不负责的发行版表面。
 

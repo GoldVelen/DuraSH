@@ -53,14 +53,15 @@ Build the client with `pnpm run build:durash`, then start the source checkout wi
 <a id="model-experience"></a>
 ## Model Experience
 
-None. This overlay adds browser identity only and contributes no prompt section, tool, message, or model request field.
+None, as this overlay adds browser identity only and contributes no prompt section, tool, message, or model request field.
 
 #### KV Cache effect
 
 None; this package neither assembles nor sends a provider request.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **Brand and composition only** — durable workflow reliability remains a separate product plugin milestone and cannot be inferred from this profile.
 - **Source distribution only** — the DuraSH npm executable and publication family are not yet designed or advertised.
