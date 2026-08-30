@@ -6,6 +6,11 @@ name: E2E (real DeepSeek API)
 # https://api.deepseek.com (DEEPSEEK_BASE_URL is pinned to it explicitly so a
 # stray repo-root .env can't redirect the run).
 #
+# DuraSH downstream repositories opt in by setting the repository variable
+# DURASH_REAL_API_E2E_ENABLED=true. This keeps a public installation without a
+# paid API credential from reporting a configuration error on every push while
+# preserving the strict preflight once maintainers explicitly enable the lane.
+#
 # pull_request IS a trigger, but GitHub withholds repo secrets from BOTH forked
 # PRs and Dependabot PRs (the latter are same-repo, fork==false, but still
 # keyless). The job-level `if:` below skips the whole job for those untrusted
@@ -55,11 +60,13 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     name: e2e
-    # Run on every trusted event. Skip untrusted PRs (forks + Dependabot) where
-    # the secret is withheld — they would otherwise hard-fail the preflight.
+    # Run only after downstream opt-in and on trusted events. Skip untrusted
+    # PRs (forks + Dependabot) where the secret is withheld — they would
+    # otherwise hard-fail the preflight.
     if: >-
-      github.event_name != 'pull_request'
-      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]')
+      vars.DURASH_REAL_API_E2E_ENABLED == 'true'
+      && (github.event_name != 'pull_request'
+      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]'))
     # Profile e2e files can each own several complete dsh subprocess trees, so
     # four file workers preserve process/PTY headroom. Tests retain 120s/test
     # and retry 2; 45m still bounds retry storms against a slow API.
