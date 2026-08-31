@@ -6,8 +6,9 @@
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 
-/** Thinking effort stored on a lane; the worker-thread engine does not yet apply it to children. */
+/** Adapter-owned reasoning effort stored on one lane. */
 export type ReliabilityThinking = string
 
 /** Channel grouping used by the composer model picker. */
@@ -17,6 +18,18 @@ export type ReliabilityModelChannel = 'default' | 'cursor'
 export interface ReliabilityModelBadge {
   readonly kind: 'channel' | 'provider'
   readonly label: string
+}
+
+/** One adapter-owned effort exposed for an exact provider/model route. */
+export interface ReliabilityReasoningEffortOption {
+  /** Opaque effort id passed unchanged to the child model request. */
+  readonly id: ReliabilityThinking
+  /** Adapter-owned display name. */
+  readonly name: string
+  /** Optional adapter-owned explanation. */
+  readonly description?: string
+  /** Whether the adapter materializes this value when callers omit an effort. */
+  readonly isDefault: boolean
 }
 
 /** One selectable implementation or review model. */
@@ -31,14 +44,16 @@ export interface ReliabilityModelOption {
   readonly model: string
   /** Channel and provider badges for the picker. */
   readonly badges: readonly ReliabilityModelBadge[]
-  /** Effort levels the switch offers for this model. */
-  readonly thinkingLevels: readonly ReliabilityThinking[]
+  /** Exact-model reasoning efforts in adapter-preferred display order. */
+  readonly reasoningEfforts: readonly ReliabilityReasoningEffortOption[]
 }
 
 /** Parsed provider/model override for one loop lane. */
 export interface ReliabilityLaneRoute {
   readonly provider: string
   readonly model: string
+  /** Omitted only when the exact model exposes no reasoning controls. */
+  readonly reasoningEffort?: ReasoningEffortId
 }
 
 /** Session-bound policy the composer switch reads and writes. */
@@ -52,6 +67,8 @@ export interface ReliabilityPolicySnapshot {
   readonly reviewThinking: ReliabilityThinking | null
   readonly updatedAt: number
   readonly models: readonly ReliabilityModelOption[]
+  /** Current catalog mismatch retained without rewriting the saved selection. */
+  readonly validationError: string | null
 }
 
 /** Session identity for a policy read. */

@@ -246,6 +246,20 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
       expect(provider.runs[0]!.request.agentOptions).toEqual({ provider: 'openai' })
     })
 
+    it('agent({provider, model, reasoningEffort}) forwards the complete exact-model selection', async () => {
+      const { ctx, parent, provider } = await setup()
+      const result = await run(ctx, parent, scripted(
+        "return await agent('reason deeply', { provider: 'xai', model: 'grok-4.6', reasoningEffort: 'xhigh' })",
+      ))
+
+      expect(result.value).toBe('stub reply')
+      expect(provider.runs[0]!.request.agentOptions).toEqual({
+        provider: 'xai',
+        model: 'grok-4.6',
+        reasoningEffort: 'xhigh',
+      })
+    })
+
     it('a start-request provider override selects every child without changing the engine default', async () => {
       const { ctx, parent, provider } = await setup()
       const selected = new StubProvider('selected', () => text('selected reply'))

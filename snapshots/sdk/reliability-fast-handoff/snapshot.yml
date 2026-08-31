@@ -1,0 +1,11 @@
+version: 1
+scenario: reliability-fast-handoff
+profile: sdk
+composition: sdk-reliability-fast-handoff
+recording: authored
+header:
+  class: sdk-reliability-fast-handoff
+  pin: true
+  changes: 1
+  childSystemPrompts: [1, 2]
+  childToolSchemas: [1, 2]

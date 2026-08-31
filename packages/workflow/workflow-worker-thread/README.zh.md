@@ -49,7 +49,7 @@ kind: "package-reference"
 
 ### 运行会得到什么
 
-运行启动后，脚本正文在 worker 中以顶层 `await` 执行，并可使用钩子 `agent()`、`parallel()`、`pipeline()`、`phase()` 与 `log()`；`meta` 与 `args` 以普通 JSON 数据到达，绝不作为代码求值。每次 `agent()` 调用都会在配置的提供方下启动一个宿主侧 subagent，并以运行的父级作为每个子 agent 的父级。运行以脚本的最终 JSON 值结算；普通子 agent 失败会把 `agent()` 兑现为 `null`，由脚本处理。
+运行启动后，脚本正文在 worker 中以顶层 `await` 执行，并可使用钩子 `agent()`、`parallel()`、`pipeline()`、`phase()` 与 `log()`；`meta` 与 `args` 以普通 JSON 数据到达，绝不作为代码求值。每次 `agent()` 调用都会在配置的提供方下启动一个宿主侧 subagent，并以运行的父级作为每个子 agent 的父级。单次调用可设置标签或阶段，并选择 `provider`、`model`、`reasoningEffort` 或结构化输出；worker 校验这套封闭选项词汇，Host 把所选档位原样写入 `AgentOptions`。运行以脚本的最终 JSON 值结算；普通子 agent 失败会把 `agent()` 兑现为 `null`，由脚本处理。
 
 格式错误的 meta 块、无法解析的正文、不可用的提供方路由或高于上限的单次运行上限，都会在 worker 存在之前被同步拒绝，调用方因此看到违规清单并可以修正调用。执行期间，钩子误用与超出上限会用致命工作流错误终止脚本。取消是有界的：忽略取消的脚本会在 `disposeGraceMs` 后被强制以 cancelled 结算，其 worker 被终止。
 
@@ -91,7 +91,7 @@ kind: "package-reference"
 
 `start()` 在创建 worker 或发布 `workflow/start` 之前校验 meta 块、解析正文、解析提供方路由并解析单次运行的子 agent 总数上限。ready/go 握手可以避免启动信号取消与 worker 启动发生竞态、导致脚本最初的同步片段被执行；源代码模式通过 data URL bootstrap 安装 TypeScript 转换，构建模式则传入同级 `lib/worker.cjs` 包。
 
-每次 `agent()` 调用，worker 都会发送 `child-start`；宿主通过 subagent seam 启动提供方（请求的覆盖值，或配置的提供方），把子 agent 归属于运行的父级，并回报启动成功或启动错误。提供方选择应用于该运行的每个子 agent，对脚本不可见。提供方启动与已发布子 agent 分开跟踪，因此当取消、worker 死亡或正常结算关闭接纳时，待处理启动会被共享信号中止。
+每次 `agent()` 调用，worker 都会发送 `child-start`；宿主通过 subagent seam 启动提供方（调用覆盖值、请求覆盖值或配置值），把子 agent 归属于运行的父级，把 `model` 与 `reasoningEffort` 映射进其 `AgentOptions`，并回报启动成功或启动错误。提供方启动与已发布子 agent 分开跟踪，因此当取消、worker 死亡或正常结算关闭接纳时，待处理启动会被共享信号中止。
 
 ### 值边界
 
@@ -133,7 +133,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-脚本每次调用 `agent()`，都会把提示词原样发送给 subagent 提供方，并附带可选模型或结构化输出 schema。每个子 agent 看到该提供方自己的上下文；phase 与 log 叙述只留在观察器事件中。
+脚本每次调用 `agent()`，都会把提示词原样发送给 subagent 提供方，并附带可选 provider、模型、思考强度或结构化输出 schema。每个子 agent 看到该提供方自己的上下文；phase 与 log 叙述只留在观察器事件中。
 
 #### Token 影响
 
@@ -141,7 +141,7 @@ kind: "package-reference"
 
 #### KV Cache 影响
 
-与父级请求缓存及同级子 agent 相互独立。每个子 agent 只能在其自身提供方、模型、提示词与 schema 下复用逐字节相同的前缀；其后续历史仅追加增长。
+与父级请求缓存及同级子 agent 相互独立。每个子 agent 只能在其自身提供方、模型、思考强度、提示词与 schema 下复用逐字节相同的前缀；其后续历史仅追加增长。
 
 ### 父级工具结果（间接）
 

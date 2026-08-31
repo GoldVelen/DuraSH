@@ -622,6 +622,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'ctx.tools',
       'ctx.systemPrompt',
       'ctx.agents',
+      'ctx.sessionProjections',
       'ctx.reliabilityPolicy',
       'ctx.reliabilityLoopRuntime',
       'a live enabled root Agent at execution time',
@@ -637,7 +638,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
         enabledRoutes: () => undefined,
       } as never)
       ctx.provide('reliabilityLoopRuntime', {
-        start: () => Promise.reject(new Error('tool-catalog reliability execution is unreachable')),
+        startDetached: () => Promise.reject(new Error('tool-catalog reliability execution is unreachable')),
       } as never)
       await ctx.plugin(ToolReliability)
     },

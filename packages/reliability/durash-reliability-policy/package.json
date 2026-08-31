@@ -1,8 +1,10 @@
 {
   "name": "@durash/dsh-reliability-policy",
-  "description": "Per-session reliability-loop policy (ctx.reliabilityPolicy): enablement, implementation/review model selection, and the catalog the composer switch reads",
-  "version": "0.1.2-alpha.1",
-  "private": true,
+  "description": "Per-session reliability-loop policy: exact implementation/review models and adapter-owned reasoning efforts validated against the live catalog",
+  "version": "0.1.2-alpha.2",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GoldVelen/DuraSH.git",
@@ -69,6 +71,7 @@
     "@deepseek-ai/dsh-storage": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^",
     "@deepseek-ai/dsh-storage-json": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   }

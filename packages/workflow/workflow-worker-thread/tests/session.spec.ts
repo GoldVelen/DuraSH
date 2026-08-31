@@ -35,7 +35,16 @@ interface FakeHost {
 
 interface FakeHostOptions {
   /** Auto-respond to child-start: reply started + settled per child index. Omit a reply to leave the child pending. */
-  reply?: (request: { prompt: string; schema?: unknown; provider?: string; model?: string }, index: number) => ChildResult | undefined
+  reply?: (
+    request: {
+      prompt: string
+      schema?: unknown
+      provider?: string
+      model?: string
+      reasoningEffort?: string
+    },
+    index: number,
+  ) => ChildResult | undefined
   /** Reject the start instead (child-start-error) when returning a string. */
   refuse?: (index: number) => string | undefined
   /** Auto-send `go` on `ready` (default true). */
@@ -148,6 +157,18 @@ describe('runWorkerSession over an in-process MessageChannel', () => {
     expect(result.value).toBe('ok')
     const start = host.ofType(WorkerToHostType.ChildStart)[0]!
     expect(start.request.provider).toBe('openai')
+    expect(start.request.model).toBeUndefined()
+    host.close()
+  })
+
+  it('agent({reasoningEffort}) forwards an adapter-owned effort without inventing a route', async () => {
+    const host = fakeHost({ reply: () => text('ok') })
+    void runWorkerSession(host.port, init("return await agent('reason', { reasoningEffort: 'xhigh' })"))
+    const result = await host.result()
+    expect(result.value).toBe('ok')
+    const start = host.ofType(WorkerToHostType.ChildStart)[0]!
+    expect(start.request).toMatchObject({ prompt: 'reason', reasoningEffort: 'xhigh' })
+    expect(start.request.provider).toBeUndefined()
     expect(start.request.model).toBeUndefined()
     host.close()
   })
@@ -338,7 +359,9 @@ describe('runWorkerSession over an in-process MessageChannel', () => {
       ["return await agent('p', { label: 3 })", '"label" must be a string'],
       ["return await agent('p', { get label() { throw new Error('read failed') } })", 'options must be plain JSON data'],
       ["return await agent('p', { bogus: true })", '"bogus" is not recognized'],
-      ["return await agent('p', { effort: 'high' })", '"effort" is deferred and not supported by this engine (supported: label, phase, schema, provider, model)'],
+      ["return await agent('p', { effort: 'high' })", '"effort" is deferred and not supported by this engine (supported: label, phase, schema, provider, model, reasoningEffort)'],
+      ["return await agent('p', { reasoningEffort: 3 })", '"reasoningEffort" must be a string'],
+      ["return await agent('p', { reasoningEffort: '' })", '"reasoningEffort" must be a non-empty string'],
       ["return await agent('p', { schema: { type: 'object', oneOf: [] } })", 'outside the supported subset'],
       ['return await parallel([() => 1, () => 2, () => 3])', 'over the per-call cap (2)'],
       ['return await pipeline([1, 2, 3], (x) => x)', 'maxItemsPerCall'],

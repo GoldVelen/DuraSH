@@ -41,10 +41,12 @@ describe('reasoning schema boundary', () => {
       compat: {
         supportsFinishReason: false,
         thinkingFormat: 'baseten',
-        chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
-        supportsThinkingTokenBudget: true,
+        chatTemplateArgs: { thinking_budget: { $var: 'thinking.budget' } },
+        thinkingTokenBudgetField: 'thinking_budget',
       },
     })).not.toThrow()
+
+    expect(configWith({ compat: { thinkingTokenBudgetField: 'quantum_budget' } })).toThrow(/expected/)
   })
 })
 

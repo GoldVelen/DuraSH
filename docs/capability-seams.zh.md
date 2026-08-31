@@ -85,6 +85,10 @@ flowchart LR
   svc_workspaceRegistry["ctx.workspaceRegistry<br/>Workspace entity registry"]
   pkg_durash_reliability_loop["durash-reliability-loop"]
   svc_reliabilityLoopRuntime["ctx.reliabilityLoopRuntime<br/>DuraSH reliability loop runtime"]
+  pkg_durash_reliability_policy["durash-reliability-policy"]
+  svc_reliabilityPolicy["ctx.reliabilityPolicy<br/>DuraSH per-Session reliability policy"]
+  pkg_durash_tool_reliability["durash-tool-reliability"]
+  pkg_ui_reliability["ui-reliability"]
   svc_sessionQuery["ctx.sessionQuery<br/>Session reads, traces, filters, and search"]
   pkg_session_reference["session-reference"]
   pkg_tool_session_query["tool-session-query"]
@@ -253,6 +257,7 @@ flowchart LR
   pkg_credentials_local --> svc_credentials
   pkg_deepseek_llm_api_extensions --> svc_deepseekLlmApiExtensions
   pkg_durash_reliability_loop --> svc_reliabilityLoopRuntime
+  pkg_durash_reliability_policy --> svc_reliabilityPolicy
   pkg_e2b --> svc_e2b
   pkg_experimental_agent_team --> svc_agentTeams
   pkg_file_reference --> svc_fileReferences
@@ -381,6 +386,8 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_reliabilityPolicy --> pkg_durash_tool_reliability
+  svc_reliabilityPolicy --> pkg_ui_reliability
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -498,6 +505,7 @@ flowchart LR
 | `ctx.messageFeedback` | `core` | [`message-feedback`](../packages/feedback/message-feedback) | - | - | - | 拥有本地逐 assistant 消息反馈、生命周期与目标校验、逐条目 compare-and-set 及 Host 一元 Remote 契约，且不进入 Session 历史或遥测。 |
 | `ctx.workspaceRegistry` | `core` | [`workspace`](../packages/workspace/workspace) | - | [`api-workspace-controller`](../packages/api/workspace-controller), [`api-session-controller`](../packages/api/session-controller) | - | 通过领域设施拥有带 WorkspaceId 品牌类型的记录；稳定的 sessionIds 账户驱动 Host RPC 与 GUI 投影。 |
 | `ctx.reliabilityLoopRuntime` | `core` | `durash-reliability-loop` | - | - | - | 在 workflow 引擎之上驱动一个有界的实施-审查-返工闭环，整个状态机保存在一条持久的 `reliability_loop` domain 记录中；拥有 start/resume 单一所有权、有界交接与取消静止。 |
+| `ctx.reliabilityPolicy` | `core` | `durash-reliability-policy` | - | `durash-tool-reliability`, `ui-reliability` | - | 按 Session 保存精确的实施与审查模型选择，根据实时适配器能力校验，并在路由失效时拒绝执行而不改写用户选择。 |
 | `ctx.sessionQuery` | `seam` | [`session-query`](../packages/session-query/session-query) | [`session-query-sqlite`](../packages/session-query/session-query-sqlite) | [`session-reference`](../packages/context/session-reference), [`tool-session-query`](../packages/session-query/tool-session-query) | - | 该接口提供精确读取、过滤和追踪；具体后端还提供全文协调、排序、摘要片段和游标世代，而模型消费方负责工作区权限与不含游标的渲染。 |
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | [`api-session-controller`](../packages/api/session-controller) | - | 该接口返回 Agent cwd 内仅含路径的补全候选；提供方负责命名空间访问与排序，但不读取文件内容。 |
 | `ctx.sessionReferenceResolver` | `core` | [`session-reference`](../packages/context/session-reference) | - | - | - | 将当前表层中有界的对话快照投影为持久但不可信的消息上下文；Host 适配器负责提及语法。 |

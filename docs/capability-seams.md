@@ -83,6 +83,10 @@ flowchart LR
   svc_workspaceRegistry["ctx.workspaceRegistry<br/>Workspace entity registry"]
   pkg_durash_reliability_loop["durash-reliability-loop"]
   svc_reliabilityLoopRuntime["ctx.reliabilityLoopRuntime<br/>DuraSH reliability loop runtime"]
+  pkg_durash_reliability_policy["durash-reliability-policy"]
+  svc_reliabilityPolicy["ctx.reliabilityPolicy<br/>DuraSH per-Session reliability policy"]
+  pkg_durash_tool_reliability["durash-tool-reliability"]
+  pkg_ui_reliability["ui-reliability"]
   svc_sessionQuery["ctx.sessionQuery<br/>Session reads, traces, filters, and search"]
   pkg_session_reference["session-reference"]
   pkg_tool_session_query["tool-session-query"]
@@ -251,6 +255,7 @@ flowchart LR
   pkg_credentials_local --> svc_credentials
   pkg_deepseek_llm_api_extensions --> svc_deepseekLlmApiExtensions
   pkg_durash_reliability_loop --> svc_reliabilityLoopRuntime
+  pkg_durash_reliability_policy --> svc_reliabilityPolicy
   pkg_e2b --> svc_e2b
   pkg_experimental_agent_team --> svc_agentTeams
   pkg_file_reference --> svc_fileReferences
@@ -379,6 +384,8 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_reliabilityPolicy --> pkg_durash_tool_reliability
+  svc_reliabilityPolicy --> pkg_ui_reliability
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -496,6 +503,7 @@ flowchart LR
 | `ctx.messageFeedback` | `core` | [`message-feedback`](../packages/feedback/message-feedback) | - | - | - | Owns local per-assistant-message feedback, lifecycle and target validation, per-item compare-and-set, and the Host unary Remote contract without entering Session history or telemetry. |
 | `ctx.workspaceRegistry` | `core` | [`workspace`](../packages/workspace/workspace) | - | [`api-workspace-controller`](../packages/api/workspace-controller), [`api-session-controller`](../packages/api/session-controller) | - | Owns WorkspaceId-branded records over the domain facility; stable sessionIds accounts drive Host RPC and GUI projections. |
 | `ctx.reliabilityLoopRuntime` | `core` | `durash-reliability-loop` | - | - | - | Drives one bounded implement-review-rework cycle over the workflow engine with the whole state machine in one durable `reliability_loop` domain record; owns start/resume single ownership, bounded handoffs, and cancellation quiescence. |
+| `ctx.reliabilityPolicy` | `core` | `durash-reliability-policy` | - | `durash-tool-reliability`, `ui-reliability` | - | Stores exact implementation and review model selections per Session, validates them against live adapter capabilities, and refuses stale routes without rewriting user choices. |
 | `ctx.sessionQuery` | `seam` | [`session-query`](../packages/session-query/session-query) | [`session-query-sqlite`](../packages/session-query/session-query-sqlite) | [`session-reference`](../packages/context/session-reference), [`tool-session-query`](../packages/session-query/tool-session-query) | - | The interface supplies exact reads, filters, and traces; its concrete backend adds full-text reconciliation, ranking, snippets, and cursor generations, while the model consumer owns workspace authority and cursor-free rendering. |
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | [`api-session-controller`](../packages/api/session-controller) | - | The interface returns path-only completion candidates within an Agent cwd; providers own namespace access and ranking without reading file contents. |
 | `ctx.sessionReferenceResolver` | `core` | [`session-reference`](../packages/context/session-reference) | - | - | - | Projects bounded current-surface conversation snapshots into durable untrusted message context; host adapters own mention syntax. |

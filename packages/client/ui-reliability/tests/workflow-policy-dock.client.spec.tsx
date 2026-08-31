@@ -38,7 +38,11 @@ function state(over: Partial<ReliabilitySessionState['policy']> = {}): Reliabili
             { kind: 'channel', label: 'DuraSH' },
             { kind: 'provider', label: 'DeepSeek' },
           ],
-          thinkingLevels: ['off', 'high', 'max'],
+          reasoningEfforts: [
+            { id: 'off', name: 'Off', isDefault: false },
+            { id: 'high', name: 'High', isDefault: true },
+            { id: 'max', name: 'Max', isDefault: false },
+          ],
         },
         {
           selector: 'cursor/deepseek-v4-pro',
@@ -49,9 +53,13 @@ function state(over: Partial<ReliabilitySessionState['policy']> = {}): Reliabili
             { kind: 'channel', label: 'Cursor' },
             { kind: 'provider', label: 'DeepSeek' },
           ],
-          thinkingLevels: ['low', 'xhigh'],
+          reasoningEfforts: [
+            { id: 'low', name: 'Low', isDefault: true },
+            { id: 'xhigh', name: 'Extra high', isDefault: false },
+          ],
         },
       ],
+      validationError: null,
       ...over,
     },
   }

@@ -87,6 +87,7 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@deepseek-ai/dsh-scope": "workspace:^",
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@durash/dsh-reliability-loop": "workspace:^",
     "@durash/dsh-reliability-policy": "workspace:^"
   }
 }

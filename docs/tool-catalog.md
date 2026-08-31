@@ -41,7 +41,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@durash/dsh-tool-reliability` | `dsh_reliability_handoff` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agents`, `ctx.reliabilityPolicy`, `ctx.reliabilityLoopRuntime`, `a live enabled root Agent at execution time` | `tool/call`, `reliability-loop durable state and child Session events`, `tool/result` | - | Shipped only by the `durash` profile. Its schema is process-wide; execution fails closed unless the current Session policy is enabled with both implementation and review routes. |
+| `@durash/dsh-tool-reliability` | `dsh_reliability_handoff` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agents`, `ctx.sessionProjections`, `ctx.reliabilityPolicy`, `ctx.reliabilityLoopRuntime`, `a live enabled root Agent at execution time` | `tool/call`, `reliability-loop durable state and child Session events`, `tool/result` | - | Shipped only by the `durash` profile. Its schema is process-wide; execution fails closed unless the current Session policy is enabled with both implementation and review routes. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2285,7 +2285,7 @@ web_search and web_fetch keep provider selection behind ctx.web so model-visible
 
 ### `dsh_reliability_handoff`
 
-After presenting the implementation plan in the ordinary assistant response, hand the current objective to the enabled reliability loop and wait for one implementation stage, one independent review, and at most one rework pass to reach a terminal result. Supply the complete objective. This is a foreground call: do not poll or repeat the same handoff while it is pending.
+After presenting the implementation plan in the ordinary assistant response, persist the complete objective for the enabled reliability workflow. The Host runs implementation, independent review, and at most one rework pass in the background. This call returns immediately after durable acceptance. Do not poll or repeat it; progress appears above the composer.
 
 ```json
 {

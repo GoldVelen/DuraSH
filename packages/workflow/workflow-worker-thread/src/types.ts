@@ -5,7 +5,7 @@
  * @module @deepseek-ai/dsh-workflow-worker-thread/types
  */
 
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { WorkflowMeta } from '@deepseek-ai/dsh-workflow'
 
@@ -46,6 +46,8 @@ export interface ChildStartRequest {
   provider?: string
   /** The per-child model override, if the call passed one. */
   model?: string
+  /** The adapter-owned reasoning effort for the exact child route, if supplied. */
+  reasoningEffort?: ReasoningEffortId
 }
 
 /**

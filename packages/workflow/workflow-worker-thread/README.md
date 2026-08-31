@@ -49,7 +49,7 @@ An owning consumer may set `WorkflowStartRequest.subagentProvider` and `Workflow
 
 ### What a run gives you
 
-When a run starts, the script body executes in the worker with top-level `await` and the hooks `agent()`, `parallel()`, `pipeline()`, `phase()`, and `log()`; `meta` and `args` arrive as plain JSON data, never evaluated code. Every `agent()` call starts a host-side subagent under the configured provider, with the run's parent as the parent of every child. The run settles with the script's final JSON value; an ordinary child failure resolves `agent()` to `null` so the script can handle it.
+When a run starts, the script body executes in the worker with top-level `await` and the hooks `agent()`, `parallel()`, `pipeline()`, `phase()`, and `log()`; `meta` and `args` arrive as plain JSON data, never evaluated code. Every `agent()` call starts a host-side subagent under the configured provider, with the run's parent as the parent of every child. Per-call options may set a label or phase and select `provider`, `model`, `reasoningEffort`, or structured output; the worker validates this closed vocabulary and the Host forwards the selected effort unchanged in `AgentOptions`. The run settles with the script's final JSON value; an ordinary child failure resolves `agent()` to `null` so the script can handle it.
 
 A malformed meta block, a body that does not parse, an unavailable provider route, or a per-run cap above the ceiling is rejected synchronously before a worker exists, so the caller sees a violation list and can correct the call. During execution, hook misuse and tripped caps kill the script with a fatal workflow error. Cancellation is bounded: a script that ignores it is force-settled as cancelled and its worker terminated after `disposeGraceMs`.
 
@@ -91,7 +91,7 @@ One worker thread per run keeps a misbehaving script from stalling the host and 
 
 `start()` validates the meta block, parses the body, resolves the provider route, and resolves the per-run total-child cap before creating a worker or publishing `workflow/start`. A ready/go handshake prevents a start-signal cancellation racing worker boot from executing the script's initial synchronous slice; source mode installs TypeScript transforms through a data-URL bootstrap, while built mode passes the sibling `lib/worker.cjs` bundle.
 
-For each `agent()` call the worker sends a `child-start`; the host starts the provider (the request's override, or the configured provider) through the subagent seam, attributes the child to the run's parent, and reports start or start-error back. Provider choice applies to every child in the run and is not visible to the script. Provider starts are tracked separately from published children, so a pending start is aborted by the shared signal when cancellation, worker death, or normal settlement closes admission.
+For each `agent()` call the worker sends a `child-start`; the host starts the provider (the call override, the request override, or the configured provider) through the subagent seam, attributes the child to the run's parent, maps `model` and `reasoningEffort` into its `AgentOptions`, and reports start or start-error back. Provider starts are tracked separately from published children, so a pending start is aborted by the shared signal when cancellation, worker death, or normal settlement closes admission.
 
 ### Value boundary
 
@@ -133,7 +133,7 @@ Read these pages when the engine-level contract is not enough. They move from th
 
 #### What the model sees
 
-Every script `agent()` call sends its prompt verbatim and optional model or structured-output schema to a subagent provider. Each child sees that provider's own context; phase and log narration stays on observer events.
+Every script `agent()` call sends its prompt verbatim and optional provider, model, reasoning effort, or structured-output schema to a subagent provider. Each child sees that provider's own context; phase and log narration stays on observer events.
 
 #### Token effect
 
@@ -141,7 +141,7 @@ Potentially many independent child contexts are paid, bounded by `maxConcurrentA
 
 #### KV Cache effect
 
-Independent of the parent request cache and of sibling children. Each child can reuse only a byte-identical prefix under its own provider, model, prompt, and schema; its later history grows append-only.
+Independent of the parent request cache and of sibling children. Each child can reuse only a byte-identical prefix under its own provider, model, reasoning effort, prompt, and schema; its later history grows append-only.
 
 ### Parent tool result, indirectly
 

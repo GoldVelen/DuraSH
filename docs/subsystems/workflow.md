@@ -12,6 +12,8 @@ Sources: browser-safe vocabulary in [`packages/workflow/workflow/src/types.ts`](
 
 What a caller asks for when starting a run. The ordinary workflow tool builds this from the model's `{ script, meta, args }` call plus the calling agent; specialized consumers may also select one engine-wide `subagentProvider` and lower `maxTotalAgents` for the run, but the script cannot observe or replace either policy. `meta` and `args` are plain JSON DATA (the engine validates `meta` against its schema and rejects loud BEFORE anything runs — no script text is ever evaluated to obtain it). `parent` is REQUIRED — every child the script starts is attributed to it, and cwd, lineage, and depth pass through the [subagent seam](subagent.md).
 
+Each script `agent()` call accepts the generic child options `provider`, `model`, and `reasoningEffort` alongside its existing schema, depth, tool-filter, and persona fields. The worker validates this closed vocabulary before crossing the typed protocol; the Host maps the selected effort unchanged into the child `AgentOptions`. Provider adapters remain responsible for accepting or rejecting a model/effort combination, so the workflow runtime contains no model-specific branch.
+
 ```ts type-equiv
 /**
  * What a caller asks for when starting a workflow run. `meta` and `args` are

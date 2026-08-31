@@ -2,15 +2,16 @@
  * Package-owned invariant companion for `@durash/dsh-reliability-loop`: every
  * durable record that lands in the `reliability_loop` domain — as observed on
  * the `domain/changed` event stream, not through the writer — must satisfy the
- * stage/attempt-slot coherence of the shipped stage machine. A violation
+ * stage/round coherence of the shipped state machine. A violation
  * means a write path bypassed the driver's asserted transitions or the
  * medium was corrupted.
  *
  * The companion is deliberately self-contained (no shared runtime module with
  * the package index): the shipped bundle emits one file per entry, so this
- * check re-derives the stage/slot rules from the record shape itself instead
- * of importing them. The rule table and `assertReliabilityLoopRecord` in
- * `src/checks.ts` must stay semantically equal.
+ * check re-derives the stage/round relationships from the record shape itself
+ * instead of importing them. The storage schema owns field structure and the
+ * writer-side `assertReliabilityLoopRecord` additionally owns timestamp and
+ * lane relationships.
  * @module @durash/dsh-reliability-loop/invariant
  */
 
@@ -26,34 +27,37 @@ export const name = 'durash-reliability-loop-invariant'
 export const inject = ['invariants']
 
 /**
- * Slot signature of one attempt pair: the implement round, the review round,
- * and the review verdict, joined as a compact string. Every legal record
- * shape maps to exactly one signature per stage.
+ * Compact signature for the retained round reports.
  */
-function slotSignature(
-  implement: { readonly round?: number } | undefined,
-  review: { readonly round?: number; readonly verdict?: string } | undefined,
-): string {
-  if (implement === undefined && review === undefined) return '-'
-  if (review === undefined) return implement === undefined ? '?' : `i${implement.round}+?:?`
-  if (implement === undefined) return '?'
-  return `i${implement.round}+r${review.round}:${review.verdict === 'approved' ? 'ok' : 'cr'}`
+function roundSignature(rounds: readonly unknown[]): string {
+  return rounds.map((value, index) => {
+    const round = value as {
+      readonly round?: number
+      readonly implementation?: { readonly round?: number }
+      readonly review?: { readonly round?: number; readonly verdict?: string }
+    }
+    if (round.round !== index + 1 || round.implementation?.round !== index + 1) return '?'
+    if (round.review === undefined) return `i${String(round.round)}`
+    if (round.review.round !== round.round) return '?'
+    return `i${String(round.round)}+r${String(round.round)}:${round.review.verdict === 'approved' ? 'ok' : 'cr'}`
+  }).join(',') || '-'
 }
 
-/** The signatures each stage can legally carry (aborted stages keep any prefix shape). */
+/** The signatures each stage can legally carry; stopped stages keep a coherent prefix. */
 const STAGE_SHAPES: Readonly<Record<string, string>> = {
+  accepted: '-',
   implementing: '-',
-  reviewing: 'i1+?:?',
+  reviewing: 'i1',
   'rework-implementing': 'i1+r1:cr',
-  'rework-reviewing': 'i2+r1:cr',
-  completed: 'i1+r1:ok | i2+r2:ok',
-  blocked: 'i2+r2:cr',
-  failed: '- | i1+?:? | i1+r1:cr | i2+r1:cr',
-  cancelled: '- | i1+?:? | i1+r1:cr | i2+r1:cr',
+  'rework-reviewing': 'i1+r1:cr,i2',
+  completed: 'i1+r1:ok | i1+r1:cr,i2+r2:ok',
+  blocked: 'i1+r1:cr,i2+r2:cr',
+  failed: '- | i1 | i1+r1:cr | i1+r1:cr,i2',
+  cancelled: '- | i1 | i1+r1:cr | i1+r1:cr,i2',
 }
 
 /**
- * Check one record's stage against its attempt slots, re-deriving the rules
+ * Check one record's stage against its retained rounds, re-deriving the rules
  * of the shipped stage machine.
  * @returns an error message when the shape is illegal, `undefined` when legal.
  */
@@ -61,15 +65,16 @@ function coherenceProblem(record: Record<string, unknown>): string | undefined {
   const stage = String(record['stage'])
   const shapes = STAGE_SHAPES[stage]
   if (shapes === undefined) return `unknown stage '${stage}'`
-  const implement = record['implement'] as { readonly round?: number } | undefined
-  const review = record['review'] as { readonly round?: number; readonly verdict?: string } | undefined
-  const signature = slotSignature(implement, review)
+  if (!Number.isSafeInteger(record['revision']) || Number(record['revision']) < 1) return 'revision is not positive'
+  const terminal = ['completed', 'blocked', 'failed', 'cancelled'].includes(stage)
+  if (terminal !== (typeof record['settledAt'] === 'string')) return `stage '${stage}' and settledAt disagree`
+  if ((stage === 'failed') !== (typeof record['error'] === 'string')) return `stage '${stage}' and error disagree`
+  if (record['dismissedAt'] !== undefined && !terminal) return `non-terminal stage '${stage}' is dismissed`
+  const rounds = Array.isArray(record['rounds']) ? record['rounds'] : []
+  const signature = roundSignature(rounds)
   const legal = shapes.split(' | ')
   if (!legal.includes(signature)) {
-    return `stage '${stage}' cannot carry slots '${signature}'`
-  }
-  if (implement !== undefined && implement.round === 2 && signature !== 'i2+r1:cr' && signature !== 'i2+r2:cr') {
-    return 'round-2 implementation without the rework precondition'
+    return `stage '${stage}' cannot carry rounds '${signature}'`
   }
   return undefined
 }

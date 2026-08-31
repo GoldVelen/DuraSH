@@ -1,39 +1,40 @@
 /**
- * Reliability-loop vocabulary: loop identity, the durable stage machine, and
- * the handle types a caller holds. Types only (plus the id-brand factory),
- * per the package convention.
+ * Client-safe reliability-loop vocabulary: durable identity, lane snapshots,
+ * status projection, terminal delivery, and authenticated Remote results.
  * @module @durash/dsh-reliability-loop/types
  */
 
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
-/** Identifies one reliability loop across restarts (runtime-minted UUID). */
+/** Identifies one reliability loop across Host restarts. */
 export type ReliabilityLoopId = Branded<'ReliabilityLoopId'>
 
 /**
- * Brand a string as a {@link ReliabilityLoopId}.
- * @param id - the raw id string (the runtime mints UUIDs; tests may pass fixtures).
- * @returns the same string, branded.
+ * Brand a persisted string as a reliability-loop id.
+ * @param id - raw persisted or freshly minted id.
+ * @returns the same string with the loop-id brand.
  */
 export function ReliabilityLoopId(id: string): ReliabilityLoopId {
   return id as ReliabilityLoopId
 }
 
-/** One attempt's round: `1` is the original pass, `2` the single bounded rework. */
+/** Compare-and-set identity for one exact durable loop revision. */
+export interface ReliabilityLoopRef {
+  readonly loopId: ReliabilityLoopId
+  readonly revision: number
+}
+
+/** One attempt's round: the original pass or the single bounded rework. */
 export type LoopRound = 1 | 2
 
-/** Why a reviewer's report accepted or rejected an implementation. */
+/** Why a review accepted or rejected one implementation attempt. */
 export type ReviewVerdict = 'approved' | 'changes-requested'
 
-/**
- * Durable loop stage. CLOSED union (runtime-owned, callers may exhaust). The
- * four `-ing` stages each name one workflow run the loop is — or was, before
- * a restart — executing; the four terminal stages are final. `blocked` stops
- * the loop after the bounded rework still drew `changes-requested`; the
- * settled round-2 review attempt carries the durable blocker.
- */
+/** Durable workflow stage. */
 export type ReliabilityLoopStage =
+  | 'accepted'
   | 'implementing'
   | 'reviewing'
   | 'rework-implementing'
@@ -43,127 +44,163 @@ export type ReliabilityLoopStage =
   | 'failed'
   | 'cancelled'
 
-/** The terminal members of {@link ReliabilityLoopStage}. */
+/** Terminal workflow stages. */
 export type TerminalReliabilityLoopStage = Extract<
   ReliabilityLoopStage,
   'completed' | 'blocked' | 'failed' | 'cancelled'
 >
 
-/** The terminal members of {@link ReliabilityLoopStage}. */
-export const TERMINAL_STAGES: readonly [
+/** Closed terminal-stage list in display order. */
+export const TERMINAL_STAGES: readonly TerminalReliabilityLoopStage[] = [
   'completed', 'blocked', 'failed', 'cancelled',
-] = ['completed', 'blocked', 'failed', 'cancelled']
+]
 
 /**
  * Test a stage for terminality.
- * @param stage - the stage to test.
- * @returns whether the stage is terminal (a settled loop).
+ * @param stage - stage to classify.
+ * @returns whether the stage is final.
  */
 export function isTerminalStage(stage: ReliabilityLoopStage): stage is TerminalReliabilityLoopStage {
   return (TERMINAL_STAGES as readonly string[]).includes(stage)
 }
 
-/** One settled implementation attempt. */
-export interface ImplementAttempt {
-  /** Which pass produced it. */
-  readonly round: LoopRound
-  /** The implementer's bounded work summary. */
-  readonly summary: string
-  /** How many `agent()` calls the stage run accepted. */
-  readonly agentsStarted: number
-}
-
-/** One settled review attempt. */
-export interface ReviewAttempt {
-  /** Which pass produced it. */
-  readonly round: LoopRound
-  /** The reviewer's decision. */
-  readonly verdict: ReviewVerdict
-  /** The reviewer's evidence; a `changes-requested` verdict names the required modifications. */
-  readonly feedback: string
-  /** How many `agent()` calls the stage run accepted. */
-  readonly agentsStarted: number
-}
-
-/**
- * The durable record of one loop — the single authoritative state. Optional
- * slots name `| undefined` explicitly because the zod durable-boundary schema
- * produces that shape and the repo compiles with `exactOptionalPropertyTypes`.
- * Stage semantics (which attempt slots must be settled for which stage) are
- * owned by the runtime and asserted by the `./invariant` companion.
- */
-export interface ReliabilityLoopRecord {
-  /** The loop's id. */
-  readonly loopId: ReliabilityLoopId
-  /** What the implementation must achieve, verbatim from the caller. */
-  readonly objective: string
-  /** Creation instant, ISO-8601. */
-  readonly createdAt: string
-  /** Current stage. */
-  readonly stage: ReliabilityLoopStage
-  /** The settled implementation attempt, when one has completed. */
-  readonly implement?: ImplementAttempt | undefined
-  /** The settled review attempt, when one has completed. */
-  readonly review?: ReviewAttempt | undefined
-  /** Settlement instant, ISO-8601; present iff `stage` is terminal. */
-  readonly settledAt?: string | undefined
-  /** Failure detail; present iff `stage` is `failed`. */
-  readonly error?: string | undefined
-  /** Implementation-stage provider route, when the caller selected one. */
-  readonly implementationProvider?: string | undefined
-  /** Implementation-stage model id, when the caller selected one. */
-  readonly implementationModel?: string | undefined
-  /** Review-stage provider route, when the caller selected one. */
-  readonly reviewProvider?: string | undefined
-  /** Review-stage model id, when the caller selected one. */
-  readonly reviewModel?: string | undefined
-}
-
-/**
- * A caller-owned live loop. `result` settles once the loop has durably
- * reached a terminal stage AND the last stage run's resources are released;
- * after that point the loop writes nothing and owns nothing.
- */
-export interface ReliabilityLoopHandle {
-  /** The loop's id. */
-  readonly loopId: ReliabilityLoopId
-  /**
-   * Settles with the terminal durable record. Never rejects for loop-internal
-   * failures (those land in the record as `failed`); it rejects only when the
-   * durable record itself cannot be maintained (a storage fault), because no
-   * terminal record can be delivered then.
-   */
-  readonly result: Promise<ReliabilityLoopRecord>
-  /**
-   * Request cancellation: the in-flight stage run is cancelled and the loop
-   * settles `cancelled`. Idempotent; the first reason wins. A stage that
-   * already settled is kept.
-   * @param reason - human-readable cause (default `'reliability loop cancelled'`).
-   */
-  cancel(reason?: string): void
-  /**
-   * Cancel if needed and await durable settlement plus resource quiescence.
-   * Never rejects; idempotent; safe on every path.
-   */
-  dispose(): Promise<void>
-}
-
-/** Optional provider/model override for one stage lane. */
+/** Exact provider/model/effort snapshot for one stage lane. */
 export interface ReliabilityLoopLane {
-  /** Provider route for that lane's child. */
+  /** Provider route used by the stage child. */
   readonly provider: string
-  /** Model id for that lane's child. */
+  /** Exact model id used by the stage child. */
   readonly model: string
+  /** Adapter-owned effort id; omitted for models without reasoning controls. */
+  readonly reasoningEffort?: ReasoningEffortId | undefined
 }
 
-/** What a caller asks for when starting one loop. */
-export interface ReliabilityLoopStartRequest {
-  /** The agent on whose behalf the loop runs (parent of every stage child). */
-  parent: Agent
-  /** What the implementation must achieve; bounded by `maxHandoffChars`. */
-  objective: string
-  /** Implementation-stage child route; omitted children inherit the parent. */
-  implementation?: ReliabilityLoopLane
-  /** Review-stage child route; omitted children inherit the parent. */
-  review?: ReliabilityLoopLane
+/** One settled implementation report. */
+export interface ImplementAttempt {
+  /** Pass that produced this report. */
+  readonly round: LoopRound
+  /** Bounded implementation summary. */
+  readonly summary: string
+  /** Number of workflow `agent()` calls accepted by the stage. */
+  readonly agentsStarted: number
+}
+
+/** One settled review report. */
+export interface ReviewAttempt {
+  /** Pass that produced this report. */
+  readonly round: LoopRound
+  /** Review decision. */
+  readonly verdict: ReviewVerdict
+  /** Bounded evidence or required modifications. */
+  readonly feedback: string
+  /** Number of workflow `agent()` calls accepted by the stage. */
+  readonly agentsStarted: number
+}
+
+/** Durable reports retained for one pass without overwriting another pass. */
+export interface ReliabilityLoopRoundRecord {
+  /** Pass represented by this record. */
+  readonly round: LoopRound
+  /** Settled implementation report, when that stage committed. */
+  readonly implementation?: ImplementAttempt | undefined
+  /** Settled review report, when that stage committed. */
+  readonly review?: ReviewAttempt | undefined
+}
+
+/** Version-2 durable execution record and sole workflow state authority. */
+export interface ReliabilityLoopRecord extends ReliabilityLoopRef {
+  /** Owning root Session. */
+  readonly sessionId: SessionId
+  /** Complete objective supplied by the handoff call. */
+  readonly objective: string
+  /** Current durable stage. */
+  readonly stage: ReliabilityLoopStage
+  /** Immutable implementation route snapshot. */
+  readonly implementation: ReliabilityLoopLane
+  /** Immutable review route snapshot. */
+  readonly review: ReliabilityLoopLane
+  /** Settled reports for round one and, when reached, round two. */
+  readonly rounds: readonly ReliabilityLoopRoundRecord[]
+  /** Creation instant in ISO-8601 form. */
+  readonly createdAt: string
+  /** Latest durable mutation instant in ISO-8601 form. */
+  readonly updatedAt: string
+  /** Settlement instant, present exactly for terminal stages. */
+  readonly settledAt?: string | undefined
+  /** Bounded failure detail, present exactly for `failed`. */
+  readonly error?: string | undefined
+  /** User dismissal instant; present only on a terminal record. */
+  readonly dismissedAt?: string | undefined
+}
+
+/** Compact Session projection used by the composer status dock. */
+export interface ReliabilityLoopStatusView extends ReliabilityLoopRef {
+  /** Current durable stage. */
+  readonly stage: ReliabilityLoopStage
+  /** At most 160 characters from the objective. */
+  readonly objectiveSummary: string
+  /** Immutable implementation route snapshot. */
+  readonly implementation: ReliabilityLoopLane
+  /** Immutable review route snapshot. */
+  readonly review: ReliabilityLoopLane
+  /** Creation instant in ISO-8601 form. */
+  readonly createdAt: string
+  /** Latest durable mutation instant in ISO-8601 form. */
+  readonly updatedAt: string
+  /** Settlement instant for terminal stages. */
+  readonly settledAt?: string | undefined
+  /** At most the configured handoff bound for a failed loop. */
+  readonly error?: string | undefined
+  /** At most 800 characters, derived deterministically for terminal stages. */
+  readonly terminalSummary?: string | undefined
+}
+
+/** Full authenticated details returned on demand. */
+export interface ReliabilityLoopDetails extends ReliabilityLoopStatusView {
+  /** Complete bounded objective. */
+  readonly objective: string
+  /** Every settled round report. */
+  readonly rounds: readonly ReliabilityLoopRoundRecord[]
+}
+
+/** Once-per-loop terminal Conversation notification. */
+export interface ReliabilityLoopTerminalNotice extends ReliabilityLoopRef {
+  /** Final stage. */
+  readonly stage: TerminalReliabilityLoopStage
+  /** Settlement instant. */
+  readonly settledAt: string
+  /** Deterministic bounded result summary. */
+  readonly summary: string
+}
+
+/** Whole-value Session projection change derived from the durable domain. */
+export interface ReliabilityLoopChange {
+  readonly version: 1
+  /** Reliability work is background work and does not belong to a chat turn. */
+  readonly turn: null
+  /** Selected current status, or null after the latest terminal loop is dismissed. */
+  readonly current: ReliabilityLoopStatusView | null
+  /** Present only on the first committed terminal delivery for one loop. */
+  readonly terminal?: ReliabilityLoopTerminalNotice | undefined
+}
+
+/** Durable start acknowledgement returned before any stage completes. */
+export interface ReliabilityLoopStartAck extends ReliabilityLoopRef {
+  readonly status: 'accepted'
+}
+
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    /**
+     * Complete client status plus an optional once-per-loop terminal notice.
+     * @param data - whole-value reliability-loop projection change.
+     */
+    'reliability-loop/change': ReliabilityLoopChange
+  }
+}
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionMap {
+    /** Current reliability status for this Session, or null when no dock is visible. */
+    reliabilityLoop: ReliabilityLoopStatusView | null
+  }
 }

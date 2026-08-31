@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-reliability` registers `dsh_reliability_handoff`. The tool is present process-wide and fails closed unless this Session's composer switch is on. When enabled, it starts one reliability loop with the Session's implementation and review routes and waits for a terminal record.
+`dsh-tool-reliability` registers `dsh_reliability_handoff`. The tool is present process-wide and fails closed unless this Session's composer switch is on. When enabled, it persists one reliability loop with the Session's exact implementation and review lanes and returns its durable acceptance receipt immediately; the Host continues implementation and review in the background.
 
 ## Table of Contents
 
@@ -35,7 +35,7 @@ Compose this plugin in the `durash` profile with `ctx.reliabilityPolicy` and `ct
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The tool requires the live root agent, a direct human user message on that Session, and enabled policy routes. Cancellation of the tool signal cancels the live loop. The compact result is the loop's terminal stage, a bounded summary, and the reviewer verdict when one exists.
+The tool requires the exact live root Agent inside its active driver and verifies that the current open turn originated from direct human input. It trims and validates the objective, revalidates both policy lanes against the live model catalog, calls `startDetached()`, and returns `{ loopId, revision, status: 'accepted' }`. The tool signal, turn ending, browser disconnect, and outer code-runtime timeout do not cancel the loop. Progress comes from the Session status projection; cancellation is an explicit authenticated Remote action.
 
 </details>
 
@@ -62,7 +62,7 @@ The `tool:reliability-handoff` system-prompt section is assembled for a root age
 ##### Reliability handoff guidance
 
 ```markdown
-For this Session the reliability loop is enabled. This tool is the only implementer dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another model or agent. Analyze the human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only review stay on this Session and do not hand off. The call remains in the current model turn until the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain that result to the human. If the workflow is disabled, the tool fails closed.
+For this Session the reliability workflow is enabled. Analyze the direct human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff once with the complete objective. The call returns a durable acceptance receipt; implementation and review continue under Host ownership after this model turn ends. Do not poll, repeat the handoff, or narrate live telemetry. The composer status bar shows progress and the conversation receives one persistent terminal result. Ordinary questions and read-only review stay on this Session and do not hand off.
 ```
 
 #### Token effect
@@ -92,7 +92,6 @@ Schema membership is process-wide; only the guidance section moves with the Sess
 <a id="known-limitations-and-deferred-work"></a>
 
 - **No first-turn intake contract check** — the 3081-era required field labels in the visible plan are not re-enforced here; guidance asks for a plan, and the Host only attests a live root human turn.
-- **Thinking effort is not passed to children** — lane models are; effort stays on the policy row until the workflow engine applies `effort`.
 
 <a id="dev-note"></a>
 ### Dev Note

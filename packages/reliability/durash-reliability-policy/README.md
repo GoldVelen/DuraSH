@@ -1,5 +1,5 @@
 ---
-description: "Per-session reliability-loop policy: the composer switch's Host truth for enablement and implementation/review model selection."
+description: "Per-session reliability-loop policy: exact implementation/review models and adapter-owned reasoning efforts, validated against the live Host catalog."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-reliability-policy` is the Host service behind the composer workflow switch. One durable row per Session stores whether the reliability loop is on and which implementation and review models the next handoff will use. Every read rebuilds the model directory from `ctx.llm`, so a route that left the catalog cannot stay enabled. The service composes only into the `durash` profile.
+`dsh-reliability-policy` is the Host service behind the composer workflow switch. One durable row per Session stores enablement plus exact implementation/review models and reasoning efforts. Policy-panel reads rebuild the directory from `ctx.llm.listModels()` and `resolveModelInfo()`, in parallel across providers and models. Each model therefore exposes only its adapter-declared effort ids, names, descriptions, and default. Catalog drift preserves the saved row and returns a concrete `validationError`; an invalid row cannot enable or start a loop and is never silently downgraded.
 
 ## Table of Contents
 
@@ -25,9 +25,9 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this plugin with `ctx.storageDomain` and `ctx.llm`. The composer switch calls `policy`, `ensurePolicy`, and `configure` over the generated Remote. `workflowEnabled(sessionId)` and `enabledRoutes(sessionId)` are same-process reads for the model-facing handoff tool.
+Mount this plugin with `ctx.storageDomain` and `ctx.llm`. The composer switch calls `policy`, `ensurePolicy`, and `configure` over the generated Remote. `workflowEnabled(sessionId)` is a synchronous prompt gate; asynchronous `enabledRoutes(sessionId)` revalidates only the selected provider/model routes and returns immutable provider/model/reasoning-effort lane snapshots for the handoff tool. A handoff therefore does not wait for unrelated providers or models.
 
-Enabling a Session requires both lanes to name catalog models. A missing or invalid selector cannot stay enabled: the next read turns the row off.
+Enabling requires both lanes to name current catalog models. A model with reasoning controls requires one listed effort; a model without them requires `null`. A stale saved selector or effort remains visible for correction but blocks start.
 
 -----
 
@@ -37,7 +37,7 @@ Enabling a Session requires both lanes to name catalog models. A missing or inva
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The `reliability_policy` storage domain holds one `sessions` row keyed by Session id. Catalog membership is not stored. Mutations queue per Session. Selectors are `provider/model` strings split on the first slash.
+The `reliability_policy` storage domain holds one `sessions` row keyed by Session id. Catalog membership and display metadata are not stored. Mutations queue per Session. Selectors are `provider/model` strings split on the first slash; effort ids are opaque adapter-owned values.
 
 </details>
 
@@ -65,7 +65,6 @@ Turning the policy on or off changes whether the handoff guidance section is ass
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Effort is stored, not applied** — the switch records implementation and review thinking levels; the worker-thread engine still defers `effort` on `agent()`, so stage children inherit the parent's reasoning settings.
 - **No live catalog event** — the client re-reads on open; a provider added while the panel is open does not appear until the next ensure.
 
 <a id="dev-note"></a>

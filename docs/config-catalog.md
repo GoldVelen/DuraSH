@@ -1263,6 +1263,8 @@ export interface PiAiCompatProfile {
   chatTemplateKwargs?: NonNullable<OpenAICompletionsCompat['chatTemplateKwargs']>
   /** Arguments sent as `chat_template_args` under the `baseten` thinking format; `openai-completions`. */
   chatTemplateArgs?: NonNullable<OpenAICompletionsCompat['chatTemplateArgs']>
+  /** Top-level request field used for the model's reasoning-token budget; `openai-completions`. */
+  thinkingTokenBudgetField?: PiAiThinkingTokenBudgetField
   /** Whether the endpoint accepts `thinking_token_budget` to cap vLLM reasoning; `openai-completions`. */
   supportsThinkingTokenBudget?: boolean
   /**
@@ -1306,11 +1308,14 @@ export type PiAiReasoningEfforts = Partial<Record<ModelThinkingLevel, string | n
 
 /** One reasoning-dispatch wire format a profile may name. */
 export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFormat']>
+
+/** The request fields pi-ai can use for a reasoning-token budget. */
+export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['thinkingTokenBudgetField']>
 ```
 
 Depends on: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`)
 
-Source: [`packages/llm/llm-pi-ai/src/config.ts:221`](../packages/llm/llm-pi-ai/src/config.ts)
+Source: [`packages/llm/llm-pi-ai/src/config.ts:222`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -3415,21 +3420,17 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 ## `@durash/dsh-reliability-loop`
 
-Requires: `workflowEngine` · `storageDomain`
+Requires: `workflowEngine` · `storageDomain` · `agents` · `sessionProjections`
 
 ```ts config-catalog
-/** Config: the deployment-owned loop bounds. */
+/** Deployment-owned bounds. */
 export interface Config {
-  /**
-   * Maximum characters of any artifact crossing a stage boundary — the
-   * objective, an implementation summary, reviewer feedback. A longer
-   * artifact fails the stage loud (default 16384).
-   */
+  /** Maximum objective, report, and durable error characters. */
   maxHandoffChars?: number
 }
 ```
 
-Source: [`packages/reliability/durash-reliability-loop/src/index.ts:36`](../packages/reliability/durash-reliability-loop/src/index.ts)
+Source: [`packages/reliability/durash-reliability-loop/src/index.ts:40`](../packages/reliability/durash-reliability-loop/src/index.ts)
 
 ## Loadable plugins with no config
 
@@ -3514,7 +3515,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@durash/dsh-client-ui-brand` ([`packages/client/ui-brand-durash/src/index.ts`](../packages/client/ui-brand-durash/src/index.ts))
 - `@durash/dsh-client-ui-reliability` ([`packages/client/ui-reliability/src/index.ts`](../packages/client/ui-reliability/src/index.ts))
 - `@durash/dsh-reliability-policy` — requires `storageDomain` · `llm` ([`packages/reliability/durash-reliability-policy/src/index.ts`](../packages/reliability/durash-reliability-policy/src/index.ts))
-- `@durash/dsh-tool-reliability` — requires `tools` · `systemPrompt` · `agents` · `reliabilityPolicy` · `reliabilityLoopRuntime` ([`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts))
+- `@durash/dsh-tool-reliability` — requires `tools` · `systemPrompt` · `agents` · `sessionProjections` · `reliabilityPolicy` · `reliabilityLoopRuntime` ([`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts))
 
 ## Seam packages (not directly loadable)
 

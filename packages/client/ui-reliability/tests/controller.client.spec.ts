@@ -16,6 +16,7 @@ function snapshot(over: Partial<ReliabilityPolicySnapshot> = {}): ReliabilityPol
     reviewThinking: 'xhigh',
     updatedAt: 1,
     models: [],
+    validationError: null,
     ...over,
   }
 }
@@ -37,7 +38,7 @@ describe('ReliabilityPolicyController', () => {
       provider: 'deepseek-official',
       model: 'deepseek-v4-pro',
       badges: [],
-      thinkingLevels: ['high'],
+      reasoningEfforts: [{ id: 'high', name: 'High', isDefault: true }],
     }] })
     remote.policy.mockResolvedValueOnce({ ok: true as const, value: catalogOnly })
     remote.ensurePolicy.mockResolvedValueOnce({ ok: true as const, value: snapshot() })

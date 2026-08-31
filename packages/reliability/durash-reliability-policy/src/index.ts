@@ -7,6 +7,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
@@ -19,7 +20,6 @@ import type {
   ReliabilityPolicyConfigureRequest,
   ReliabilityPolicyRequest,
   ReliabilityPolicySnapshot,
-  ReliabilityThinking,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -31,11 +31,6 @@ declare module '@deepseek-ai/cordis' {
     reliabilityPolicy: ReliabilityPolicyService
   }
 }
-
-/** Effort levels the switch offers until the workflow engine applies `effort`. */
-export const RELIABILITY_THINKING_LEVELS: readonly ReliabilityThinking[] = Object.freeze([
-  'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max',
-])
 
 const PROVIDER_LABELS: Readonly<Record<string, string>> = Object.freeze({
   anthropic: 'Anthropic',
@@ -49,7 +44,11 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = Object.freeze({
   zai: 'Z.AI',
 })
 
-/** Split a persisted `provider/model` selector on the first slash. */
+/**
+ * Split a persisted `provider/model` selector on the first slash.
+ * @param selector - exact persisted route selector.
+ * @returns parsed provider and model route.
+ */
 export function parseLaneSelector(selector: string): ReliabilityLaneRoute {
   const slash = selector.indexOf('/')
   if (slash <= 0 || slash === selector.length - 1) {
@@ -79,6 +78,57 @@ function emptyRow(sessionId: SessionId, now: number): ReliabilityPolicyRow {
     reviewThinking: null,
     updatedAt: now,
   }
+}
+
+/** Select the requested lane default from one exact-model capability record. */
+function preferredEffort(
+  model: ReliabilityModelOption | undefined,
+  preferred: string,
+): string | null {
+  if (model === undefined || model.reasoningEfforts.length === 0) return null
+  const requested = model.reasoningEfforts.find(effort => effort.id === preferred)
+  if (requested !== undefined) return requested.id
+  const adapterDefault = model.reasoningEfforts.find(effort => effort.isDefault)
+  return adapterDefault?.id ?? model.reasoningEfforts[0]?.id ?? null
+}
+
+/** Validate one saved lane against the current exact-model directory. */
+function laneValidation(
+  label: 'implementation' | 'review',
+  selector: string | null,
+  effort: string | null,
+  models: readonly ReliabilityModelOption[],
+): string | undefined {
+  if (selector === null) return `select an ${label} model before enabling the workflow`
+  const model = models.find(option => option.selector === selector)
+  if (model === undefined) return `${label} model '${selector}' is not in the current catalog`
+  if (model.reasoningEfforts.length === 0) {
+    if (effort !== null) return `${label} model '${selector}' does not expose reasoning efforts`
+    return undefined
+  }
+  if (effort === null) return `select an ${label} reasoning effort before enabling the workflow`
+  if (!model.reasoningEfforts.some(option => option.id === effort)) {
+    return `${label} model '${selector}' does not support reasoning effort '${effort}'`
+  }
+  return undefined
+}
+
+/** Validate both lanes of an enabled policy candidate. */
+function enabledValidation(
+  row: Pick<ReliabilityPolicyRow, 'implementationModel' | 'implementationThinking' | 'reviewModel' | 'reviewThinking'>,
+  models: readonly ReliabilityModelOption[],
+): string | undefined {
+  return laneValidation('implementation', row.implementationModel, row.implementationThinking, models)
+    ?? laneValidation('review', row.reviewModel, row.reviewThinking, models)
+}
+
+/** Report saved directory drift without changing the durable row. */
+function savedValidation(
+  row: ReliabilityPolicyRow,
+  models: readonly ReliabilityModelOption[],
+): string | undefined {
+  if (!row.enabled && row.implementationModel === null && row.reviewModel === null) return undefined
+  return enabledValidation(row, models)
 }
 
 /**
@@ -125,18 +175,28 @@ export class ReliabilityPolicyService extends TypertRemoteService {
    * @param sessionId - exact Session identity.
    * @returns both lanes, or `undefined` when the policy is off or incomplete.
    */
-  enabledRoutes(sessionId: SessionId): {
+  async enabledRoutes(sessionId: SessionId): Promise<{
     readonly implementation: ReliabilityLaneRoute
     readonly review: ReliabilityLaneRoute
-  } | undefined {
+  } | undefined> {
     const row = this.table?.get(sessionId)
-    if (row === undefined || !row.enabled
-      || row.implementationModel === null || row.reviewModel === null) {
-      return undefined
-    }
+    if (row === undefined || !row.enabled) return undefined
+    const models = await this.enabledDirectory(row)
+    const error = enabledValidation(row, models)
+    if (error !== undefined) throw new Error(`reliability policy is invalid: ${error}`)
+    /* v8 ignore next -- enabledValidation guarantees both selectors. */
+    const implementation = parseLaneSelector(row.implementationModel ?? '')
+    /* v8 ignore next -- enabledValidation guarantees both selectors. */
+    const review = parseLaneSelector(row.reviewModel ?? '')
     return {
-      implementation: parseLaneSelector(row.implementationModel),
-      review: parseLaneSelector(row.reviewModel),
+      implementation: {
+        ...implementation,
+        ...row.implementationThinking === null ? {} : { reasoningEffort: ReasoningEffortId(row.implementationThinking) },
+      },
+      review: {
+        ...review,
+        ...row.reviewThinking === null ? {} : { reasoningEffort: ReasoningEffortId(row.reviewThinking) },
+      },
     }
   }
 
@@ -170,18 +230,9 @@ export class ReliabilityPolicyService extends TypertRemoteService {
   configure(request: ReliabilityPolicyConfigureRequest): Promise<ReliabilityPolicySnapshot> {
     return this.queue(request.sessionId, async () => {
       const models = await this.modelDirectory()
-      const known = new Set(models.map(model => model.selector))
       if (request.enabled) {
-        if (request.implementationModel === null || request.implementationThinking === null
-          || request.reviewModel === null || request.reviewThinking === null) {
-          throw new Error('select both implementation and review models before enabling the workflow')
-        }
-        if (!known.has(request.implementationModel)) {
-          throw new Error(`implementation model '${request.implementationModel}' is not in the current catalog`)
-        }
-        if (!known.has(request.reviewModel)) {
-          throw new Error(`review model '${request.reviewModel}' is not in the current catalog`)
-        }
+        const error = enabledValidation(request, models)
+        if (error !== undefined) throw new Error(error)
       }
       const current = this.requireTable().get(request.sessionId) ?? emptyRow(request.sessionId, Date.now())
       const next: ReliabilityPolicyRow = {
@@ -220,13 +271,6 @@ export class ReliabilityPolicyService extends TypertRemoteService {
         }
       }
       const row = stored ?? emptyRow(sessionId, 0)
-      if (row.enabled && (row.implementationModel === null || row.reviewModel === null
-        || !models.some(model => model.selector === row.implementationModel)
-        || !models.some(model => model.selector === row.reviewModel))) {
-        const disabled: ReliabilityPolicyRow = { ...row, enabled: false, revision: row.revision + 1, updatedAt: Date.now() }
-        await table.put(sessionId, disabled)
-        return this.project(disabled, models)
-      }
       return this.project(row, models)
     })
   }
@@ -235,46 +279,96 @@ export class ReliabilityPolicyService extends TypertRemoteService {
   private withDefaults(row: ReliabilityPolicyRow, models: readonly ReliabilityModelOption[]): ReliabilityPolicyRow {
     const first = models[0]
     if (first === undefined) return row
-    const preferredImplement = first.thinkingLevels.includes('high') ? 'high' : (first.thinkingLevels[0] ?? null)
-    const preferredReview = first.thinkingLevels.includes('xhigh')
-      ? 'xhigh'
-      : (first.thinkingLevels.includes('high') ? 'high' : (first.thinkingLevels[0] ?? null))
+    const implementationModel = row.implementationModel ?? first.selector
+    const reviewModel = row.reviewModel ?? first.selector
+    const implementationOption = models.find(model => model.selector === implementationModel)
+    const reviewOption = models.find(model => model.selector === reviewModel)
     return {
       ...row,
-      implementationModel: row.implementationModel ?? first.selector,
-      implementationThinking: row.implementationThinking ?? preferredImplement,
-      reviewModel: row.reviewModel ?? first.selector,
-      reviewThinking: row.reviewThinking ?? preferredReview,
+      implementationModel,
+      implementationThinking: row.implementationThinking
+        ?? preferredEffort(implementationOption, 'high'),
+      reviewModel,
+      reviewThinking: row.reviewThinking
+        ?? preferredEffort(reviewOption, 'xhigh'),
     }
   }
 
   /** Rebuild the picker directory from every registered LLM provider. */
   private async modelDirectory(): Promise<readonly ReliabilityModelOption[]> {
     const providers = this.ctx.llm.listProviders()
-    const options: ReliabilityModelOption[] = []
-    for (const provider of providers) {
+    const groups = await Promise.all(providers.map(async (provider) => {
       let models: Awaited<ReturnType<typeof this.ctx.llm.listModels>>
       try {
         models = await this.ctx.llm.listModels(provider.id)
       } catch {
-        continue
+        return []
       }
-      for (const model of models) {
-        const channel = provider.id === 'cursor' ? 'Cursor' : 'DuraSH'
-        options.push({
-          selector: `${provider.id}/${model.id}`,
-          label: model.name,
-          provider: provider.id,
-          model: model.id,
-          badges: [
-            { kind: 'channel', label: channel },
-            { kind: 'provider', label: providerLabel(provider.id) },
-          ],
-          thinkingLevels: RELIABILITY_THINKING_LEVELS,
-        })
+      const options = await Promise.all(models.map(async (model) => {
+        let resolved: Awaited<ReturnType<typeof this.ctx.llm.resolveModelInfo>>
+        try {
+          resolved = await this.ctx.llm.resolveModelInfo(provider.id, model.id)
+        } catch {
+          return undefined
+        }
+        return this.modelOption(provider.id, model.id, resolved)
+      }))
+      return options.filter(option => option !== undefined)
+    }))
+    return groups.flat()
+  }
+
+  /** Resolve only the two selected routes before a model-facing handoff. */
+  private async enabledDirectory(row: ReliabilityPolicyRow): Promise<readonly ReliabilityModelOption[]> {
+    const selectors = [...new Set([row.implementationModel, row.reviewModel]
+      .filter((selector): selector is string => selector !== null))]
+    const listings = new Map<string, Promise<Awaited<ReturnType<typeof this.ctx.llm.listModels>>>>()
+    const options = await Promise.all(selectors.map(async (selector) => {
+      let route: ReliabilityLaneRoute
+      try {
+        route = parseLaneSelector(selector)
+      } catch {
+        return undefined
       }
+      let listing = listings.get(route.provider)
+      if (listing === undefined) {
+        listing = this.ctx.llm.listModels(route.provider)
+        listings.set(route.provider, listing)
+      }
+      try {
+        if (!(await listing).some(model => model.id === route.model)) return undefined
+        const resolved = await this.ctx.llm.resolveModelInfo(route.provider, route.model)
+        return this.modelOption(route.provider, route.model, resolved)
+      } catch {
+        return undefined
+      }
+    }))
+    return options.filter(option => option !== undefined)
+  }
+
+  /** Project one exact adapter capability record into a picker option. */
+  private modelOption(
+    provider: string,
+    model: string,
+    resolved: Awaited<ReturnType<typeof this.ctx.llm.resolveModelInfo>>,
+  ): ReliabilityModelOption {
+    const channel = provider === 'cursor' ? 'Cursor' : 'DuraSH'
+    return {
+      selector: `${provider}/${model}`,
+      label: resolved.name,
+      provider,
+      model,
+      badges: [
+        { kind: 'channel', label: channel },
+        { kind: 'provider', label: providerLabel(provider) },
+      ],
+      reasoningEfforts: (resolved.reasoning?.efforts ?? []).map(effort => ({
+        id: String(effort.id),
+        name: effort.name,
+        ...effort.description === undefined ? {} : { description: effort.description },
+        isDefault: effort.id === resolved.reasoning?.defaultEffort,
+      })),
     }
-    return options
   }
 
   private project(row: ReliabilityPolicyRow, models: readonly ReliabilityModelOption[]): ReliabilityPolicySnapshot {
@@ -288,13 +382,18 @@ export class ReliabilityPolicyService extends TypertRemoteService {
       reviewThinking: row.reviewThinking,
       updatedAt: row.updatedAt,
       models,
+      validationError: savedValidation(row, models) ?? null,
     }
   }
 
   private queue<T>(sessionId: SessionId, work: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(sessionId) ?? Promise.resolve()
     const current = previous.catch(() => undefined).then(work)
-    this.tails.set(sessionId, current.then(() => undefined, () => undefined))
+    const tail = current.then(() => undefined, () => undefined)
+    this.tails.set(sessionId, tail)
+    void tail.finally(() => {
+      if (this.tails.get(sessionId) === tail) this.tails.delete(sessionId)
+    })
     return current
   }
 

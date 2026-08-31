@@ -1,5 +1,5 @@
 ---
-description: "The DuraSH reliability loop: one bounded implement-review-rework cycle with product-owned durable state, restart recovery, and cancellation quiescence over ctx.workflowEngine."
+description: "The Host-owned DuraSH reliability loop: fast durable handoff, one bounded implement-review-rework cycle, restart recovery, Session status, and explicit cancellation over ctx.workflowEngine."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-reliability-loop` runs one bounded reliability cycle: a fresh implementation child, a fresh review child, and — when the reviewer requests changes — exactly one rework pass and re-review, after which the loop stops `completed` or `blocked`. The loop is DuraSH's first product-owned reliability-engine slice: its state machine is one durable record in the `reliability-loop` storage domain, every stage executes as an ordinary run on `ctx.workflowEngine`, and the runtime owns only the record, the bounds, and the sequencing. A restart resumes from the record's first unsettled stage without re-running settled attempts; cancellation reaches quiescence, leaving a terminal record and no live owner.
+`dsh-reliability-loop` owns one bounded background reliability cycle: a fresh implementation child, a fresh independent review child, and — when requested — exactly one rework and re-review. `startDetached()` persists an `accepted` record and returns before a stage settles. The Host then owns execution independently of the initiating model turn, tool signal, and browser connection. One version-2 record in the `reliability_loop` storage domain is the execution truth; `reliability-loop/change` events are whole-value Session projections for the status dock and one terminal Conversation result. Host teardown suspends work for recovery; only explicit authenticated cancellation writes `cancelled`.
 
 ## Table of Contents
 
@@ -29,11 +29,13 @@ Start a loop when work must be certified by an independent review before it coun
 
 ### Starting, observing, and cancelling
 
-`ctx.reliabilityLoopRuntime.start({ parent, objective })` writes the loop's durable record first (stage `implementing`) and returns a handle. The handle's `result` settles with the terminal record; `cancel(reason?)` stops the in-flight stage run and settles `cancelled`; `dispose()` cancels if needed and awaits durable settlement plus run disposal. A settled attempt is kept even when a later cancellation lands.
+`ctx.reliabilityLoopRuntime.startDetached({ parent, objective, implementation, review })` validates the exact live root Agent, persists the complete lanes at revision 1 and stage `accepted`, claims the single driver, publishes Session status, and returns `{ loopId, revision, status: 'accepted' }`. A concurrent start for that Session returns the existing active ref instead of creating a second writer.
+
+`details`, `cancel`, and `dismiss` are authenticated Typert Remotes. Each checks the exact live Agent, Session ownership, and loop id. Mutating `cancel` and `dismiss` additionally require the current revision; read-only `details` returns the latest owned record so a terminal Conversation node still works after its dock is dismissed. Cancellation waits for workflow worker and child disposal before returning the terminal view; dismissal hides only the currently visible terminal record and never deletes history.
 
 ### Restart recovery
 
-The record is the single authoritative state. After a process restart, `resume(loopId, parent)` drives the state machine from the record's current stage: settled implementation summaries and review verdicts are never re-run; the first unsettled stage re-runs exactly once, because one live driver owns one loop and a second `resume` on the same loop fails loud. `list()` and `get()` project the durable records.
+The record is the single authoritative execution state. When a root Agent is created, the runtime adopts its one non-terminal record, republishes any missing derived Session state, and re-runs only the first unsettled stage. Settled reports are retained. Host or Agent teardown suspends the current run without changing the non-terminal stage; it never impersonates user cancellation.
 
 ### Stages and the bounded rework
 
@@ -63,26 +65,28 @@ This section explains how the state machine, durability, and lifecycle are split
 
 ### Design concept
 
-One loop is one record: the `loops` table of the `reliability-loop` domain holds the whole state machine, so every transition is a single-record durable write and the record is the only thing recovery reads. The `workflow/*` events stay observe-only; the driver derives transitions from the run handle it owns (`run.result`), so a stage has exactly one live fact source. The record's stage and its settled attempt slots are asserted by the `./invariant` companion at every read and write site.
+One loop is one version-2 record: the `loops` table of the `reliability_loop` domain holds Session ownership, a positive revision, both immutable lanes, both rounds, stage, and lifecycle times. Every transition replaces that record once. `workflow/*` events stay observe-only; the driver derives transitions from its `run.result`. The Session event is a derived display projection and is never read to advance execution.
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Service entry: start/resume single ownership, config, teardown ordering |
-| [`src/types.ts`](src/types.ts) | Vocabulary: loop id, stages, attempt slots, record, handle |
+| [`src/index.ts`](src/index.ts) | Host runtime: detached start, adoption, Remotes, projection publication, teardown ordering |
+| [`src/types.ts`](src/types.ts) | Client-safe identity, lanes, records, status, details, and terminal notice vocabulary |
 | [`src/spec.ts`](src/spec.ts) | The `defineDomain` declaration and zod schemas |
 | [`src/scripts.ts`](src/scripts.ts) | Fixed stage scripts, prompt builders, report validation |
-| [`src/driver.ts`](src/driver.ts) | The per-loop owner: stage machine, run lifecycle, cancel, quiescence |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion: stage/slot coherence |
+| [`src/driver.ts`](src/driver.ts) | The per-loop writer: stage machine, terminal/suspended settlement, run lifecycle |
+| [`src/projection.ts`](src/projection.ts) | Whole-value Session projection with revision rollback rejection |
+| [`src/client.ts`](src/client.ts) | Browser-safe Typert Remote declaration |
+| [`src/invariant.ts`](src/invariant.ts) | Invariant companion: stage/round coherence |
 
 ### Lifecycle and ownership
 
-One live driver owns one loop; the runtime enforces it and refuses double ownership loud. Effects unwind in reverse registration order, so teardown awaits every live driver's quiescence before the domain closes — no terminal write lands on a closed medium. The driver owns no timers and no global listeners: after `result` settles, the last run is disposed and the record is terminal, so cancellation converges instead of leaving a background writer.
+One live driver owns one loop. The runtime observes every driver result before starting it, so stage, provider, worker, and storage failures cannot become unhandled rejections that terminate the Host. Explicit user cancellation and Host suspension are different settlement modes: cancellation writes one terminal after quiescence; suspension disposes the current run and leaves its durable stage recoverable. Teardown stops all drivers and drains mutations before the domain closes.
 
 ### Failure discipline
 
-`result` rejects only when the durable record cannot be maintained (a storage fault or an invariant breach); every loop-internal failure lands in the record as `failed`. A `cancelled` run outcome without a local cancel request is a contract violation and stops the loop `failed` rather than being mistaken for a caller cancellation.
+Every loop-internal failure lands in the record as `failed`, including child failure, workflow error, worker death, invalid reports, and provider cancellation without a local stop request. A derived Session append failure cannot roll back the already committed domain record; Agent adoption reconciles the missing projection later.
 
 </details>
 
@@ -125,6 +129,6 @@ No direct invalidation; the workflow engine and the subagent providers own any r
 
 This Dev Note is working context for maintainers: open directions that are not decided. It is explicitly non-authoritative — shipped behavior, limits, and accepted rationale live in the sections above, the package code, and the linked Agent Notes.
 
-Deferred directions: member-level progress projection over `workflow/agent-*`; applying stored thinking effort to stage children; `needs_replan` round vocabulary on top of the blocked stage; and multi-attempt attempt slots if the single rework bound ever generalizes.
+Deferred directions: member-level durable workflow progress, `needs_replan` vocabulary above the blocked stage, multi-path review aggregation, and multi-attempt records if the single rework bound ever generalizes.
 
 </details>

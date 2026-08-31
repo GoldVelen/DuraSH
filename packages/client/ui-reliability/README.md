@@ -1,5 +1,5 @@
 ---
-description: "Composer workflow switch: the conversation.input.left chip that enables the reliability loop and picks implementation and review models."
+description: "DuraSH reliability UI: exact-model workflow policy, the conversation.input.dock status bar, authenticated controls, and one terminal Conversation Node."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package renders the composer **Workflow** on/off chip. Opening it shows the next-workflow settings: implementation model and effort, review model and effort, over the Host reliability-policy catalog. The chip occupies `conversation.input.left` and writes only through the generated `reliabilityPolicy` Remote. It composes only into the `durash` client profile.
+This package renders the DuraSH reliability controls. The **Workflow** chip in `conversation.input.left` selects exact implementation/review models and each model's supported reasoning effort. `ReliabilityStatusDock` occupies `conversation.input.dock` at order `-10`, stays absent with no current view, and shows the persisted stage above the composer. Authenticated details, cancel, and dismiss actions use the generated loop Remote. A stable loop-id Conversation Node renders one terminal result without live telemetry or another model call.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ This package renders the composer **Workflow** on/off chip. Opening it shows the
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this plugin with the conversation input-left list and the reliability-policy Remote. The chip is always visible in a Session composer. Off is the default; turning it on requires both lanes to name catalog models.
+Mount this plugin with the conversation, chat, Session, locale, slots, and generated policy/loop Remotes. The policy chip is always visible in a Session composer. Off is the default; enabling requires both lanes and only the effort ids offered by each exact model. The status dock renders only while the Session projection has a current loop.
 
 -----
 
@@ -35,7 +35,9 @@ Mount this plugin with the conversation input-left list and the reliability-poli
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-A process-wide controller caches per-Session snapshots. The dock loads on mount, ensures the catalog when the panel opens, and refuses to enable an incomplete selection. The panel is body-portaled and anchored above the composer through the shared positioning primitives; effort uses the shared portaled `Menu`, and the model directory has its own body portal so the panel's scroll region cannot clip either choice surface. Model listing is grouped by provider; a Cursor channel switch appears only when a `cursor` provider is in the catalog.
+A process-wide controller caches per-Session policy snapshots. The policy chip loads on mount, ensures the live catalog when its panel opens, preserves invalid saved choices with a visible error, and refuses to enable them. Model listing is grouped by provider; an effort menu appears only when the selected model exposes reasoning controls.
+
+The status dock reads `reliabilityLoop` from the active Session projection. It renders all nine stages, a single-line objective summary, a polite live region, keyboard focus, reduced-motion behavior, and a narrow layout that hides the summary before the actions. Details are loaded on demand. Cancel requires a second confirmation; dismiss uses the exact visible revision. The terminal definition ignores non-terminal events and keys each node by loop id.
 
 </details>
 
@@ -46,7 +48,8 @@ A process-wide controller caches per-Session snapshots. The dock loads on mount,
 
 - [Reliability policy](../../reliability/durash-reliability-policy/README.md) — Host row the chip reads and writes.
 - [Reliability handoff tool](../../reliability/durash-tool-reliability/README.md) — model-facing entry the switch gates.
-- [ui-conversation](../ui-conversation/README.md) — declares `conversation.input.left`.
+- [ui-conversation](../ui-conversation/README.md) — declares the input slots and Conversation Node engine.
+- [Reliability loop](../../reliability/durash-reliability-loop/README.md) — owns the projected status and authenticated controls.
 
 -----
 
@@ -64,7 +67,6 @@ Enabling or disabling the switch changes whether the handoff guidance section is
 <a id="known-limitations-and-deferred-work"></a>
 
 - **No Runs console** — 3081's sidebar Runs history is not part of this switch; diagnostics stay in the reliability-loop records.
-- **Effort is stored, not applied** — the panel records thinking levels that the current workflow engine does not yet pass to stage children.
 
 <a id="dev-note"></a>
 ### Dev Note

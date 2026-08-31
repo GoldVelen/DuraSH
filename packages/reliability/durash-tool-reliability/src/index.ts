@@ -1,7 +1,5 @@
 /**
- * Model-facing foreground handoff into the DuraSH reliability loop. The tool
- * is registered process-wide and fails closed unless this Session's composer
- * switch is on.
+ * Model-facing fast handoff into the Host-owned DuraSH reliability loop.
  * @module @durash/dsh-tool-reliability
  */
 
@@ -9,54 +7,41 @@ import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolRunContext } from '@deepseek-ai/dsh-tools'
-import type { ReliabilityLoopRecord } from '@durash/dsh-reliability-loop'
-import type {} from '@durash/dsh-reliability-policy'
 import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@durash/dsh-reliability-loop'
+import type {} from '@durash/dsh-reliability-policy'
 
 export const name = 'tool-reliability'
-export const inject = ['tools', 'systemPrompt', 'agents', 'reliabilityPolicy', 'reliabilityLoopRuntime']
+export const inject = [
+  'tools',
+  'systemPrompt',
+  'agents',
+  'sessionProjections',
+  'reliabilityPolicy',
+  'reliabilityLoopRuntime',
+]
 
 const TOOL_NAME = 'dsh_reliability_handoff'
 const SECTION_ORDER = 2650
-const COMPACT_SUMMARY_CHARS = 800
 
-const DESCRIPTION = 'After presenting the implementation plan in the ordinary assistant response, hand the '
-  + 'current objective to the enabled reliability loop and wait for one implementation stage, one '
-  + 'independent review, and at most one rework pass to reach a terminal result. Supply the complete '
-  + 'objective. This is a foreground call: do not poll or repeat the same handoff while it is pending.'
+const DESCRIPTION = 'After presenting the implementation plan in the ordinary assistant response, persist '
+  + 'the complete objective for the enabled reliability workflow. The Host runs implementation, independent '
+  + 'review, and at most one rework pass in the background. This call returns immediately after durable '
+  + 'acceptance. Do not poll or repeat it; progress appears above the composer.'
 
-const GUIDANCE = 'For this Session the reliability loop is enabled. This tool is the only implementer '
-  + 'dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another '
-  + 'model or agent. Analyze the human request, present a concise implementation plan in the same Step, '
-  + 'then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only '
-  + 'review stay on this Session and do not hand off. The call remains in the current model turn until '
-  + 'the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain '
-  + 'that result to the human. If the workflow is disabled, the tool fails closed.'
+const GUIDANCE = 'For this Session the reliability workflow is enabled. Analyze the direct human request, '
+  + 'present a concise implementation plan in the same Step, then call dsh_reliability_handoff once with the '
+  + 'complete objective. The call returns a durable acceptance receipt; implementation and review continue '
+  + 'under Host ownership after this model turn ends. Do not poll, repeat the handoff, or narrate live telemetry. '
+  + 'The composer status bar shows progress and the conversation receives one persistent terminal result. '
+  + 'Ordinary questions and read-only review stay on this Session and do not hand off.'
 
 interface HandoffArgs {
   readonly objective: string
 }
 
-function compactText(value: string, maxChars: number): string {
-  const normalized = value.replace(/\s+/gu, ' ').trim()
-  const characters = Array.from(normalized)
-  if (characters.length <= maxChars) return normalized
-  return `${characters.slice(0, Math.max(0, maxChars - 1)).join('')}…`
-}
-
-function compactRecord(record: ReliabilityLoopRecord) {
-  const summary = record.stage === 'completed'
-    ? (record.implement?.summary ?? record.review?.feedback ?? 'completed')
-    : record.stage === 'blocked'
-      ? (record.review?.feedback ?? 'blocked')
-      : record.error ?? record.stage
-  return {
-    status: record.stage,
-    summary: compactText(summary, COMPACT_SUMMARY_CHARS),
-    ...record.review === undefined ? {} : { verdict: record.review.verdict },
-  }
-}
-
+/** Authenticate the exact live root and the initiating message of its current open turn. */
 function requireRootHandoff(ctx: Context, exec: ToolRunContext) {
   const agent = exec.agent
   if (agent === undefined) {
@@ -69,15 +54,23 @@ function requireRootHandoff(ctx: Context, exec: ToolRunContext) {
       'RELIABILITY_TOOL_DRIVER_REQUIRED',
     )
   }
-  const human = agent.session.events.some(event =>
-    event.type === 'user/message' && event.data.source.kind === 'user')
-  if (!human) {
-    throw new HarnessError(`${TOOL_NAME} requires a direct human turn on a top-level agent`, 'RELIABILITY_TOOL_HUMAN_REQUIRED')
+  const boundary = ctx.sessionProjections.stateOf(agent.session, 'turnBoundary')
+  if (boundary === undefined || boundary.openTurnStartSeq === null) {
+    throw new HarnessError(`${TOOL_NAME} requires an open model turn`, 'RELIABILITY_TOOL_DRIVER_REQUIRED')
+  }
+  const initiating = agent.session.events
+    .slice(boundary.openTurnStartSeq + 1)
+    .find(event => event.type === 'user/message')
+  if (initiating?.type !== 'user/message' || initiating.data.source.kind !== 'user') {
+    throw new HarnessError(
+      `${TOOL_NAME} requires the current root turn to originate from direct human input`,
+      'RELIABILITY_TOOL_HUMAN_REQUIRED',
+    )
   }
   return agent
 }
 
-/** Loader entrypoint: contribute the gated reliability handoff tool. */
+/** Loader entrypoint: contribute the policy-gated background handoff. */
 export function apply(ctx: Context): void {
   ctx.systemPrompt.section({
     name: 'tool:reliability-handoff',
@@ -105,9 +98,9 @@ export function apply(ctx: Context): void {
         type: 'object',
         additionalProperties: false,
         properties: {
-          status: { type: 'string', required: true },
-          summary: { type: 'string', required: true },
-          verdict: { type: 'string' },
+          loopId: { type: 'string', required: true },
+          revision: { type: 'number', required: true },
+          status: { type: 'string', enum: ['accepted'], required: true },
         },
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -118,30 +111,23 @@ export function apply(ctx: Context): void {
         throw new HarnessError(`${TOOL_NAME} requires a non-empty objective`, 'RELIABILITY_TOOL_INVALID_OBJECTIVE')
       }
       const agent = requireRootHandoff(ctx, exec)
-      const routes = ctx.reliabilityPolicy.enabledRoutes(agent.id)
+      const routes = await ctx.reliabilityPolicy.enabledRoutes(agent.id)
       if (routes === undefined) {
         throw new HarnessError(
-          'Reliability loop is unavailable for this Session. Turn on the composer workflow switch and pick both models.',
+          'Reliability workflow is unavailable for this Session. Enable it and select both stage models.',
           'RELIABILITY_TOOL_DISABLED',
         )
       }
-      const handle = await ctx.reliabilityLoopRuntime.start({
+      return ctx.reliabilityLoopRuntime.startDetached({
         parent: agent,
         objective,
         implementation: routes.implementation,
         review: routes.review,
       })
-      exec.signal.addEventListener('abort', () => { handle.cancel('reliability handoff cancelled') }, { once: true })
-      try {
-        const record = await handle.result
-        return compactRecord(record)
-      } finally {
-        await handle.dispose()
-      }
     },
     presentCall: (args: HandoffArgs) => ({
       card: 'generic',
-      title: 'Reliability loop',
+      title: 'Reliability workflow',
       kind: 'execute',
       rawInput: args.objective,
     } satisfies GenericCallView),

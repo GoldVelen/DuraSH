@@ -2,249 +2,49 @@
 
 English | [中文](reliability-loop.zh.md)
 
-[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) owns DuraSH's first reliability-engine slice: one bounded implement-review-rework cycle driven over the workflow seam, with the loop's whole state machine held as one durable record in the `reliability_loop` storage domain. It composes only into the `durash` profile, registers no tools or prompt sections, and contributes no model context of its own.
+[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) is DuraSH's Host-owned bounded delivery engine. It persists one implementation lane, one independent review lane, and at most one rework in the `reliability_loop` storage domain. It composes only into the `durash` profile and uses the generic [workflow subsystem](workflow.md) for every stage.
 
 Source: [`packages/reliability/durash-reliability-loop/src/types.ts`](../../packages/reliability/durash-reliability-loop/src/types.ts)
 
-## Public types
+## Fast handoff
 
-```ts type-equiv
-/** Identifies one reliability loop across restarts (runtime-minted UUID). */
-type ReliabilityLoopId = Branded<'ReliabilityLoopId'>
-```
+`startDetached()` authenticates the exact live root Agent, persists a version-2 record at stage `accepted`, claims the one live driver, publishes the current Session view, and returns `{ loopId, revision, status: 'accepted' }` before any implementation, review, or rework stage settles. The initiating model turn, tool signal, code-runtime limit, and browser connection do not own the loop after acceptance. A second start for the same Session returns the existing active ref instead of starting another writer.
 
-```ts type-equiv
-/** One attempt's round: `1` is the original pass, `2` the single bounded rework. */
-type LoopRound = 1 | 2
-```
+The model-facing [`dsh_reliability_handoff`](../../packages/reliability/durash-tool-reliability/README.md) accepts only the current direct-human root turn. It reads complete implementation and review lanes from the Session policy and returns the fast receipt; it never awaits terminal state or maps its abort signal into loop cancellation.
 
-```ts type-equiv
-/** Why a reviewer's report accepted or rejected an implementation. */
-type ReviewVerdict = 'approved' | 'changes-requested'
-```
+## Durable state and stages
 
-```ts type-equiv
-/**
- * Durable loop stage. CLOSED union (runtime-owned, callers may exhaust). The
- * four `-ing` stages each name one workflow run the loop is — or was, before
- * a restart — executing; the four terminal stages are final. `blocked` stops
- * the loop after the bounded rework still drew `changes-requested`; the
- * settled round-2 review attempt carries the durable blocker.
- */
-type ReliabilityLoopStage =
-  | 'implementing'
-  | 'reviewing'
-  | 'rework-implementing'
-  | 'rework-reviewing'
-  | 'completed'
-  | 'blocked'
-  | 'failed'
-  | 'cancelled'
-```
+One row is the sole execution truth. It contains the owning Session, positive revision, complete objective, immutable provider/model/reasoning-effort lanes, both rounds of bounded reports, current stage, lifecycle times, and optional terminal error or dismissal. The domain schema version is 2. Pre-release version 1 media is rejected rather than guessed or rewritten.
 
-```ts type-equiv
-/** One settled implementation attempt. */
-interface ImplementAttempt {
-  /** Which pass produced it. */
-  readonly round: LoopRound
-  /** The implementer's bounded work summary. */
-  readonly summary: string
-  /** How many `agent()` calls the stage run accepted. */
-  readonly agentsStarted: number
-}
-```
+Stages are `accepted`, `implementing`, `reviewing`, `rework-implementing`, `rework-reviewing`, `completed`, `blocked`, `failed`, and `cancelled`. A first `changes-requested` review enters one rework; a second enters `blocked`. A stage child starts fresh with only the bounded objective or report handoff. `maxHandoffChars` defaults to 16384 and rejects oversized input instead of truncating it.
 
-```ts type-equiv
-/** One settled review attempt. */
-interface ReviewAttempt {
-  /** Which pass produced it. */
-  readonly round: LoopRound
-  /** The reviewer's decision. */
-  readonly verdict: ReviewVerdict
-  /** The reviewer's evidence; a `changes-requested` verdict names the required modifications. */
-  readonly feedback: string
-  /** How many `agent()` calls the stage run accepted. */
-  readonly agentsStarted: number
-}
-```
+## Ownership, suspension, and cancellation
 
-```ts type-equiv
-/**
- * The durable record of one loop — the single authoritative state. Optional
- * slots name `| undefined` explicitly because the zod durable-boundary schema
- * produces that shape and the repo compiles with `exactOptionalPropertyTypes`.
- * Stage semantics (which attempt slots must be settled for which stage) are
- * owned by the runtime and asserted by the `./invariant` companion.
- */
-interface ReliabilityLoopRecord {
-  /** The loop's id. */
-  readonly loopId: ReliabilityLoopId
-  /** What the implementation must achieve, verbatim from the caller. */
-  readonly objective: string
-  /** Creation instant, ISO-8601. */
-  readonly createdAt: string
-  /** Current stage. */
-  readonly stage: ReliabilityLoopStage
-  /** The settled implementation attempt, when one has completed. */
-  readonly implement?: ImplementAttempt | undefined
-  /** The settled review attempt, when one has completed. */
-  readonly review?: ReviewAttempt | undefined
-  /** Settlement instant, ISO-8601; present iff `stage` is terminal. */
-  readonly settledAt?: string | undefined
-  /** Failure detail; present iff `stage` is `failed`. */
-  readonly error?: string | undefined
-  /** Implementation-stage provider route, when the caller selected one. */
-  readonly implementationProvider?: string | undefined
-  /** Implementation-stage model id, when the caller selected one. */
-  readonly implementationModel?: string | undefined
-  /** Review-stage provider route, when the caller selected one. */
-  readonly reviewProvider?: string | undefined
-  /** Review-stage model id, when the caller selected one. */
-  readonly reviewModel?: string | undefined
-}
-```
+One `LoopDriver` is the single live writer for one loop. The runtime attaches its result observer before driving, so provider, child, workflow-worker, report, and storage failures are contained and cannot become unhandled Host-level rejections. Loop-internal failures become a durable `failed` record whenever the record can still be maintained.
 
-```ts type-equiv
-/** What a caller asks for when starting one loop. */
-interface ReliabilityLoopStartRequest {
-  /** The agent on whose behalf the loop runs (parent of every stage child). */
-  parent: Agent
-  /** What the implementation must achieve; bounded by `maxHandoffChars`. */
-  objective: string
-  /** Implementation-stage child route; omitted children inherit the parent. */
-  implementation?: ReliabilityLoopLane
-  /** Review-stage child route; omitted children inherit the parent. */
-  review?: ReliabilityLoopLane
-}
-```
+Host or owning-Agent teardown calls `suspend`: it cancels and disposes the current workflow run, waits for resources to stop, and leaves the non-terminal durable stage unchanged. Agent adoption after restart claims that stage and re-runs only the first unsettled stage; already committed reports are retained. `cancelled` is reserved for an explicit authenticated user action. `cancel` checks Session ownership and exact revision, waits for worker and child quiescence, and publishes one terminal result.
 
-```ts type-equiv
-/**
- * A caller-owned live loop. `result` settles once the loop has durably
- * reached a terminal stage AND the last stage run's resources are released;
- * after that point the loop writes nothing and owns nothing.
- */
-interface ReliabilityLoopHandle {
-  /** The loop's id. */
-  readonly loopId: ReliabilityLoopId
-  /**
-   * Settles with the terminal durable record. Never rejects for loop-internal
-   * failures (those land in the record as `failed`); it rejects only when the
-   * durable record itself cannot be maintained (a storage fault), because no
-   * terminal record can be delivered then.
-   */
-  readonly result: Promise<ReliabilityLoopRecord>
-  /**
-   * Request cancellation: the in-flight stage run is cancelled and the loop
-   * settles `cancelled`. Idempotent; the first reason wins. A stage that
-   * already settled is kept.
-   * @param reason - human-readable cause (default `'reliability loop cancelled'`).
-   */
-  cancel(reason?: string): void
-  /**
-   * Cancel if needed and await durable settlement plus resource quiescence.
-   * Never rejects; idempotent; safe on every path.
-   */
-  dispose(): Promise<void>
-}
-```
+## Session status and controls
 
-## Session policy types
+`reliability-loop/change` is a required-on-read, log-only Session event derived after a domain commit. It carries the complete current status plus an optional once-per-loop terminal notice. The `reliabilityLoop` Session projection rejects same-loop revision rollback. It is display state, not a second execution source: recovery and stage transitions never read it. If domain commit succeeds but event append does not, Agent adoption republishes the latest view.
 
-[`@durash/dsh-reliability-policy`](../../packages/reliability/durash-reliability-policy) stores the composer switch and its implementation/review route selections. Thinking effort is durable policy data; the current worker-thread engine does not yet apply it to stage children.
+The client registers a compact `conversation.input.dock` status bar at order `-10`. It reads only the active Session projection, covers all nine stages, loads full details on demand, confirms cancellation, and dismisses only the exact visible terminal revision. A terminal `reliability-loop/change` creates one stable loop-id Conversation Node; active telemetry never enters the main chat and terminal rendering does not call a model.
 
-```ts type-equiv
-/** Thinking effort stored on a lane; the worker-thread engine does not yet apply it to children. */
-type ReliabilityThinking = string
-```
+The `details`, `cancel`, and `dismiss` Typert Remotes require the exact live Agent and matching Session ownership. Mutating `cancel` and `dismiss` also require the current loop revision, so unknown, cross-Session, and stale write refs fail closed. Read-only `details` returns the latest owned record, which keeps a terminal Conversation node useful after dismissal. Dismissal hides the latest visible terminal without deleting the domain record or resurfacing an older result.
 
-```ts type-equiv
-/** One catalog badge rendered next to a model option. */
-interface ReliabilityModelBadge {
-  readonly kind: 'channel' | 'provider'
-  readonly label: string
-}
-```
+## Model routes and context resilience
 
-```ts type-equiv
-/** One selectable implementation or review model. */
-interface ReliabilityModelOption {
-  /** `provider/model` selector persisted on the policy row. */
-  readonly selector: string
-  /** Human-readable model name. */
-  readonly label: string
-  /** Provider route that owns the model. */
-  readonly provider: string
-  /** Model id passed to the stage child. */
-  readonly model: string
-  /** Channel and provider badges for the picker. */
-  readonly badges: readonly ReliabilityModelBadge[]
-  /** Effort levels the switch offers for this model. */
-  readonly thinkingLevels: readonly ReliabilityThinking[]
-}
-```
+[`@durash/dsh-reliability-policy`](../../packages/reliability/durash-reliability-policy/README.md) rebuilds the exact-model directory from live adapter metadata. It preserves stale saved selections with a concrete validation error and refuses to start them; it never silently changes a model or effort. Valid routes snapshot provider, model, and optional reasoning effort into the loop, and the generic workflow worker forwards those fields to each stage child.
 
-```ts type-equiv
-/** Parsed provider/model override for one loop lane. */
-interface ReliabilityLaneRoute {
-  readonly provider: string
-  readonly model: string
-}
-```
+In-process stage children join the parent's exact preset generation. Under the shipped standard preset they therefore inherit the token meter, replay-safe tool-result pruner, and compaction engine. Existing compaction regressions cover oversized tool-result pruning, provider-confirmed context overflow followed by compaction and retry, and loud failure when retained input is indivisible. This subsystem does not restore the old 3081 workflow-specific executor or widen the code runtime's wall-clock limit.
 
-```ts type-equiv
-/** Session-bound policy the composer switch reads and writes. */
-interface ReliabilityPolicySnapshot {
-  readonly sessionId: SessionId
-  readonly revision: number
-  readonly enabled: boolean
-  readonly implementationModel: string | null
-  readonly implementationThinking: ReliabilityThinking | null
-  readonly reviewModel: string | null
-  readonly reviewThinking: ReliabilityThinking | null
-  readonly updatedAt: number
-  readonly models: readonly ReliabilityModelOption[]
-}
-```
+## Boundaries
 
-```ts type-equiv
-/** Session identity for a policy read. */
-interface ReliabilityPolicyRequest {
-  readonly sessionId: SessionId
-}
-```
+- The current product loop has one implementer, one reviewer, and one rework. Planning coordination, multi-path adversarial review, aggregation, and automatic cost scheduling are not implemented.
+- The generic workflow engine does not journal script-internal progress. A crash inside a stage re-runs that unsettled stage after adoption; member-level durable progress is not claimed.
+- Terminal summaries are deterministic and bounded. Full objective and round reports require the authenticated details Remote; raw provider and child evidence remains in the owning workflow and child Sessions.
 
-```ts type-equiv
-/** Session policy replacement from the composer switch. */
-interface ReliabilityPolicyConfigureRequest {
-  readonly sessionId: SessionId
-  readonly enabled: boolean
-  readonly implementationModel: string | null
-  readonly implementationThinking: ReliabilityThinking | null
-  readonly reviewModel: string | null
-  readonly reviewThinking: ReliabilityThinking | null
-}
-```
-
-## State and durability
-
-One loop is one row of the `reliability_loop` domain's `loops` table, and the record is the single authoritative state: every stage transition is one durable record write, recovery reads nothing else, and no session-event copy or second store exists. The four `-ing` stages each name one workflow run the loop is — or was, before a restart — executing; `completed`, `blocked`, `failed`, and `cancelled` are final, and `settledAt` is present exactly on them. `blocked` stops the loop after the single bounded rework still drew `changes-requested`, with the settled round-2 review attempt carrying the durable blocker.
-
-The stage machine owns which attempt slots must be settled for each stage, and the `./invariant` companion asserts that coherence at every read and write site and on the `domain/changed` stream. The transitions derive from the run handle the driver owns (`run.result`), not from the observe-only `workflow/*` events, so a stage has exactly one live fact source.
-
-## Lifecycle and recovery
-
-`start` writes the durable record before any run exists; a crash after that write is recoverable. `resume(loopId, parent)` drives the machine from the record's current stage: settled attempts are never re-run, and the first unsettled stage re-runs exactly once because one live driver owns one loop — a second `resume` or `start` on an owned loop fails loud. The caller supplies the parent agent; the runtime never fabricates attribution. `result` settles only after the terminal record is durable and the last stage run is disposed, so a settled loop owns nothing and writes nothing.
-
-Bounded handoffs answer the historical review-overflow failure: `maxHandoffChars` (default 16384) bounds the objective, every implementation summary, and every reviewer feedback; an oversized artifact fails the stage loud, and each stage child starts fresh, receiving only the bounded handoff — never the parent conversation or prior stage transcripts.
-
-## Boundaries and limitations
-
-- The loop runtime is a programmatic service. The `durash` profile's composer switch, Session policy, and `dsh_reliability_handoff` tool are the model-facing consumer.
-- The record persists stage transitions only. The workflow engine journals nothing, so a crash mid-stage re-runs that stage once; member-level durable progress is not projected.
-- One implementer and one reviewer only — no coordination stage, three-way review, or per-stage fan-out, and no `needs_replan` round vocabulary beyond the `blocked` stop.
-- `result` rejects only on a durable-seam fault (storage failure or invariant breach); every loop-internal failure lands in the record as `failed`.
-- A run that settles `cancelled` without a local cancel request is a contract violation and stops the loop `failed` rather than being mistaken for a caller cancellation.
+The ownership and projection decision is recorded in the [Host-owned reliability-loop Agent Note](../../.agents/notes/implemented/feature/2026-08-31-host-owned-reliability-loop.md).
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -258,44 +58,56 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.reliabilityLoopRuntime` — `ReliabilityLoopRuntime`
 
-The reliability-loop runtime. One live driver owns one loop; the runtime enforces that single ownership and cancels every live loop to quiescence before its domain closes at teardown.
+Detached, Host-owned reliability-loop runtime and Remote provider.
 
 ```ts cordis-catalog
 /**
- * Start one loop: write its durable record first, then drive the first
- * stage. The caller owns the returned handle and defines its own interval
- * over `result`.
- * @param request - the parent agent and the bounded objective.
- * @returns the live loop handle.
- * @throws when the objective is empty or over the handoff bound.
+ * Persist and claim one background loop, then return before any stage settles.
+ * A duplicate active start returns that loop's current ref and never creates
+ * a second writer.
+ * @param request - root Session, objective, and exact lane snapshots.
+ * @returns durable acceptance acknowledgement.
  */
-async start(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>
+startDetached(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopStartAck>
 
 /**
- * Resume one interrupted loop after a restart: drive the state machine from
- * its record's current stage. Settled attempts are never re-run; the first
- * unsettled stage re-runs exactly once because the driver owns the loop
- * exclusively.
- * @param loopId - the interrupted loop's id.
- * @param parent - the agent on whose behalf the resumed stages run.
- * @returns the live loop handle.
- * @throws when the loop is unknown, already settled, or already owned by a
- *   live driver.
- */
-resume(loopId: ReliabilityLoopId, parent: Agent): ReliabilityLoopHandle
-
-/**
- * Every durable loop record, in storage order.
- * @returns the record snapshot.
+ * Every durable record in storage order.
+ * @returns record snapshots.
  */
 list(): ReliabilityLoopRecord[]
 
 /**
- * Read one loop's durable record.
- * @param loopId - the loop's id.
- * @returns the record, or `undefined` when unknown.
+ * Read one durable record without granting cross-Session Remote access.
+ * @param loopId - exact loop identity.
+ * @returns the record or undefined.
  */
 get(loopId: ReliabilityLoopId): ReliabilityLoopRecord | undefined
+
+/**
+ * Return the current full record for one loop in the caller's Session.
+ * Read access is Session-authenticated but not revision-gated so a terminal
+ * Conversation node remains useful after its status dock is dismissed.
+ * @param agent - exact live Agent resolved by Typert.
+ * @param ref - loop identity plus the caller's observed revision.
+ * @returns bounded objective and every settled report.
+ */
+@Remote('details') details(agent: Agent, ref: ReliabilityLoopRef): ReliabilityLoopDetails
+
+/**
+ * Explicitly cancel one active loop and wait for stage resources to stop.
+ * @param agent - exact live Agent resolved by Typert.
+ * @param ref - expected current revision.
+ * @returns terminal status after quiescence.
+ */
+@Remote('cancel') cancel(agent: Agent, ref: ReliabilityLoopRef): Promise<ReliabilityLoopStatusView>
+
+/**
+ * Hide the currently visible terminal dock without deleting durable history.
+ * @param agent - exact live Agent resolved by Typert.
+ * @param ref - expected current terminal revision.
+ * @returns the new tombstone revision.
+ */
+@Remote('dismiss') dismiss(agent: Agent, ref: ReliabilityLoopRef): Promise<ReliabilityLoopRef>
 ```
 
 Types: [Agent](core.md)
@@ -321,7 +133,7 @@ workflowEnabled(sessionId: SessionId): boolean
  * @param sessionId - exact Session identity.
  * @returns both lanes, or `undefined` when the policy is off or incomplete.
  */
-enabledRoutes(sessionId: SessionId): { readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined
+async enabledRoutes(sessionId: SessionId): Promise<{ readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined>
 
 /**
  * Read the Session policy and the current LLM catalog.

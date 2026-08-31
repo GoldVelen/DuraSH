@@ -551,6 +551,22 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 来源：[`packages/plan/plan-mode/src/index.ts:46`](../packages/plan/plan-mode/src/index.ts)
 
+### `reliability-loop/*`
+
+<a id="reliability-loopchange--log-only"></a>
+
+#### `reliability-loop/change` — log-only
+
+```ts persistence-catalog
+/**
+ * Complete client status plus an optional once-per-loop terminal notice.
+ * @param data - whole-value reliability-loop projection change.
+ */
+'reliability-loop/change': ReliabilityLoopChange
+```
+
+来源：[`packages/reliability/durash-reliability-loop/src/types.ts:197`](../packages/reliability/durash-reliability-loop/src/types.ts)
+
 ### `request/*`
 
 <a id="requestcontext--log-only"></a>

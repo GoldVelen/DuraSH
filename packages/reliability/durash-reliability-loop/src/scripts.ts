@@ -20,6 +20,7 @@ const report = await agent(args.prompt, {
   schema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] },
   ...(typeof args.provider === 'string' ? { provider: args.provider } : {}),
   ...(typeof args.model === 'string' ? { model: args.model } : {}),
+  ...(typeof args.reasoningEffort === 'string' ? { reasoningEffort: args.reasoningEffort } : {}),
 })
 if (report === null) throw new Error('implementation child failed')
 return report
@@ -43,6 +44,7 @@ const report = await agent(args.prompt, {
   },
   ...(typeof args.provider === 'string' ? { provider: args.provider } : {}),
   ...(typeof args.model === 'string' ? { model: args.model } : {}),
+  ...(typeof args.reasoningEffort === 'string' ? { reasoningEffort: args.reasoningEffort } : {}),
 })
 if (report === null) throw new Error('review child failed')
 return report

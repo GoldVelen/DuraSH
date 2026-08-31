@@ -1,5 +1,5 @@
 ---
-description: "DuraSH 可靠性闭环：一个带产品自有持久状态、重启恢复与取消静止的有界实施-审查-返工闭环，跑在 ctx.workflowEngine 之上。"
+description: "由 Host 持有的 DuraSH 可靠性闭环：快速持久交接、一次有界实施-审查-返工、重启恢复、会话状态与显式取消，运行于 ctx.workflowEngine 之上。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-reliability-loop` 运行一个有界的可靠性闭环：一个全新的实施子代理、一个全新的审查子代理，以及——当审查者要求修改时——恰好一轮返工与复审，之后循环以 `completed` 或 `blocked` 停止。这是 DuraSH 可靠性引擎的第一个产品自有切片：状态机是 `reliability-loop` storage domain 中的一条持久记录，每个阶段都作为 `ctx.workflowEngine` 上的普通 run 执行，运行时只拥有记录、边界与排序。重启后从记录的第一个未完成阶段恢复，不重跑已完成的尝试；取消后达到静止，留下终态记录且不再有存活的所有者。
+`dsh-reliability-loop` 持有一个有界后台可靠性闭环：一个全新实施子代理、一个全新独立审查子代理，以及需要时恰好一轮返工与复审。`startDetached()` 先持久写入 `accepted`，再于任何阶段结算前返回。此后执行归 Host 所有，不依赖发起它的模型回合、工具信号或浏览器连接。一条位于 `reliability_loop` storage domain 的版本 2 记录是执行真源；`reliability-loop/change` 只是供状态条与一次终态对话结果使用的完整会话投影。Host 拆卸会暂停以便恢复；只有受鉴权的显式取消才写入 `cancelled`。
 
 ## 目录
 
@@ -29,11 +29,13 @@ kind: "package-reference"
 
 ### 启动、观察与取消
 
-`ctx.reliabilityLoopRuntime.start({ parent, objective })` 先写入循环的持久记录（阶段 `implementing`），然后返回句柄。句柄的 `result` 以终态记录结算；`cancel(reason?)` 停止在途阶段 run 并以 `cancelled` 结算；`dispose()` 在需要时取消，并等待持久结算与 run 释放。已结算的尝试会被保留，即使取消在其之后到来。
+`ctx.reliabilityLoopRuntime.startDetached({ parent, objective, implementation, review })` 校验精确的存活根 Agent，以 revision 1、`accepted` 阶段和完整通道写入记录，取得唯一驱动者，发布会话状态，然后返回 `{ loopId, revision, status: 'accepted' }`。同一会话的并发启动会返回既有活动 ref，不会创建第二个写入者。
+
+`details`、`cancel` 与 `dismiss` 是受鉴权的 Typert Remote。每次调用都校验精确存活 Agent、会话归属与 loop id。会修改状态的 `cancel` 和 `dismiss` 还要求当前 revision；只读 `details` 返回最新归属记录，因此终态 Conversation Node 在状态条关闭后仍可查看。取消会等待 workflow worker 和子代理释放后返回终态；关闭只隐藏当前可见终态，不删除历史。
 
 ### 重启恢复
 
-记录是唯一权威状态。进程重启后，`resume(loopId, parent)` 从记录的当前阶段驱动状态机：已结算的实施摘要与审查裁决绝不重跑；第一个未完成阶段恰好重跑一次，因为一个循环只有一个存活驱动者，对同一循环的第二次 `resume` 会响亮失败。`list()` 与 `get()` 投影持久记录。
+记录是唯一权威执行状态。根 Agent 创建时，运行时接管其唯一非终态记录，补发缺失的派生会话状态，只重跑第一个未完成阶段；已结算报告保留。Host 或 Agent 拆卸会暂停当前 run 而不改变非终态阶段，绝不冒充用户取消。
 
 ### 阶段与有界返工
 
@@ -63,26 +65,28 @@ kind: "package-reference"
 
 ### 设计概念
 
-一个循环就是一条记录：`reliability-loop` domain 的 `loops` 表承载整个状态机，因此每次转换都是一次单记录持久写入，恢复也只读取记录。`workflow/*` 事件保持只读观察；驱动者从它拥有的 run 句柄（`run.result`）推导转换，所以一个阶段只有一个存活事实来源。记录的阶段与其已结算尝试槽位由 `./invariant` 伴随在每个读写点断言。
+一个循环就是一条版本 2 记录：`reliability_loop` domain 的 `loops` 表保存会话归属、正 revision、两条不可变通道、两轮报告、阶段与生命周期时间。每次转换只替换这条记录一次。`workflow/*` 事件只供观察；驱动者从 `run.result` 推导转换。会话事件是派生展示投影，绝不会用来推进执行。
 
 ### 源码映射
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 服务入口：start/resume 单一所有权、配置、拆卸顺序 |
-| [`src/types.ts`](src/types.ts) | 词汇：循环 id、阶段、尝试槽位、记录、句柄 |
+| [`src/index.ts`](src/index.ts) | Host 运行时：后台启动、接管、Remote、投影发布、拆卸顺序 |
+| [`src/types.ts`](src/types.ts) | 客户端安全的标识、通道、记录、状态、详情与终态通知词汇 |
 | [`src/spec.ts`](src/spec.ts) | `defineDomain` 声明与 zod 模式 |
 | [`src/scripts.ts`](src/scripts.ts) | 固定阶段脚本、提示构建、报告校验 |
-| [`src/driver.ts`](src/driver.ts) | 每循环所有者：阶段机、run 生命周期、取消、静止 |
-| [`src/invariant.ts`](src/invariant.ts) | 不变量伴随：阶段/槽位一致性 |
+| [`src/driver.ts`](src/driver.ts) | 每循环写入者：阶段机、终态/暂停结算、run 生命周期 |
+| [`src/projection.ts`](src/projection.ts) | 拒绝 revision 回退的完整会话投影 |
+| [`src/client.ts`](src/client.ts) | 浏览器安全的 Typert Remote 声明 |
+| [`src/invariant.ts`](src/invariant.ts) | 不变量伴随：阶段/轮次一致性 |
 
 ### 生命周期与所有权
 
-一个存活驱动者拥有一个循环；运行时强制这一点并对重复所有权响亮失败。Effect 按注册的逆序展开，因此拆卸先等待每个存活驱动者静止，再关闭 domain——终态写入绝不会落在已关闭的介质上。驱动者不拥有定时器，也不注册全局监听器：`result` 结算后，最后一个 run 已释放、记录已终态，取消因此收敛，而不是留下一个后台写入者。
+一个存活驱动者拥有一个循环。运行时在启动驱动者之前先观察其结果，因此阶段、provider、worker 与存储故障不会变成终止 Host 的未处理 rejection。用户显式取消与 Host 暂停是两种不同结算：取消在静止后写入一次终态；暂停释放当前 run 并保留可恢复阶段。拆卸先停止所有驱动者并排空变更，再关闭 domain。
 
 ### 失败纪律
 
-只有当持久记录无法维护时（存储故障或不变量破坏）`result` 才 reject；每个循环内部失败都以 `failed` 落入记录。没有本地取消请求却出现 `cancelled` 的 run 结局属于契约破坏，循环以 `failed` 停止，而不是误认为调用方取消。
+每个循环内部失败都会以 `failed` 落入记录，包括子代理失败、workflow 错误、worker death、无效报告，以及没有本地停止请求的 provider 取消。派生会话 append 失败不能回滚已经提交的 domain 记录；后续 Agent 接管会补齐缺失投影。
 
 </details>
 
@@ -125,6 +129,6 @@ kind: "package-reference"
 
 本 Dev Note 是维护者的工作上下文：尚未决定的方向。它明确不具权威性——已发布的行为、限制与既定依据以上方章节、包源码和链接的 Agent Note 为准。
 
-待定方向：基于 `workflow/agent-*` 的成员级进度投影；把已保存的思考强度传给阶段子代理；在 blocked 阶段之上的 `needs_replan` 轮次词汇；以及如果单轮返工边界将来泛化，所需的多尝试槽位。
+待定方向：成员级持久 workflow 进度、blocked 之上的 `needs_replan` 词汇、多路审查汇总，以及单轮返工边界泛化时需要的多尝试记录。
 
 </details>

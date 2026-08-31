@@ -45,7 +45,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@durash/dsh-tool-reliability` | `dsh_reliability_handoff` | `ctx.tools`、`ctx.systemPrompt`、`ctx.agents`、`ctx.reliabilityPolicy`、`ctx.reliabilityLoopRuntime`、`a live enabled root Agent at execution time` | `tool/call`、`reliability-loop durable state and child Session events`、`tool/result` | - | 仅由 `durash` profile 随产品发布。schema 在进程内始终注册；只有当前会话策略已启用并选定实施与审查路由时才允许执行，否则闭门失败。 |
+| `@durash/dsh-tool-reliability` | `dsh_reliability_handoff` | `ctx.tools`、`ctx.systemPrompt`、`ctx.agents`、`ctx.sessionProjections`、`ctx.reliabilityPolicy`、`ctx.reliabilityLoopRuntime`、`a live enabled root Agent at execution time` | `tool/call`、`reliability-loop durable state and child Session events`、`tool/result` | - | 仅由 `durash` profile 随产品发布。schema 在进程内始终注册；只有当前会话策略已启用并选定实施与审查路由时才允许执行，否则闭门失败。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2293,7 +2293,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `dsh_reliability_handoff`
 
-在普通助手回复中先展示实施计划，然后把当前完整目标交给已启用的可靠性闭环，并等待一次实施、一次独立审查以及最多一轮返工达到终态。该调用在前台等待；调用未结束时不得轮询或重复交接。
+在普通助手回复中先展示实施计划，然后把完整目标持久交给已启用的可靠性工作流。宿主在后台执行实施、独立审查和最多一轮返工。该调用在持久接管后立即返回；不得轮询或重复交接，进度显示在输入框上方。
 
 ```json
 {

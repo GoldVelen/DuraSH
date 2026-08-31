@@ -14,7 +14,8 @@
 
 import * as vm from 'node:vm'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, ReasoningEffortId as ReasoningEffortIdType } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { assertObjectJsonSchema, JsonSchemaError } from '@deepseek-ai/dsh-tools'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
@@ -37,9 +38,10 @@ export interface ExecutionObserver {
 }
 
 /** The `agent()` options the script may pass; everything else rejects loud. */
-const SUPPORTED_AGENT_OPTIONS = new Set(['label', 'phase', 'schema', 'provider', 'model'])
+const SUPPORTED_AGENT_OPTIONS = new Set(['label', 'phase', 'schema', 'provider', 'model', 'reasoningEffort'])
 /** Deferred Claude Code options we name explicitly in the rejection message. */
 const DEFERRED_AGENT_OPTIONS = new Set(['effort', 'isolation', 'agentType'])
+const SUPPORTED_AGENT_OPTIONS_TEXT = 'label, phase, schema, provider, model, reasoningEffort'
 
 /** Flatten a child's final output blocks to text (the non-schema `agent()` result). */
 function outputText(blocks: ContentBlock[]): string {
@@ -280,6 +282,7 @@ export class WorkflowExecution {
           ...opts.schema !== undefined ? { schema: opts.schema } : {},
           ...opts.provider !== undefined ? { provider: opts.provider } : {},
           ...opts.model !== undefined ? { model: opts.model } : {},
+          ...opts.reasoningEffort !== undefined ? { reasoningEffort: opts.reasoningEffort } : {},
         })
       } catch (error: unknown) {
         // The host refuses starts once the run is cancelled — a refusal that
@@ -351,6 +354,7 @@ export class WorkflowExecution {
     phase?: string
     provider?: string
     model?: string
+    reasoningEffort?: ReasoningEffortIdType
     schema?: ObjectJsonSchema
   } {
     if (rawOpts === undefined) return {}
@@ -369,14 +373,17 @@ export class WorkflowExecution {
     for (const key of Object.keys(record)) {
       if (SUPPORTED_AGENT_OPTIONS.has(key)) continue
       if (DEFERRED_AGENT_OPTIONS.has(key)) {
-        throw new WorkflowError(`agent() option "${key}" is deferred and not supported by this engine (supported: label, phase, schema, provider, model)`, 'UNSUPPORTED_OPTION')
+        throw new WorkflowError(`agent() option "${key}" is deferred and not supported by this engine (supported: ${SUPPORTED_AGENT_OPTIONS_TEXT})`, 'UNSUPPORTED_OPTION')
       }
-      throw new WorkflowError(`agent() option "${key}" is not recognized (supported: label, phase, schema, provider, model)`, 'UNSUPPORTED_OPTION')
+      throw new WorkflowError(`agent() option "${key}" is not recognized (supported: ${SUPPORTED_AGENT_OPTIONS_TEXT})`, 'UNSUPPORTED_OPTION')
     }
-    for (const key of ['label', 'phase', 'provider', 'model'] as const) {
+    for (const key of ['label', 'phase', 'provider', 'model', 'reasoningEffort'] as const) {
       if (record[key] !== undefined && typeof record[key] !== 'string') {
         throw new WorkflowError(`agent() option "${key}" must be a string`, 'INVALID_ARGUMENT')
       }
+    }
+    if (typeof record.reasoningEffort === 'string' && record.reasoningEffort.length === 0) {
+      throw new WorkflowError('agent() option "reasoningEffort" must be a non-empty string', 'INVALID_ARGUMENT')
     }
     let schema: ObjectJsonSchema | undefined
     if (record.schema !== undefined) {
@@ -394,6 +401,9 @@ export class WorkflowExecution {
       ...record.phase !== undefined ? { phase: record.phase as string } : {},
       ...record.provider !== undefined ? { provider: record.provider as string } : {},
       ...record.model !== undefined ? { model: record.model as string } : {},
+      ...record.reasoningEffort !== undefined
+        ? { reasoningEffort: ReasoningEffortId(record.reasoningEffort as string) }
+        : {},
       ...schema !== undefined ? { schema } : {},
     }
   }

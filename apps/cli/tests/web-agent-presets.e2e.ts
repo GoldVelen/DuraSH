@@ -14,7 +14,9 @@ import { SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE } from '@deepseek-ai/dsh-to
 import { SETTINGS_NAMESPACE, SHIPPED_PRESET_ROOT } from '@deepseek-ai/dsh-agent-presets'
 import { applyChildComposition, childSessionMeta } from '@deepseek-ai/dsh-subagent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type {} from '@deepseek-ai/dsh-compaction'
 import type {} from '@deepseek-ai/dsh-compaction-basic'
+import type {} from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-tools'
 // Type-only: resolves `ctx.get('sessionProjections')` and `ctx.get('tokenMeter')`.
@@ -696,6 +698,22 @@ describe('a delegated child', () => {
       // child here is the defect, and equality alone would not catch it.
       expect(toolNames(ctx, child.agent)).toContain('bash')
       expect(child.agent.session.header.agentPreset).toBe('standard')
+      expect({
+        parentCompaction: ctx.agentPresets.serviceFor(parent.agent, 'compaction') !== undefined,
+        childCompaction: ctx.agentPresets.serviceFor(child.agent, 'compaction') !== undefined,
+        parentPruner: ctx.agentPresets.serviceFor(parent.agent, 'toolResultPruner') !== undefined,
+        childPruner: ctx.agentPresets.serviceFor(child.agent, 'toolResultPruner') !== undefined,
+      }).toEqual({
+        parentCompaction: true,
+        childCompaction: true,
+        parentPruner: true,
+        childPruner: true,
+      })
+      const childMeter = child.agent.ctx.get('tokenMeter')
+      if (childMeter === undefined) {
+        throw new Error('delegated child did not inherit the token meter')
+      }
+      expect(Number.isFinite(childMeter.measure(child.agent.session).totalTokens)).toBe(true)
     } finally {
       await child.dispose()
       await parent.dispose()

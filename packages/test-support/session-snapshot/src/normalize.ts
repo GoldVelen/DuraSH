@@ -1,6 +1,6 @@
 /**
  * Pure ACP transcript and session-log normalizers. They scrub session ids, run cwd, RPC ids,
- * timestamps, goal lifecycle clocks, and hook duration while preserving semantic payload values.
+ * timestamps, goal and reliability lifecycle clocks, and hook duration while preserving semantic payload values.
  * Request-header scrubbers stay composable so one scenario per header class can pin prompt and
  * tool-schema sidecars.
  * @module @deepseek-ai/dsh-session-snapshot/normalize
@@ -367,6 +367,20 @@ export function normalizeSessionLog(
       const data = record.data as Record<string, unknown>
       if ('createdAt' in data) data.createdAt = 0
       if ('updatedAt' in data) data.updatedAt = 0
+    }
+    if (record.type === 'reliability-loop/change' && record.data !== null && typeof record.data === 'object') {
+      const data = record.data as Record<string, unknown>
+      const current = data.current
+      if (current !== null && typeof current === 'object') {
+        const status = current as Record<string, unknown>
+        if ('createdAt' in status) status.createdAt = 0
+        if ('updatedAt' in status) status.updatedAt = 0
+        if ('settledAt' in status) status.settledAt = 0
+      }
+      const terminal = data.terminal
+      if (terminal !== null && typeof terminal === 'object' && 'settledAt' in terminal) {
+        (terminal as Record<string, unknown>).settledAt = 0
+      }
     }
     if (Object.hasOwn(record, 'sourceEventSeqs')) {
       record.sourceEventSeqs = decodeSeqRanges(record.sourceEventSeqs)

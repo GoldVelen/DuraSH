@@ -1,17 +1,23 @@
 # DuraSH
 
-> **把复杂任务交给一条按需分配模型、成本优先、可恢复的可靠性工作流。**
->
-> 你可以按会话分别选择实施模型和审查模型，把更强、更贵的模型留给关键检查，而不是让整条任务都跑同一档位。当前版本由用户选择，不声称自动完成成本调度。
->
-> **目标流程：计划 → 实施 → 多路对抗性审查 → 统一总结。** **当前可用：实施 → 独立审查 → 最多一轮返工 → 结果交付。** 计划协调与多路审查属于下一阶段，尚未伪装成已完成能力。
-
 English | [中文](README.zh.md)
+
+## 用合适的模型做合适的事
+
+**按需分配模型 · 成本优先 · 后台可恢复 · 独立审查**
+
+DuraSH 让你按会话分别选择实施模型、审查模型和各自的思考强度：日常实施可以选成本更低的模型，关键审查再使用更强的模型。当前由用户明确选择，不把“自动成本调度”写成已经交付。
+
+**目标：计划 → 实施 → 多路对抗性审查 → 统一总结**
+
+**现在：实施 → 独立审查 → 最多一轮返工 → 一次结果交付**
+
+启动后主对话立即拿到回执，长任务由宿主持有；阶段状态固定显示在输入框上方，刷新或宿主重启后可从持久记录恢复。计划协调、多路审查与自动成本调度仍是下一阶段。
 
 ## What DuraSH does today
 
 - **Cost-aware model roles** — choose separate implementation and review models per Session, so the strongest model can be reserved for the work that justifies it. Selection is explicit today, not an automatic cost scheduler.
-- **Durable reviewed delivery** — one implementation, one independent review, and at most one bounded rework. Loop state survives restart, completed stages are not repeated, and cancellation converges without a background writer.
+- **Durable reviewed delivery** — handoff returns after durable acceptance; the Host runs one implementation, one independent review, and at most one bounded rework in the background. A compact status dock shows progress, terminal delivery appears once, Host teardown suspends for recovery, and only explicit user cancellation writes `cancelled`.
 - **A product overlay, not another stale fork** — DuraSH adds its brand, workflow policy, composer controls, and reliability engine as plugins over the current verified DeepSeek Harness baseline.
 
 The intended larger workflow is planning → coordinated implementation → multi-path adversarial review → one final summary. That pipeline is the next product milestone; the current developer preview ships the smaller bounded loop above.
@@ -28,7 +34,7 @@ The current source base is the latest verified upstream release at the time of t
 
 DuraSH is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
 
-Review the [safety notice](SAFETY.md) before running the project. The independent brand/profile, continuous-update controls, per-session model policy, composer switch, and bounded durable review-and-rework loop are implemented. Coordination, multi-review aggregation, member-level durable progress, and applying saved thinking effort to stage children remain incomplete.
+Review the [safety notice](SAFETY.md) before running the project. The independent brand/profile, continuous-update controls, per-session exact-model policy, composer controls, background durable review-and-rework loop, status dock, and saved reasoning-effort delivery are implemented. Coordination, multi-review aggregation, member-level durable progress, and automatic cost scheduling remain incomplete.
 
 <a id="run-from-source"></a>
 

@@ -1,9 +1,5 @@
 /**
- * One live loop's owner. The driver is the only writer of its loop's durable
- * record: it starts each stage's workflow run, derives the next stage from
- * the settled run, and writes exactly one record per transition. It owns no
- * timers and no global listeners — after `result` settles and the last run is
- * disposed, the loop writes nothing and owns nothing.
+ * One background reliability loop's single live writer.
  * @module @durash/dsh-reliability-loop/src/driver
  */
 
@@ -26,133 +22,167 @@ import {
 import type { ImplementReport, ReviewReport } from './scripts.ts'
 import { isTerminalStage } from './types.ts'
 import type {
-  ImplementAttempt, LoopRound, ReliabilityLoopId, ReliabilityLoopRecord, ReviewAttempt,
+  ImplementAttempt,
+  LoopRound,
+  ReliabilityLoopId,
+  ReliabilityLoopLane,
+  ReliabilityLoopRecord,
+  ReliabilityLoopRoundRecord,
+  ReviewAttempt,
 } from './types.ts'
 
-/** Render a thrown value without trusting it. */
+/** Driver settlement after every current workflow resource is quiescent. */
+export type LoopDriverOutcome =
+  | { readonly kind: 'terminal'; readonly record: ReliabilityLoopRecord }
+  | { readonly kind: 'suspended'; readonly record: ReliabilityLoopRecord }
+
+type StopMode = 'cancel' | 'suspend'
+
+/** Render a thrown value without trusting its coercion. */
 function renderThrown(error: unknown): string {
   try {
     return String(error)
   } catch {
-    /* v8 ignore next -- String() on the caught value itself is the unrenderable case */
+    /* v8 ignore next -- String() on the caught value itself is the unrenderable case. */
     return '[unrenderable thrown value]'
   }
 }
 
-/** The fixed stage descriptions carried by each run's meta block. */
 const STAGE_DESCRIPTIONS: Record<'implement' | 'review', string> = {
   implement: 'DuraSH reliability loop implementation stage',
   review: 'DuraSH reliability loop review stage',
 }
 
-/**
- * One loop's live owner: the only writer of its record, from the first stage
- * run through durable terminal settlement and run disposal.
- */
+/** One loop's single writer from `accepted` to terminal or Host suspension. */
 export class LoopDriver {
-  /** The loop's id. */
+  /** Owned loop identity. */
   readonly loopId: ReliabilityLoopId
 
-  /**
-   * Settles once the record is terminal and the last run's resources are
-   * released. Rejects only when the durable record cannot be maintained.
-   */
-  readonly result: Promise<ReliabilityLoopRecord>
+  /** Settles after terminal or suspended state and run disposal; rejects only when durable state cannot be maintained. */
+  readonly result: Promise<LoopDriverOutcome>
 
-  private settleResolve!: (record: ReliabilityLoopRecord) => void
-  private settleReject!: (error: unknown) => void
-  private settled = false
-  private cancelRequested = false
-  private cancelReason: string | undefined
+  private resolveResult!: (outcome: LoopDriverOutcome) => void
+  private rejectResult!: (error: unknown) => void
+  private finished = false
+  private stopMode: StopMode | undefined
+  private stopReason: string | undefined
   private currentRun: WorkflowRun | undefined
-  private disposePromise: Promise<void> | undefined
 
+  /**
+   * @param engine - workflow capability used for each bounded stage.
+   * @param table - sole durable loop table.
+   * @param parent - root Agent that owns child composition.
+   * @param maxHandoffChars - objective, report, and durable error bound.
+   * @param loopId - exact record identity.
+   * @param onCommit - best-effort derived-state publisher after each successful domain write.
+   */
   constructor(
     private readonly engine: WorkflowEngine,
     private readonly table: KvTable<ReliabilityLoopId, ReliabilityLoopRecord>,
     private readonly parent: Agent,
     private readonly maxHandoffChars: number,
     loopId: ReliabilityLoopId,
+    private readonly onCommit: (record: ReliabilityLoopRecord) => void | Promise<void> = () => {},
   ) {
     this.loopId = loopId
-    this.result = new Promise<ReliabilityLoopRecord>((resolve, reject) => {
-      this.settleResolve = resolve
-      this.settleReject = reject
+    this.result = new Promise<LoopDriverOutcome>((resolve, reject) => {
+      this.resolveResult = resolve
+      this.rejectResult = reject
     })
   }
 
   /**
-   * Request cancellation. Idempotent; the first reason wins. A stage that
-   * already settled is kept; an in-flight one is cancelled through the run.
-   * @param reason - human-readable cause (default `'reliability loop cancelled'`).
+   * Explicit user cancellation. It overrides a concurrent Host suspension,
+   * cancels the current stage, and eventually writes one `cancelled` terminal.
+   * @param reason - cancellation reason forwarded to the workflow run.
    */
-  cancel(reason?: string): void {
-    if (this.cancelRequested) return
-    this.cancelRequested = true
-    this.cancelReason = reason ?? 'reliability loop cancelled'
-    this.currentRun?.cancel(this.cancelReason)
+  cancel(reason = 'reliability loop cancelled by user'): void {
+    if (this.finished || this.stopMode === 'cancel') return
+    this.stopMode = 'cancel'
+    this.stopReason = reason
+    this.currentRun?.cancel(reason)
   }
 
   /**
-   * Cancel if needed and await durable settlement plus resource quiescence.
-   * Never rejects; idempotent.
+   * Stop process-local work without changing the durable non-terminal stage.
+   * @param reason - shutdown reason forwarded to the workflow run.
    */
-  async dispose(): Promise<void> {
-    this.disposePromise ??= (async () => {
-      if (!this.settled) this.cancel()
-      await this.result.catch(() => { /* the storage fault already rejected `result`; disposal stays successful */ })
-    })()
-    return this.disposePromise
+  suspend(reason = 'reliability loop host suspended'): void {
+    if (this.finished || this.stopMode !== undefined) return
+    this.stopMode = 'suspend'
+    this.stopReason = reason
+    this.currentRun?.cancel(reason)
   }
 
-  /** Drive the stage machine to terminal settlement; never throws. */
+  /** Request suspension and wait for all current stage resources to quiesce. */
+  async dispose(): Promise<void> {
+    this.suspend()
+    await this.result.catch(() => { /* the observing runtime reports the storage fault */ })
+  }
+
+  /** Drive until terminal or suspended; all failures are observed here. */
   async drive(): Promise<void> {
     try {
       await this.driveStages()
+      this.finishFromRecord()
     } catch (error) {
-      // A durable-seam or invariant fault: no terminal record can be
-      // maintained, so the caller learns through `result` rejecting.
-      this.settled = true
-      this.settleReject(error)
-      return
+      try {
+        const record = this.requireRecord()
+        if (!isTerminalStage(record.stage) && this.stopMode === undefined) {
+          await this.fail(record, `reliability loop driver failed: ${renderThrown(error)}`)
+        }
+        if (this.stopMode !== undefined && !isTerminalStage(this.requireRecord().stage)) {
+          await this.settleRequestedStop()
+        }
+        this.finishFromRecord()
+      } catch (storageError) {
+        this.finished = true
+        this.rejectResult(storageError)
+      }
     }
-    const record = this.requireRecord()
-    /* v8 ignore start -- driveStages returns only after a terminal write or cancellation */
-    if (!isTerminalStage(record.stage)) {
-      this.settled = true
-      this.settleReject(new Error(`loop '${this.loopId}' stopped in non-terminal stage '${record.stage}'`))
-      return
-    }
-    /* v8 ignore stop */
-    this.settled = true
-    this.settleResolve(record)
   }
 
-  /** Run stages until terminal or cancelled; a cancelled unsettled loop stops `cancelled`. */
+  /** Advance the durable stage machine until it reaches a process stop. */
   private async driveStages(): Promise<void> {
     for (;;) {
       const record = this.requireRecord()
-      if (this.cancelRequested) {
-        if (!isTerminalStage(record.stage)) await this.writeRecord({ ...record, stage: 'cancelled', settledAt: new Date().toISOString() })
+      if (isTerminalStage(record.stage)) return
+      if (this.stopMode !== undefined) {
+        await this.settleRequestedStop()
         return
       }
-      if (isTerminalStage(record.stage)) return
       switch (record.stage) {
-        case 'implementing': await this.runStage('implement', 1); break
-        case 'reviewing': await this.runStage('review', 1); break
-        case 'rework-implementing': await this.runStage('implement', 2); break
-        case 'rework-reviewing': await this.runStage('review', 2); break
-        /* v8 ignore start -- terminal stages returned above; a future variant fails loudly */
-        default: {
-          const exhaustive: never = record.stage
-          throw new Error(`loop '${this.loopId}': unknown stage '${String(exhaustive)}'`)
-        }
+        case 'accepted':
+          await this.transition(record, { stage: 'implementing' })
+          break
+        case 'implementing':
+          await this.runStage('implement', 1)
+          break
+        case 'reviewing':
+          await this.runStage('review', 1)
+          break
+        case 'rework-implementing':
+          await this.runStage('implement', 2)
+          break
+        case 'rework-reviewing':
+          await this.runStage('review', 2)
+          break
+        /* v8 ignore start -- terminal variants returned above; future variants fail loudly. */
+        default:
+          throw new Error(`loop '${this.loopId}': unknown stage '${String(record.stage satisfies never)}'`)
         /* v8 ignore stop */
       }
     }
   }
 
-  /** Execute one stage: start its run, await settlement, dispose, apply the transition. */
+  /** Materialize the requested process stop after the current run is gone. */
+  private async settleRequestedStop(): Promise<void> {
+    const record = this.requireRecord()
+    if (isTerminalStage(record.stage) || this.stopMode === 'suspend') return
+    await this.transition(record, { stage: 'cancelled', settledAt: this.nextInstant(record) })
+  }
+
+  /** Execute one workflow stage and map its settlement into the durable record. */
   private async runStage(kind: 'implement' | 'review', round: LoopRound): Promise<void> {
     const record = this.requireRecord()
     const request = this.stageRequest(kind, round, record)
@@ -164,75 +194,80 @@ export class LoopDriver {
         args: {
           prompt: request.prompt,
           label: kind,
-          ...request.provider === undefined ? {} : { provider: request.provider },
-          ...request.model === undefined ? {} : { model: request.model },
+          provider: request.lane.provider,
+          model: request.lane.model,
+          ...request.lane.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: request.lane.reasoningEffort },
         },
         parent: this.parent,
       })
     } catch (error) {
-      await this.writeRecord({ ...this.requireRecord(), stage: 'failed', settledAt: new Date().toISOString(), error: `${kind} stage run could not start: ${renderThrown(error)}` })
+      if (this.stopMode === undefined) {
+        await this.fail(this.requireRecord(), `${kind} stage run could not start: ${renderThrown(error)}`)
+      }
       return
     }
     this.currentRun = run
-    let result: WorkflowResult
+    if (this.stopMode !== undefined) run.cancel(this.stopReason)
+    let result: WorkflowResult | undefined
+    let rejected: unknown
     try {
       result = await run.result
+    } catch (error) {
+      rejected = error
     } finally {
       this.currentRun = undefined
-      // The run is owned here on every path, including the ones below that
-      // stop the loop: disposal awaits script and child quiescence.
-      await run.dispose()
+      try {
+        await run.dispose()
+      } catch (error) {
+        rejected ??= error
+      }
     }
-    await this.applySettled(kind, round, result)
+    if (rejected !== undefined) {
+      if (this.stopMode === undefined) {
+        await this.fail(this.requireRecord(), `${kind} stage run rejected: ${renderThrown(rejected)}`)
+      }
+      return
+    }
+    /* v8 ignore next -- the run either resolved a result or recorded a rejection above. */
+    await this.applySettled(kind, round, result as WorkflowResult)
   }
 
-  /** Map one settled run to its durable transition. */
+  /** Map one settled workflow result to a durable transition. */
   private async applySettled(kind: 'implement' | 'review', round: LoopRound, result: WorkflowResult): Promise<void> {
-    switch (result.stopReason) {
-      case 'completed': {
-        const record = this.requireRecord()
-        let report: ImplementReport | ReviewReport
-        try {
-          report = kind === 'implement'
-            ? validateImplementReport(result.value, this.maxHandoffChars)
-            : validateReviewReport(result.value, this.maxHandoffChars)
-        } catch (error) {
-          // Invalid or oversized reports fail the stage loud instead of being
-          // truncated or handed to the next stage. A storage fault below is
-          // NOT this case: it propagates and rejects `result`.
-          await this.writeRecord({ ...record, stage: 'failed', settledAt: new Date().toISOString(), error: renderThrown(error) })
-          return
-        }
-        await this.applyReport(record, kind, round, report, result.agentsStarted)
+    if (result.stopReason === 'completed') {
+      let report: ImplementReport | ReviewReport
+      try {
+        report = kind === 'implement'
+          ? validateImplementReport(result.value, this.maxHandoffChars)
+          : validateReviewReport(result.value, this.maxHandoffChars)
+      } catch (error) {
+        await this.fail(this.requireRecord(), renderThrown(error))
         return
       }
+      await this.applyReport(this.requireRecord(), kind, round, report, result.agentsStarted)
+      return
+    }
+    if (this.stopMode !== undefined) return
+    switch (result.stopReason) {
       case 'cancelled':
-        // A run settles cancelled only through this driver's cancel request,
-        // which sets the flag first; without the flag this is unreachable.
-        if (!this.cancelRequested) {
-          /* v8 ignore next -- unreachable: the engine settles cancelled only via cancel(), and this driver is the only canceller */
-          await this.writeRecord({
-            ...this.requireRecord(),
-            stage: 'failed',
-            settledAt: new Date().toISOString(),
-            error: `${kind} stage run settled cancelled without a local cancel request${result.error === undefined ? '' : `: ${result.error}`}`,
-          })
-        }
-        // With a local cancel request the stage loop writes the terminal stage.
+        await this.fail(
+          this.requireRecord(),
+          `${kind} stage run settled cancelled without a local stop request${result.error === undefined ? '' : `: ${result.error}`}`,
+        )
         return
       case 'error':
-        await this.writeRecord({ ...this.requireRecord(), stage: 'failed', settledAt: new Date().toISOString(), error: result.error ?? `${kind} stage run failed` })
+        await this.fail(this.requireRecord(), result.error ?? `${kind} stage run failed`)
         return
-      /* v8 ignore start -- WorkflowStopReason is a closed union; a future variant fails loudly */
-      default: {
-        const exhaustive: never = result.stopReason
-        await this.writeRecord({ ...this.requireRecord(), stage: 'failed', settledAt: new Date().toISOString(), error: `${kind} stage run ended abnormally (${String(exhaustive)})` })
-      }
+      /* v8 ignore start -- WorkflowStopReason is closed; future variants become a durable failure. */
+      default:
+        await this.fail(this.requireRecord(), `${kind} stage run ended abnormally (${String(result.stopReason satisfies never)})`)
       /* v8 ignore stop */
     }
   }
 
-  /** Write the transition one validated stage report implies. */
+  /** Persist one validated report without replacing a prior round. */
   private async applyReport(
     record: ReliabilityLoopRecord,
     kind: 'implement' | 'review',
@@ -241,68 +276,76 @@ export class LoopDriver {
     agentsStarted: number,
   ): Promise<void> {
     if (kind === 'implement') {
-      const { summary } = report as ImplementReport
-      const implement: ImplementAttempt = { round, summary, agentsStarted }
-      await this.writeRecord({ ...record, implement, stage: round === 1 ? 'reviewing' : 'rework-reviewing' })
+      const implementation: ImplementAttempt = {
+        round,
+        summary: (report as ImplementReport).summary,
+        agentsStarted,
+      }
+      await this.transition(record, {
+        rounds: replaceRound(record.rounds, round, { implementation }),
+        stage: round === 1 ? 'reviewing' : 'rework-reviewing',
+      })
       return
     }
     const { verdict, feedback } = report as ReviewReport
     const review: ReviewAttempt = { round, verdict, feedback, agentsStarted }
+    const rounds = replaceRound(record.rounds, round, { review })
     if (verdict === 'approved') {
-      await this.writeRecord({ ...record, review, stage: 'completed', settledAt: new Date().toISOString() })
+      await this.transition(record, { rounds, stage: 'completed', settledAt: this.nextInstant(record) })
       return
     }
     if (round === 1) {
-      await this.writeRecord({ ...record, review, stage: 'rework-implementing' })
+      await this.transition(record, { rounds, stage: 'rework-implementing' })
       return
     }
-    // The single bounded rework still drew changes-requested: stop with the
-    // reviewer's feedback as the durable blocker.
-    await this.writeRecord({ ...record, review, stage: 'blocked', settledAt: new Date().toISOString() })
+    await this.transition(record, { rounds, stage: 'blocked', settledAt: this.nextInstant(record) })
   }
 
-  /** Build one stage's fixed script, meta name, and prompt from the durable record alone. */
+  /** Build a workflow request exclusively from the durable record. */
   private stageRequest(
     kind: 'implement' | 'review',
     round: LoopRound,
     record: ReliabilityLoopRecord,
-  ): { script: string; metaName: string; prompt: string; provider?: string; model?: string } {
-    const lane = kind === 'implement'
-      ? { provider: record.implementationProvider, model: record.implementationModel }
-      : { provider: record.reviewProvider, model: record.reviewModel }
-    const route = {
-      ...lane.provider === undefined ? {} : { provider: lane.provider },
-      ...lane.model === undefined ? {} : { model: lane.model },
-    }
+  ): { script: string; metaName: string; prompt: string; lane: ReliabilityLoopLane } {
     if (kind === 'implement') {
-      if (round === 1) {
-        return { script: IMPLEMENT_SCRIPT, metaName: IMPLEMENT_META_NAME, prompt: implementPrompt(record.objective), ...route }
-      }
-      /* v8 ignore next -- the record invariant guarantees a round-1 changes-requested review for a rework stage */
-      const feedback = record.review?.feedback ?? ''
-      return {
-        script: IMPLEMENT_SCRIPT,
-        metaName: IMPLEMENT_META_NAME,
-        prompt: implementReworkPrompt(record.objective, feedback),
-        ...route,
-      }
+      const prompt = round === 1
+        ? implementPrompt(record.objective)
+        : implementReworkPrompt(record.objective, record.rounds[0]?.review?.feedback ?? '')
+      return { script: IMPLEMENT_SCRIPT, metaName: IMPLEMENT_META_NAME, prompt, lane: record.implementation }
     }
-    /* v8 ignore next -- the record invariant guarantees a settled implementation for a review stage */
-    const summary = record.implement?.summary ?? ''
-    if (round === 1) {
-      return { script: REVIEW_SCRIPT, metaName: REVIEW_META_NAME, prompt: reviewPrompt(record.objective, summary), ...route }
-    }
-    /* v8 ignore next -- the record invariant guarantees the round-1 changes-requested feedback */
-    const priorFeedback = record.review?.feedback ?? ''
-    return {
-      script: REVIEW_SCRIPT,
-      metaName: REVIEW_META_NAME,
-      prompt: reworkReviewPrompt(record.objective, summary, priorFeedback),
-      ...route,
-    }
+    const current = record.rounds[round - 1]?.implementation?.summary ?? ''
+    const prompt = round === 1
+      ? reviewPrompt(record.objective, current)
+      : reworkReviewPrompt(record.objective, current, record.rounds[0]?.review?.feedback ?? '')
+    return { script: REVIEW_SCRIPT, metaName: REVIEW_META_NAME, prompt, lane: record.review }
   }
 
-  /** Read this loop's record, asserting the owned stage/slot relationships. */
+  /** Persist a bounded `failed` terminal. */
+  private async fail(record: ReliabilityLoopRecord, error: string): Promise<void> {
+    if (isTerminalStage(record.stage)) return
+    await this.transition(record, {
+      stage: 'failed',
+      settledAt: this.nextInstant(record),
+      error: bound(error, this.maxHandoffChars),
+    })
+  }
+
+  /** Create and persist the next revision. */
+  private async transition(
+    record: ReliabilityLoopRecord,
+    patch: Partial<Omit<ReliabilityLoopRecord, 'loopId' | 'sessionId' | 'objective' | 'implementation' | 'review' | 'createdAt'>>,
+  ): Promise<ReliabilityLoopRecord> {
+    const next: ReliabilityLoopRecord = {
+      ...record,
+      ...patch,
+      revision: record.revision + 1,
+      updatedAt: this.nextInstant(record),
+    }
+    await this.writeRecord(next)
+    return next
+  }
+
+  /** Read and validate the current durable record. */
   private requireRecord(): ReliabilityLoopRecord {
     const record = this.table.get(this.loopId)
     if (record === undefined) throw new Error(`loop '${this.loopId}' record is absent from the durable store`)
@@ -310,9 +353,50 @@ export class LoopDriver {
     return record
   }
 
-  /** Write one record, asserting the same relationships at the write site. */
+  /** Commit the authoritative record, then best-effort publish its derived view. */
   private async writeRecord(record: ReliabilityLoopRecord): Promise<void> {
     assertReliabilityLoopRecord(record)
     await this.table.put(record.loopId, record)
+    await Promise.resolve(this.onCommit(record)).catch(() => {
+      // The domain commit already succeeded. Agent recreation reconciles a
+      // missing Session projection; a derived-publish failure cannot roll back
+      // or stop the authoritative workflow.
+    })
   }
+
+  /** Monotonic ISO instant for the next mutation. */
+  private nextInstant(record: ReliabilityLoopRecord): string {
+    return new Date(Math.max(Date.now(), Date.parse(record.updatedAt))).toISOString()
+  }
+
+  /** Resolve the public result exactly once from the current record. */
+  private finishFromRecord(): void {
+    if (this.finished) return
+    const record = this.requireRecord()
+    if (!isTerminalStage(record.stage) && this.stopMode !== 'suspend') {
+      throw new Error(`loop '${this.loopId}' stopped in non-terminal stage '${record.stage}'`)
+    }
+    this.finished = true
+    this.resolveResult(isTerminalStage(record.stage)
+      ? { kind: 'terminal', record }
+      : { kind: 'suspended', record })
+  }
+}
+
+/** Replace one round slot while retaining the other pass. */
+function replaceRound(
+  rounds: readonly ReliabilityLoopRoundRecord[],
+  round: LoopRound,
+  patch: Pick<ReliabilityLoopRoundRecord, 'implementation' | 'review'>,
+): readonly ReliabilityLoopRoundRecord[] {
+  const next = rounds.map(item => ({ ...item }))
+  const index = round - 1
+  const current = next[index] ?? { round }
+  next[index] = { ...current, ...patch }
+  return next
+}
+
+/** Bound a durable error while leaving the raw workflow/session evidence intact. */
+function bound(value: string, max: number): string {
+  return value.length <= max ? value : value.slice(0, max)
 }

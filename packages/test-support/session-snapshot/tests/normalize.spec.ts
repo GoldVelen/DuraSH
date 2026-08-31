@@ -465,6 +465,48 @@ describe('normalizeSessionLog', () => {
     expect(out).toContain('"operation":"resume"')
   })
 
+  it('normalizes reliability status clocks without scrubbing unrelated payload timestamps', () => {
+    const change = JSON.stringify({
+      type: 'reliability-loop/change',
+      seq: 2,
+      time: 5,
+      data: {
+        version: 1,
+        turn: null,
+        current: {
+          loopId: 'loop-1',
+          revision: 4,
+          stage: 'completed',
+          createdAt: '2026-08-31T00:00:00.000Z',
+          updatedAt: '2026-08-31T00:00:01.000Z',
+          settledAt: '2026-08-31T00:00:01.000Z',
+        },
+        terminal: {
+          loopId: 'loop-1',
+          revision: 4,
+          stage: 'completed',
+          settledAt: '2026-08-31T00:00:01.000Z',
+          summary: 'done',
+        },
+      },
+    })
+    const tool = JSON.stringify({
+      type: 'tool/result',
+      seq: 3,
+      time: 6,
+      data: { settledAt: '2026-08-31T00:00:02.000Z' },
+    })
+    const out = normalizeSessionLog(`${header({})}\n${change}\n${tool}\n`, ctx)
+    const normalized = out.trimEnd().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
+    expect(normalized[1]).toMatchObject({
+      data: {
+        current: { createdAt: 0, updatedAt: 0, settledAt: 0 },
+        terminal: { settledAt: 0, summary: 'done' },
+      },
+    })
+    expect(normalized[2]).toMatchObject({ data: { settledAt: '2026-08-31T00:00:02.000Z' } })
+  })
+
   it('handles complete envelopes when optional normalized fields are absent', () => {
     const bareHeader = JSON.stringify({ type: 'session', id: 's' })
     const bareHook = JSON.stringify({ type: 'hook/result', seq: 2, time: 5, data: { decision: 'allow' } })

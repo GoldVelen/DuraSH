@@ -15,6 +15,7 @@ import type {
   ReliabilityModelBadge,
   ReliabilityModelOption,
   ReliabilityPolicyConfigureRequest,
+  ReliabilityReasoningEffortOption,
   ReliabilityThinking,
 } from '@durash/dsh-reliability-policy/client'
 import { NS } from './locales.ts'
@@ -77,19 +78,19 @@ interface ModelFieldProps {
 interface EffortFieldProps {
   label: string
   value: ReliabilityThinking | null
-  levels: readonly ReliabilityThinking[]
+  efforts: readonly ReliabilityReasoningEffortOption[]
   disabled: boolean
   t: WorkflowPolicyDockProps['t']
   onChange: (value: ReliabilityThinking | null) => void
 }
 
-const EFFORT_ORDER = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 const OK_RESULT: ReliabilityActionResult = { ok: true }
 const UNSET_EFFORT = 'unset'
 
-function effortLabel(level: ReliabilityThinking, t: WorkflowPolicyDockProps['t']): string {
+function effortLabel(effort: ReliabilityReasoningEffortOption, t: WorkflowPolicyDockProps['t']): string {
+  const level = effort.id
   const known = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
-  return known.includes(level) ? t(`effort.${level}` as never) : level
+  return known.includes(level) ? t(`effort.${level}` as never) : effort.name
 }
 
 function normalizeDraft(state: ReliabilitySessionState): DraftState {
@@ -102,24 +103,19 @@ function normalizeDraft(state: ReliabilitySessionState): DraftState {
   }
 }
 
-function thinkingLevels(
+function reasoningEfforts(
   models: readonly ReliabilityModelOption[],
   selector: string | null,
-): readonly ReliabilityThinking[] {
-  return models.find(model => model.selector === selector)?.thinkingLevels ?? []
+): readonly ReliabilityReasoningEffortOption[] {
+  return models.find(model => model.selector === selector)?.reasoningEfforts ?? []
 }
 
 function preferredEffort(
-  levels: readonly ReliabilityThinking[],
+  efforts: readonly ReliabilityReasoningEffortOption[],
   preferred: ReliabilityThinking,
 ): ReliabilityThinking | null {
-  if (levels.includes(preferred)) return preferred
-  const start = EFFORT_ORDER.indexOf(preferred as typeof EFFORT_ORDER[number])
-  for (let index = start; index >= 0; index -= 1) {
-    const candidate = EFFORT_ORDER[index]
-    if (candidate !== undefined && levels.includes(candidate)) return candidate
-  }
-  return levels[0] ?? null
+  if (efforts.some(effort => effort.id === preferred)) return preferred
+  return efforts.find(effort => effort.isDefault)?.id ?? efforts[0]?.id ?? null
 }
 
 function equalDraft(left: DraftState, right: DraftState): boolean {
@@ -171,11 +167,11 @@ function groupWorkflowModels(
 }
 
 /** Theme menu for one thinking level; native select cannot follow dark chrome. */
-function EffortField({ label, value, levels, disabled, t, onChange }: EffortFieldProps) {
+function EffortField({ label, value, efforts, disabled, t, onChange }: EffortFieldProps) {
   const [open, setOpen] = useState(false)
   const items = [
     { id: UNSET_EFFORT, label: t('workflow.unconfigured') },
-    ...levels.map(level => ({ id: level, label: effortLabel(level, t) })),
+    ...efforts.map(effort => ({ id: effort.id, label: effortLabel(effort, t) })),
   ]
   return (
     <div className={css.fieldMenu}>
@@ -204,7 +200,11 @@ function EffortField({ label, value, levels, disabled, t, onChange }: EffortFiel
             <span className={css.laneCopy}>
               <span className={css.fieldLabel}>{label}</span>
               <span className={css.laneValue}>
-                {value === null ? t('workflow.unconfigured') : effortLabel(value, t)}
+                {value === null
+                  ? t('workflow.unconfigured')
+                  : effortLabel(efforts.find(effort => effort.id === value) ?? {
+                    id: value, name: value, isDefault: false,
+                  }, t)}
               </span>
             </span>
             <span className={css.chevron} aria-hidden>
@@ -393,6 +393,7 @@ export function WorkflowPolicyDock({
       reviewThinking: null,
       updatedAt: 0,
       models: [],
+      validationError: null,
     },
   }
   const [open, setOpen] = useState(false)
@@ -472,12 +473,12 @@ export function WorkflowPolicyDock({
     state.policy.reviewThinking,
   ])
 
-  const implementationLevels = useMemo(
-    () => thinkingLevels(models, draft.implementationModel),
+  const implementationEfforts = useMemo(
+    () => reasoningEfforts(models, draft.implementationModel),
     [draft.implementationModel, models],
   )
-  const reviewLevels = useMemo(
-    () => thinkingLevels(models, draft.reviewModel),
+  const reviewEfforts = useMemo(
+    () => reasoningEfforts(models, draft.reviewModel),
     [draft.reviewModel, models],
   )
   const dirty = !equalDraft(draft, normalizeDraft(state))
@@ -524,22 +525,22 @@ export function WorkflowPolicyDock({
   }
 
   const selectLane = (lane: PickerLane, selector: string | null): void => {
-    const levels = thinkingLevels(models, selector)
+    const efforts = reasoningEfforts(models, selector)
     if (lane === 'implementation') {
       setDraft(current => ({
         ...current,
         implementationModel: selector,
-        implementationThinking: levels.includes(current.implementationThinking ?? '')
+        implementationThinking: efforts.some(effort => effort.id === current.implementationThinking)
           ? current.implementationThinking
-          : preferredEffort(levels, 'high'),
+          : preferredEffort(efforts, 'high'),
       }))
     } else {
       setDraft(current => ({
         ...current,
         reviewModel: selector,
-        reviewThinking: levels.includes(current.reviewThinking ?? '')
+        reviewThinking: efforts.some(effort => effort.id === current.reviewThinking)
           ? current.reviewThinking
-          : preferredEffort(levels, 'xhigh'),
+          : preferredEffort(efforts, 'xhigh'),
       }))
     }
     setOpenPicker(null)
@@ -603,8 +604,8 @@ export function WorkflowPolicyDock({
           <EffortField
             label={t('policy.implementationThinking')}
             value={draft.implementationThinking}
-            levels={implementationLevels}
-            disabled={saving || implementationLevels.length === 0}
+            efforts={implementationEfforts}
+            disabled={saving || implementationEfforts.length === 0}
             t={t}
             onChange={(implementationThinking) => {
               setDraft(current => ({ ...current, implementationThinking }))
@@ -626,8 +627,8 @@ export function WorkflowPolicyDock({
           <EffortField
             label={t('policy.reviewThinking')}
             value={draft.reviewThinking}
-            levels={reviewLevels}
-            disabled={saving || reviewLevels.length === 0}
+            efforts={reviewEfforts}
+            disabled={saving || reviewEfforts.length === 0}
             t={t}
             onChange={(reviewThinking) => {
               setDraft(current => ({ ...current, reviewThinking }))
@@ -635,7 +636,9 @@ export function WorkflowPolicyDock({
           />
         </div>
 
-        {state.error === null ? null : <div className={css.error} role="alert">{state.error}</div>}
+        {state.error === null && state.policy.validationError === null
+          ? null
+          : <div className={css.error} role="alert">{state.error ?? state.policy.validationError}</div>}
 
         <div className={css.footer}>
           <span className={css.note}>{t('policy.note')}</span>

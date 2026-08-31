@@ -1,27 +1,21 @@
 /**
- * The reliability-loop domain declaration: record schema and the
- * `defineDomain` spec the runtime opens. The zod schema validates the shipped
- * format at the durability boundary; structural stage coherence is owned by
- * the `./invariant` companion, not by this schema.
+ * Version-2 reliability-loop storage domain declaration.
  * @module @durash/dsh-reliability-loop/src/spec
  */
 
 import { z } from 'zod'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { ReliabilityLoopId } from './types.ts'
 import type { ReliabilityLoopRecord } from './types.ts'
 
-/** Loop id schema at the durable boundary; branding has no runtime representation. */
-const loopId = z.string().transform(ReliabilityLoopId)
-
-/** The two attempt rounds. */
+const loopId = z.string().min(1).transform(ReliabilityLoopId)
+const sessionId = z.string().min(1).transform(SessionId)
 const loopRound = z.union([z.literal(1), z.literal(2)])
-
-/** The reviewer verdicts. */
 const reviewVerdict = z.union([z.literal('approved'), z.literal('changes-requested')])
-
-/** The closed stage vocabulary, mirrored from {@link ReliabilityLoopStage}. */
 const loopStage = z.enum([
+  'accepted',
   'implementing',
   'reviewing',
   'rework-implementing',
@@ -32,14 +26,21 @@ const loopStage = z.enum([
   'cancelled',
 ])
 
-/** One settled implementation attempt. */
+/** One exact stage route persisted before background work starts. */
+export const reliabilityLoopLane = z.object({
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  reasoningEffort: z.string().min(1).transform(ReasoningEffortId).optional(),
+})
+
+/** One settled implementation report. */
 export const implementAttempt = z.object({
   round: loopRound,
   summary: z.string(),
   agentsStarted: z.number().int().nonnegative(),
 })
 
-/** One settled review attempt. */
+/** One settled review report. */
 export const reviewAttempt = z.object({
   round: loopRound,
   verdict: reviewVerdict,
@@ -47,31 +48,36 @@ export const reviewAttempt = z.object({
   agentsStarted: z.number().int().nonnegative(),
 })
 
-/** Durable shape of one loop record (see {@link ReliabilityLoopRecord}). */
+/** Reports retained for one pass. */
+export const reliabilityLoopRoundRecord = z.object({
+  round: loopRound,
+  implementation: implementAttempt.optional(),
+  review: reviewAttempt.optional(),
+})
+
+/** Durable version-2 record shape. */
 export const reliabilityLoopRecord = z.object({
   loopId,
-  objective: z.string(),
-  createdAt: z.string(),
+  revision: z.number().int().positive(),
+  sessionId,
+  objective: z.string().min(1),
   stage: loopStage,
-  implement: implementAttempt.optional(),
-  review: reviewAttempt.optional(),
-  settledAt: z.string().optional(),
+  implementation: reliabilityLoopLane,
+  review: reliabilityLoopLane,
+  rounds: z.array(reliabilityLoopRoundRecord).max(2),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  settledAt: z.string().min(1).optional(),
   error: z.string().optional(),
-  implementationProvider: z.string().optional(),
-  implementationModel: z.string().optional(),
-  reviewProvider: z.string().optional(),
-  reviewModel: z.string().optional(),
+  dismissedAt: z.string().min(1).optional(),
 }) satisfies z.ZodType<ReliabilityLoopRecord>
 
 /**
- * The reliability-loop domain spec: one `loops` table keyed by
- * {@link ReliabilityLoopId}. The spec object is the single source of the
- * domain's identity, version, and schemas; one record holds a loop's whole
- * state machine, so every transition is a single-record write. The domain
- * name uses the unit-name charset (underscores, no hyphens).
+ * One-record-per-loop storage domain. Version 1 is deliberately unsupported:
+ * it lacks Session ownership, revisions, complete lanes, and separate rounds.
  */
 export const reliabilityLoopDomainSpec = defineDomain({
   name: 'reliability_loop',
-  version: 1,
+  version: 2,
   tables: { loops: domainTable<ReliabilityLoopId, ReliabilityLoopRecord>(reliabilityLoopRecord) },
 })

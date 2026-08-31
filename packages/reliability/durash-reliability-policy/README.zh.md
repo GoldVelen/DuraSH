@@ -1,5 +1,5 @@
 ---
-description: "按会话保存的可靠性闭环策略：composer 工作流开关在 Host 上的启用状态与实施/审查模型选择。"
+description: "按会话保存的可靠性闭环策略：依据 Host 实时目录校验精确实施/审查模型与 adapter 自有思考强度。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-reliability-policy` 是 composer 工作流开关背后的 Host 服务。每个会话一行持久记录保存闭环是否开启，以及下一次交接将使用的实施模型与审查模型。每次读取都从 `ctx.llm` 重建模型目录，因此已离开目录的路由不能保持启用。本服务只组合进 `durash` profile。
+`dsh-reliability-policy` 是 composer 工作流开关背后的 Host 服务。每个会话一行持久记录保存启用状态、精确实施/审查模型及各自的思考强度。策略面板读取会通过 `ctx.llm.listModels()` 与 `resolveModelInfo()` 并行重建各提供方和模型目录，因此每个模型只公开 adapter 声明的档位 id、名称、说明与默认值。目录漂移会保留原记录并返回具体 `validationError`；无效记录不能启用或启动闭环，也不会被静默降档。
 
 ## 目录
 
@@ -25,9 +25,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-与 `ctx.storageDomain` 和 `ctx.llm` 一起挂载。composer 开关通过生成的 Remote 调用 `policy`、`ensurePolicy` 和 `configure`。`workflowEnabled(sessionId)` 与 `enabledRoutes(sessionId)` 供同进程的模型交接工具读取。
+与 `ctx.storageDomain` 和 `ctx.llm` 一起挂载。composer 开关通过生成的 Remote 调用 `policy`、`ensurePolicy` 和 `configure`。`workflowEnabled(sessionId)` 是同步提示门禁；异步 `enabledRoutes(sessionId)` 只重新校验已选择的 provider/model 路由，并为交接工具返回不可变的 provider/model/reasoning-effort 通道快照。因此一次交接不会等待无关提供方或模型。
 
-启用一个会话要求两条通道都点名目录中的模型。缺失或无效的选择器不能保持启用：下一次读取会把该行关掉。
+启用要求两条通道都点名当前目录模型。有 reasoning 控件的模型必须选择目录中的档位；没有此控件的模型必须保存 `null`。失效的既有选择器或档位会继续显示以便修正，但会阻止启动。
 
 -----
 
@@ -37,7 +37,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`reliability_policy` storage domain 以会话 id 为键保存 `sessions` 表中的一行。目录成员关系不落盘。变更按会话排队。选择器是 `provider/model` 字符串，在第一个斜杠处切开。
+`reliability_policy` storage domain 以会话 id 为键保存 `sessions` 表中的一行。目录成员关系与显示元数据不落盘。变更按会话排队。选择器是 `provider/model` 字符串，在第一个斜杠处切开；档位 id 是不透明的 adapter 自有值。
 
 </details>
 
@@ -65,7 +65,6 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **思考强度只记录、不生效** — 开关会记下实施与审查的思考强度；worker-thread 引擎仍推迟 `agent()` 的 `effort`，阶段子代理继承父代理的推理设置。
 - **没有实时目录事件** — 客户端在打开时重读；面板打开期间新增的提供方要等到下一次 ensure 才出现。
 
 <a id="dev-note"></a>

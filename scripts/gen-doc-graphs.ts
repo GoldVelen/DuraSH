@@ -321,6 +321,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Drives one bounded implement-review-rework cycle over the workflow engine with the whole state machine in one durable `reliability_loop` domain record; owns start/resume single ownership, bounded handoffs, and cancellation quiescence.',
   },
   {
+    key: 'reliabilityPolicy',
+    pkg: 'durash-reliability-policy',
+    title: 'DuraSH per-Session reliability policy',
+    mode: 'core',
+    consumers: ['durash-tool-reliability', 'ui-reliability'],
+    note: 'Stores exact implementation and review model selections per Session, validates them against live adapter capabilities, and refuses stale routes without rewriting user choices.',
+  },
+  {
     key: 'sessionQuery',
     pkg: 'session-query',
     title: 'Session reads, traces, filters, and search',

@@ -12,6 +12,8 @@ Service Definition：[dsh-workflow](../../packages/workflow/workflow)（`ctx.wor
 
 本节定义调用方启动一次运行时提交的请求。普通工作流工具会根据模型的 `{ script, meta, args }` 调用和发起调用的 agent 构建该请求；专用消费方还可以为本次运行选择引擎级 `subagentProvider`，并将 `maxTotalAgents` 调低，但脚本无法观察或替换这两项策略。`meta` 与 `args` 是普通 JSON 数据；引擎会用 schema 校验 `meta`，并在任何工作开始前明确报错并拒绝无效数据。引擎绝不会通过对脚本文本求值来获取它们。`parent` 是必填字段——脚本启动的每个子 agent 都归属于它，cwd、谱系与深度通过 [subagent seam](subagent.zh.md) 传递。
 
+脚本每次调用 `agent()` 都可使用通用子代理选项 `provider`、`model` 与 `reasoningEffort`，以及既有的 schema、深度、工具过滤与 persona 字段。worker 在穿过带类型协议前校验这组封闭词汇；Host 把所选档位原样映射进子代理 `AgentOptions`。是否接受某个模型/档位组合仍由 provider adapter 负责，因此 workflow 运行时没有模型专用分支。
+
 ```ts type-equiv
 /**
  * What a caller asks for when starting a workflow run. `meta` and `args` are

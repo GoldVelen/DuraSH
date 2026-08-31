@@ -21,6 +21,9 @@
       "path": "../ui-conversation"
     },
     {
+      "path": "../ui-chat"
+    },
+    {
       "path": "../ui-primitives"
     },
     {
@@ -28,6 +31,9 @@
     },
     {
       "path": "../ui-renderer"
+    },
+    {
+      "path": "../ui-session"
     },
     {
       "path": "../../api/remotes/tsconfig.client.json"
@@ -40,6 +46,9 @@
     },
     {
       "path": "../../reliability/durash-reliability-policy"
+    },
+    {
+      "path": "../../reliability/durash-reliability-loop"
     }
   ]
 }

@@ -2,249 +2,49 @@
 
 [English](reliability-loop.md) | 中文
 
-[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) 承载 DuraSH 可靠性引擎的第一个切片：一个有界的实施-审查-返工闭环，跑在 workflow seam 之上，循环的整个状态机以一条持久记录的形式保存在 `reliability_loop` storage domain 中。它只组合进 `durash` profile，不注册任何工具或提示段落，自身不贡献任何模型上下文。
+[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) 是由 DuraSH Host 持有的有界交付引擎。它在 `reliability_loop` storage domain 中持久保存一条实施通道、一条独立审查通道和最多一轮返工。它只组合进 `durash` profile，每个阶段都使用通用[工作流子系统](workflow.zh.md)。
 
-Source: [`packages/reliability/durash-reliability-loop/src/types.ts`](../../packages/reliability/durash-reliability-loop/src/types.ts)
+源码：[`packages/reliability/durash-reliability-loop/src/types.ts`](../../packages/reliability/durash-reliability-loop/src/types.ts)
 
-## 公共类型
+## 快速交接
 
-```ts type-equiv
-/** Identifies one reliability loop across restarts (runtime-minted UUID). */
-type ReliabilityLoopId = Branded<'ReliabilityLoopId'>
-```
+`startDetached()` 鉴权精确的存活根 Agent，以 `accepted` 阶段写入版本 2 记录，取得唯一存活驱动者，发布当前会话 view，然后在实施、审查或返工阶段结算前返回 `{ loopId, revision, status: 'accepted' }`。接管完成后，发起它的模型回合、工具信号、代码运行上限与浏览器连接都不拥有该闭环。同一会话的第二次启动会返回既有活动 ref，不会创建另一个写入者。
 
-```ts type-equiv
-/** One attempt's round: `1` is the original pass, `2` the single bounded rework. */
-type LoopRound = 1 | 2
-```
+面向模型的 [`dsh_reliability_handoff`](../../packages/reliability/durash-tool-reliability/README.zh.md) 只接受当前由直接人类发起的根回合。它从会话策略读取完整实施与审查通道，返回快速回执；它不等待终态，也不把自身 abort 信号映射成闭环取消。
 
-```ts type-equiv
-/** Why a reviewer's report accepted or rejected an implementation. */
-type ReviewVerdict = 'approved' | 'changes-requested'
-```
+## 持久状态与阶段
 
-```ts type-equiv
-/**
- * Durable loop stage. CLOSED union (runtime-owned, callers may exhaust). The
- * four `-ing` stages each name one workflow run the loop is — or was, before
- * a restart — executing; the four terminal stages are final. `blocked` stops
- * the loop after the bounded rework still drew `changes-requested`; the
- * settled round-2 review attempt carries the durable blocker.
- */
-type ReliabilityLoopStage =
-  | 'implementing'
-  | 'reviewing'
-  | 'rework-implementing'
-  | 'rework-reviewing'
-  | 'completed'
-  | 'blocked'
-  | 'failed'
-  | 'cancelled'
-```
+一行记录是唯一执行真源。它包含所属会话、正 revision、完整目标、不可变的 provider/model/reasoning-effort 通道、两轮有界报告、当前阶段、生命周期时间，以及可选终态错误或关闭时间。domain schema 版本为 2。预发布的版本 1 介质会被拒绝，不进行猜测或重写。
 
-```ts type-equiv
-/** One settled implementation attempt. */
-interface ImplementAttempt {
-  /** Which pass produced it. */
-  readonly round: LoopRound
-  /** The implementer's bounded work summary. */
-  readonly summary: string
-  /** How many `agent()` calls the stage run accepted. */
-  readonly agentsStarted: number
-}
-```
+阶段为 `accepted`、`implementing`、`reviewing`、`rework-implementing`、`rework-reviewing`、`completed`、`blocked`、`failed` 与 `cancelled`。第一轮 `changes-requested` 进入一次返工；第二轮仍要求修改则进入 `blocked`。每个阶段子代理全新启动，只接收有界目标或报告交接。`maxHandoffChars` 默认 16384，超限输入会被拒绝，不会截断。
 
-```ts type-equiv
-/** One settled review attempt. */
-interface ReviewAttempt {
-  /** Which pass produced it. */
-  readonly round: LoopRound
-  /** The reviewer's decision. */
-  readonly verdict: ReviewVerdict
-  /** The reviewer's evidence; a `changes-requested` verdict names the required modifications. */
-  readonly feedback: string
-  /** How many `agent()` calls the stage run accepted. */
-  readonly agentsStarted: number
-}
-```
+## 所有权、暂停与取消
 
-```ts type-equiv
-/**
- * The durable record of one loop — the single authoritative state. Optional
- * slots name `| undefined` explicitly because the zod durable-boundary schema
- * produces that shape and the repo compiles with `exactOptionalPropertyTypes`.
- * Stage semantics (which attempt slots must be settled for which stage) are
- * owned by the runtime and asserted by the `./invariant` companion.
- */
-interface ReliabilityLoopRecord {
-  /** The loop's id. */
-  readonly loopId: ReliabilityLoopId
-  /** What the implementation must achieve, verbatim from the caller. */
-  readonly objective: string
-  /** Creation instant, ISO-8601. */
-  readonly createdAt: string
-  /** Current stage. */
-  readonly stage: ReliabilityLoopStage
-  /** The settled implementation attempt, when one has completed. */
-  readonly implement?: ImplementAttempt | undefined
-  /** The settled review attempt, when one has completed. */
-  readonly review?: ReviewAttempt | undefined
-  /** Settlement instant, ISO-8601; present iff `stage` is terminal. */
-  readonly settledAt?: string | undefined
-  /** Failure detail; present iff `stage` is `failed`. */
-  readonly error?: string | undefined
-  /** Implementation-stage provider route, when the caller selected one. */
-  readonly implementationProvider?: string | undefined
-  /** Implementation-stage model id, when the caller selected one. */
-  readonly implementationModel?: string | undefined
-  /** Review-stage provider route, when the caller selected one. */
-  readonly reviewProvider?: string | undefined
-  /** Review-stage model id, when the caller selected one. */
-  readonly reviewModel?: string | undefined
-}
-```
+一个 `LoopDriver` 是一个闭环的唯一存活写入者。运行时在驱动前先挂接结果观察者，因此 provider、子代理、workflow worker、报告与存储故障会被收敛，不能变成 Host 级未处理 rejection。只要记录仍可维护，闭环内部失败就写成持久 `failed`。
 
-```ts type-equiv
-/** What a caller asks for when starting one loop. */
-interface ReliabilityLoopStartRequest {
-  /** The agent on whose behalf the loop runs (parent of every stage child). */
-  parent: Agent
-  /** What the implementation must achieve; bounded by `maxHandoffChars`. */
-  objective: string
-  /** Implementation-stage child route; omitted children inherit the parent. */
-  implementation?: ReliabilityLoopLane
-  /** Review-stage child route; omitted children inherit the parent. */
-  review?: ReliabilityLoopLane
-}
-```
+Host 或所属 Agent 拆卸会调用 `suspend`：取消并释放当前 workflow run，等待资源停止，保持非终态持久阶段不变。重启后 Agent 接管该阶段，只重跑第一个未完成阶段；已提交报告会保留。`cancelled` 只留给受鉴权的用户显式操作。`cancel` 校验会话归属与精确 revision，等待 worker 和子代理静止，然后发布一次终态结果。
 
-```ts type-equiv
-/**
- * A caller-owned live loop. `result` settles once the loop has durably
- * reached a terminal stage AND the last stage run's resources are released;
- * after that point the loop writes nothing and owns nothing.
- */
-interface ReliabilityLoopHandle {
-  /** The loop's id. */
-  readonly loopId: ReliabilityLoopId
-  /**
-   * Settles with the terminal durable record. Never rejects for loop-internal
-   * failures (those land in the record as `failed`); it rejects only when the
-   * durable record itself cannot be maintained (a storage fault), because no
-   * terminal record can be delivered then.
-   */
-  readonly result: Promise<ReliabilityLoopRecord>
-  /**
-   * Request cancellation: the in-flight stage run is cancelled and the loop
-   * settles `cancelled`. Idempotent; the first reason wins. A stage that
-   * already settled is kept.
-   * @param reason - human-readable cause (default `'reliability loop cancelled'`).
-   */
-  cancel(reason?: string): void
-  /**
-   * Cancel if needed and await durable settlement plus resource quiescence.
-   * Never rejects; idempotent; safe on every path.
-   */
-  dispose(): Promise<void>
-}
-```
+## 会话状态与操作
 
-## 会话策略类型
+`reliability-loop/change` 是 domain 提交后派生的 required-on-read、log-only 会话事件。它携带完整当前状态及可选的每闭环一次终态通知。`reliabilityLoop` 会话投影拒绝同一闭环的 revision 回退。它是展示状态，不是第二执行真源：恢复和阶段转换绝不读取它。若 domain 提交成功而事件 append 失败，Agent 接管会补发最新 view。
 
-[`@durash/dsh-reliability-policy`](../../packages/reliability/durash-reliability-policy) 存储 composer 开关及实施／审查路由选择。思考强度属于持久策略数据；当前 worker-thread 引擎尚未把它应用到阶段子代理。
+客户端以 order `-10` 注册紧凑的 `conversation.input.dock` 状态条。它只读取活动会话投影，覆盖九个阶段，按需加载完整详情，二次确认取消，只关闭精确可见的终态 revision。终态 `reliability-loop/change` 创建一个稳定的 loop-id Conversation Node；活动遥测不进入主对话，终态渲染也不调用模型。
 
-```ts type-equiv
-/** Thinking effort stored on a lane; the worker-thread engine does not yet apply it to children. */
-type ReliabilityThinking = string
-```
+`details`、`cancel` 与 `dismiss` Typert Remote 要求精确存活 Agent 与匹配的会话归属。会修改状态的 `cancel` 和 `dismiss` 还要求当前 loop revision，因此未知、跨会话和 stale 写入 ref 都闭门失败。只读 `details` 返回最新归属记录，使终态 Conversation Node 在关闭后仍可查看。关闭只隐藏最新可见终态，不删除 domain 记录，也不重新翻出旧结果。
 
-```ts type-equiv
-/** One catalog badge rendered next to a model option. */
-interface ReliabilityModelBadge {
-  readonly kind: 'channel' | 'provider'
-  readonly label: string
-}
-```
+## 模型路由与上下文韧性
 
-```ts type-equiv
-/** One selectable implementation or review model. */
-interface ReliabilityModelOption {
-  /** `provider/model` selector persisted on the policy row. */
-  readonly selector: string
-  /** Human-readable model name. */
-  readonly label: string
-  /** Provider route that owns the model. */
-  readonly provider: string
-  /** Model id passed to the stage child. */
-  readonly model: string
-  /** Channel and provider badges for the picker. */
-  readonly badges: readonly ReliabilityModelBadge[]
-  /** Effort levels the switch offers for this model. */
-  readonly thinkingLevels: readonly ReliabilityThinking[]
-}
-```
+[`@durash/dsh-reliability-policy`](../../packages/reliability/durash-reliability-policy/README.zh.md) 根据 adapter 实时元数据重建精确模型目录。它保留失效选择并给出具体校验错误，拒绝用其启动；绝不静默更换模型或档位。有效路由把 provider、model 与可选 reasoning effort 快照进闭环，通用 workflow worker 再把这些字段传给各阶段子代理。
 
-```ts type-equiv
-/** Parsed provider/model override for one loop lane. */
-interface ReliabilityLaneRoute {
-  readonly provider: string
-  readonly model: string
-}
-```
+同进程阶段子代理加入父代理的精确 preset generation。在发布的 standard preset 下，它们因此继承 token meter、可回放工具结果裁剪器与压缩引擎。既有压缩回归覆盖超大工具结果裁剪、provider 确认上下文超限后的压缩重试，以及保留输入不可分割时的明确失败。本子系统不恢复旧 3081 的 workflow 专用执行器，也不放宽代码运行的 wall-clock 上限。
 
-```ts type-equiv
-/** Session-bound policy the composer switch reads and writes. */
-interface ReliabilityPolicySnapshot {
-  readonly sessionId: SessionId
-  readonly revision: number
-  readonly enabled: boolean
-  readonly implementationModel: string | null
-  readonly implementationThinking: ReliabilityThinking | null
-  readonly reviewModel: string | null
-  readonly reviewThinking: ReliabilityThinking | null
-  readonly updatedAt: number
-  readonly models: readonly ReliabilityModelOption[]
-}
-```
+## 边界
 
-```ts type-equiv
-/** Session identity for a policy read. */
-interface ReliabilityPolicyRequest {
-  readonly sessionId: SessionId
-}
-```
+- 当前产品闭环只有一个实施者、一个审查者和一轮返工。计划协调、多路对抗性审查、汇总与自动成本调度尚未实现。
+- 通用 workflow 引擎不记录脚本内部进度。阶段内崩溃会在接管后重跑该未完成阶段；本系统不声称成员级持久进度。
+- 终态摘要是确定且有界的。完整目标和两轮报告需要受鉴权的详情 Remote；原始 provider 与子代理证据留在所属 workflow 和子会话中。
 
-```ts type-equiv
-/** Session policy replacement from the composer switch. */
-interface ReliabilityPolicyConfigureRequest {
-  readonly sessionId: SessionId
-  readonly enabled: boolean
-  readonly implementationModel: string | null
-  readonly implementationThinking: ReliabilityThinking | null
-  readonly reviewModel: string | null
-  readonly reviewThinking: ReliabilityThinking | null
-}
-```
-
-## 状态与持久性
-
-一个循环就是 `reliability_loop` domain `loops` 表中的一行，记录是唯一权威状态：每次阶段转换都是一次单记录持久写入，恢复不读取任何其他内容，也不存在会话事件副本或第二个 store。四个 `-ing` 阶段各自命名循环正在（或重启前曾经）执行的一个 workflow run；`completed`、`blocked`、`failed`、`cancelled` 是终态，`settledAt` 恰好只在终态出现。`blocked` 在单轮返工仍得到 `changes-requested` 后停止循环，由已结算的第二轮审查尝试承载持久 blocker。
-
-阶段机规定每个阶段必须结算哪些尝试槽位，`./invariant` 伴随在每个读写点和 `domain/changed` 事件流上断言这种一致性。转换由驱动者拥有的 run 句柄（`run.result`）推导，而不是从只读的 `workflow/*` 事件推导，所以一个阶段只有一个存活事实来源。
-
-## 生命周期与恢复
-
-`start` 先写入持久记录再启动任何 run；该写入之后的崩溃可恢复。`resume(loopId, parent)` 从记录的当前阶段驱动状态机：已结算的尝试绝不重跑，且由于一个循环只有一个存活驱动者，第一个未完成阶段恰好重跑一次——对已被拥有的循环再次 `resume` 或 `start` 会响亮失败。父代理由调用方提供；运行时绝不伪造归属。`result` 只在终态记录持久化且最后一个阶段 run 释放之后结算，因此已结算的循环不拥有任何资源、不再写入任何内容。
-
-有界交接回应历史审查溢出故障：`maxHandoffChars`（默认 16384）限制目标、每份实施摘要与每条审查反馈；超限产物使阶段响亮失败，且每个阶段子代理全新启动，只收到有界交接——绝不接收父对话或先前阶段的转录。
-
-## 边界与限制
-
-- 循环运行时是程序化服务。`durash` profile 的 composer 开关、会话策略与 `dsh_reliability_handoff` 工具是面向模型的消费者。
-- 记录只持久化阶段转换。workflow 引擎没有日志，阶段中途崩溃会重跑该阶段一次；不投影成员级持久进度。
-- 只有一个实施者与一个审查者——没有协调阶段、三路审查或阶段内扇出，`blocked` 停机之外也没有 `needs_replan` 轮次词汇。
-- 只有持久 seam 故障（存储故障或不变量破坏）才会让 `result` reject；其余循环内部失败都以 `failed` 落入记录。
-- 没有本地取消请求却以 `cancelled` 结算的 run 属于契约破坏，循环以 `failed` 停止，而不是误认为调用方取消。
+所有权与投影决策记录于 [Host 持有的可靠性闭环 Agent Note](../../.agents/notes/implemented/feature/2026-08-31-host-owned-reliability-loop.zh.md)。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -258,44 +58,56 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.reliabilityLoopRuntime` — `ReliabilityLoopRuntime`
 
-The reliability-loop runtime. One live driver owns one loop; the runtime enforces that single ownership and cancels every live loop to quiescence before its domain closes at teardown.
+Detached, Host-owned reliability-loop runtime and Remote provider.
 
 ```ts cordis-catalog
 /**
- * Start one loop: write its durable record first, then drive the first
- * stage. The caller owns the returned handle and defines its own interval
- * over `result`.
- * @param request - the parent agent and the bounded objective.
- * @returns the live loop handle.
- * @throws when the objective is empty or over the handoff bound.
+ * Persist and claim one background loop, then return before any stage settles.
+ * A duplicate active start returns that loop's current ref and never creates
+ * a second writer.
+ * @param request - root Session, objective, and exact lane snapshots.
+ * @returns durable acceptance acknowledgement.
  */
-async start(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>
+startDetached(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopStartAck>
 
 /**
- * Resume one interrupted loop after a restart: drive the state machine from
- * its record's current stage. Settled attempts are never re-run; the first
- * unsettled stage re-runs exactly once because the driver owns the loop
- * exclusively.
- * @param loopId - the interrupted loop's id.
- * @param parent - the agent on whose behalf the resumed stages run.
- * @returns the live loop handle.
- * @throws when the loop is unknown, already settled, or already owned by a
- *   live driver.
- */
-resume(loopId: ReliabilityLoopId, parent: Agent): ReliabilityLoopHandle
-
-/**
- * Every durable loop record, in storage order.
- * @returns the record snapshot.
+ * Every durable record in storage order.
+ * @returns record snapshots.
  */
 list(): ReliabilityLoopRecord[]
 
 /**
- * Read one loop's durable record.
- * @param loopId - the loop's id.
- * @returns the record, or `undefined` when unknown.
+ * Read one durable record without granting cross-Session Remote access.
+ * @param loopId - exact loop identity.
+ * @returns the record or undefined.
  */
 get(loopId: ReliabilityLoopId): ReliabilityLoopRecord | undefined
+
+/**
+ * Return the current full record for one loop in the caller's Session.
+ * Read access is Session-authenticated but not revision-gated so a terminal
+ * Conversation node remains useful after its status dock is dismissed.
+ * @param agent - exact live Agent resolved by Typert.
+ * @param ref - loop identity plus the caller's observed revision.
+ * @returns bounded objective and every settled report.
+ */
+@Remote('details') details(agent: Agent, ref: ReliabilityLoopRef): ReliabilityLoopDetails
+
+/**
+ * Explicitly cancel one active loop and wait for stage resources to stop.
+ * @param agent - exact live Agent resolved by Typert.
+ * @param ref - expected current revision.
+ * @returns terminal status after quiescence.
+ */
+@Remote('cancel') cancel(agent: Agent, ref: ReliabilityLoopRef): Promise<ReliabilityLoopStatusView>
+
+/**
+ * Hide the currently visible terminal dock without deleting durable history.
+ * @param agent - exact live Agent resolved by Typert.
+ * @param ref - expected current terminal revision.
+ * @returns the new tombstone revision.
+ */
+@Remote('dismiss') dismiss(agent: Agent, ref: ReliabilityLoopRef): Promise<ReliabilityLoopRef>
 ```
 
 Types: [Agent](core.zh.md)
@@ -321,7 +133,7 @@ workflowEnabled(sessionId: SessionId): boolean
  * @param sessionId - exact Session identity.
  * @returns both lanes, or `undefined` when the policy is off or incomplete.
  */
-enabledRoutes(sessionId: SessionId): { readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined
+async enabledRoutes(sessionId: SessionId): Promise<{ readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined>
 
 /**
  * Read the Session policy and the current LLM catalog.

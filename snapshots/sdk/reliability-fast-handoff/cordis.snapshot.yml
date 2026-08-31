@@ -1,0 +1,12 @@
+# Keyless replay catalog for the reliability handoff and both stage children.
+
+- insert:
+    - id: llm-replay
+      name: '@deepseek-ai/dsh-llm-replay'
+      config:
+        paceMs: 2
+        providers:
+          - id: deepseek-official
+            name: DeepSeek
+            models:
+              - id: reliability-replay

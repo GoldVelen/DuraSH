@@ -106,6 +106,8 @@ interface SdkAssertions {
   expectedToolDescriptions?: Readonly<Record<string, string>>
   /** Expected runtime-context state in the real assembled request. */
   runtimeContext?: false | { includes: readonly string[]; excludes: readonly string[] }
+  /** Host-owned reliability handoff, detached completion, and terminal delivery invariants. */
+  reliabilityFastHandoff?: true
 }
 
 const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
@@ -133,6 +135,9 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
         maxTokens: 777,
       },
     },
+  },
+  'reliability-fast-handoff': {
+    reliabilityFastHandoff: true,
   },
 }
 
@@ -337,6 +342,24 @@ function normalizeNotifications(notifications: readonly HarnessNotification[], c
   return normalizeStdout(`${records.map(record => JSON.stringify(record)).join('\n')}\n`, ctx)
 }
 
+/**
+ * Compare every concurrent notification without pinning cross-session delivery order.
+ * Persisted session fixtures and scenario assertions continue to own causal order.
+ */
+function canonicalConcurrentNotifications(stream: string): string {
+  const lines = stream.split(/\r?\n/u).filter(line => line !== '').map((line) => {
+    const record = JSON.parse(line) as JsonObject
+    const params = record.params as JsonObject | undefined
+    const sourceEvent = params?.event as JsonObject | undefined
+    if (record.method !== 'session.event' || sourceEvent === undefined) return line
+    const event = { ...sourceEvent }
+    delete event.seq
+    delete event.sourceEventSeqs
+    return JSON.stringify({ ...record, params: { ...params, event } })
+  }).sort()
+  return `${lines.join('\n')}\n`
+}
+
 /** Normalize the owned-run projection. */
 function normalizeResult(result: RunResult, ctx: NormalizeContext): string {
   return normalizeStdout(`${JSON.stringify({
@@ -399,10 +422,20 @@ function turnActions(log: string): TurnAction[] {
   return actions
 }
 
-function postTurnEventTypes(log: string): string[] {
+interface PostTurnEventExpectation {
+  readonly type: string
+  readonly terminal: boolean
+}
+
+/** Events the scenario must observe after the SDK-owned turn has returned. */
+function postTurnEvents(log: string): PostTurnEventExpectation[] {
   const values = records(log)
   const finalTurnEnd = values.findLastIndex(record => record.type === 'turn/end')
-  return values.slice(finalTurnEnd + 1).flatMap(record => typeof record.type === 'string' ? [record.type] : [])
+  return values.slice(finalTurnEnd + 1).flatMap((record) => {
+    if (typeof record.type !== 'string') return []
+    const data = record.data as JsonObject | undefined
+    return [{ type: record.type, terminal: data?.terminal !== undefined }]
+  })
 }
 
 function materializeInput(
@@ -443,6 +476,123 @@ function notificationEvent(notification: HarnessNotification): JsonObject | unde
     && typeof notification.params.event === 'object'
     ? notification.params.event as JsonObject
     : undefined
+}
+
+interface DetachedReliabilitySnapshot {
+  /** Transcript with background status events removed from their race-dependent positions. */
+  readonly transcript: string
+  /** Complete background status events retained in durable revision order. */
+  readonly changes: readonly string[]
+}
+
+/** Separate Host-owned status events whose placement can race the parent Agent's next step. */
+function detachReliabilityChanges(snapshot: string): DetachedReliabilitySnapshot {
+  const records = snapshot.split(/\r?\n/u).filter(line => line !== '').map((line, index) => ({
+    line,
+    record: JSON.parse(line) as JsonObject,
+    seq: index - 1,
+  }))
+  const changeSeqs = records.flatMap(({ record, seq }) => (
+    record.type === 'reliability-loop/change' ? [seq] : []
+  ))
+  const changes: string[] = []
+  const transcript = records.flatMap(({ line, record }) => {
+    if (record.type === 'reliability-loop/change') {
+      changes.push(line)
+      return []
+    }
+    if (!Array.isArray(record.sourceEventSeqs)) return [line]
+    return [JSON.stringify({
+      ...record,
+      sourceEventSeqs: record.sourceEventSeqs.map((value) => {
+        if (typeof value !== 'number') return value
+        return value - changeSeqs.filter(seq => seq < value).length
+      }),
+    })]
+  }).join('\n')
+  return { transcript: `${transcript}\n`, changes }
+}
+
+/** Prove the handoff receipt settles in-turn while one Host-owned terminal result arrives later. */
+function assertReliabilityFastHandoff(
+  log: PersistedLog,
+  result: RunResult | undefined,
+  notifications: readonly HarnessNotification[],
+): void {
+  const values = records(log.content)
+  const handoffCall = values.findIndex((record) => {
+    const data = record.data as JsonObject | undefined
+    return record.type === 'tool/call' && data?.name === 'dsh_reliability_handoff'
+  })
+  const receiptIndex = values.findIndex((record) => {
+    const data = record.data as JsonObject | undefined
+    const message = data?.message as JsonObject | undefined
+    const source = message?.source as JsonObject | undefined
+    return record.type === 'tool/result' && source?.callId === 'handoff-reliability'
+  })
+  const turnEnd = values.findLastIndex(record => record.type === 'turn/end')
+  expect(handoffCall).toBeGreaterThanOrEqual(0)
+  expect(receiptIndex).toBeGreaterThan(handoffCall)
+  expect(turnEnd).toBeGreaterThan(receiptIndex)
+
+  const receiptRecord = values[receiptIndex] as JsonObject
+  const receiptData = receiptRecord.data as JsonObject
+  const receiptMessage = receiptData.message as JsonObject
+  const receiptBlocks = receiptMessage.content as JsonObject[]
+  const toolResult = receiptBlocks[0] as JsonObject
+  const rendered = toolResult.content as JsonObject[]
+  const receipt = JSON.parse(String(rendered[0]?.text)) as JsonObject
+  expect(receipt).toMatchObject({ status: 'accepted', revision: 1 })
+  expect(typeof receipt.loopId).toBe('string')
+
+  const changes = values.map((record, index) => ({ record, index })).filter(({ record }) => (
+    record.type === 'reliability-loop/change'
+  ))
+  expect(changes[0]?.index).toBeLessThan(receiptIndex)
+  expect(changes.map(({ record }) => {
+    const data = record.data as JsonObject
+    const current = data.current as JsonObject
+    return current.stage
+  })).toEqual(['accepted', 'implementing', 'reviewing', 'completed'])
+  const terminals = changes.filter(({ record }) => {
+    const data = record.data as JsonObject
+    return data.terminal !== undefined
+  })
+  expect(terminals).toHaveLength(1)
+  const terminal = terminals[0]
+  expect(terminal?.index).toBeGreaterThan(turnEnd)
+  const terminalData = terminal?.record.data as JsonObject
+  const terminalCurrent = terminalData.current as JsonObject
+  expect(terminalCurrent).toMatchObject({
+    loopId: receipt.loopId,
+    stage: 'completed',
+  })
+  expect(Number(terminalCurrent.revision)).toBeGreaterThan(Number(receipt.revision))
+  expect(values.slice(turnEnd + 1).every(record => (
+    record.type !== 'user/message' && record.type !== 'assistant/message'
+  ))).toBe(true)
+
+  const terminalNotifications = notifications.filter((notification) => {
+    const event = notificationEvent(notification)
+    if (event?.type !== 'reliability-loop/change') return false
+    const data = event.data as JsonObject | undefined
+    return data?.terminal !== undefined
+  })
+  expect(terminalNotifications).toHaveLength(1)
+
+  const lifecycle = notifications.map((notification, index) => ({ notification, index }))
+  const starts = lifecycle.filter(({ notification }) => notification.method === 'subagent.started')
+  const finishes = lifecycle.filter(({ notification }) => notification.method === 'subagent.finished')
+  expect(starts).toHaveLength(2)
+  expect(finishes).toHaveLength(2)
+  for (const start of starts) {
+    const childSessionId = start.notification.params.childSessionId
+    expect(typeof childSessionId).toBe('string')
+    expect(finishes.some(({ notification, index }) => (
+      notification.params.childSessionId === childSessionId && index > start.index
+    ))).toBe(true)
+  }
+  expect(result?.finalResponse).toBe('Reliability workflow accepted; the durable result will appear here.')
 }
 
 async function waitForRootEvent(
@@ -590,8 +740,17 @@ async function runScenario(scenario: CorpusScenario): Promise<{
           observe,
         )
       }
-      for (const type of postTurnEventTypes(primaryFixture)) {
-        await waitForRootEvent(subscription, sessionId, event => event.type === type, observe)
+      for (const expected of postTurnEvents(primaryFixture)) {
+        await waitForRootEvent(
+          subscription,
+          sessionId,
+          event => event.type === expected.type
+            && (!expected.terminal || (event.data as JsonObject | undefined)?.terminal !== undefined),
+          (notification) => {
+            notifications.push(notification)
+            observe(notification)
+          },
+        )
       }
     } finally {
       subscription.close()
@@ -682,11 +841,14 @@ async function verifyHeaders(
     sessionIds: [],
     cwd: typeof pinHeader.cwd === 'string' ? pinHeader.cwd : '\0no-cwd\0',
   })
+  const changes = pin.manifest.header.changes ?? 0
+  expect(pinned, `${scenario.name}: pin header count`).toHaveLength(1 + changes)
   const promptOwner = sourceScenario(pin, pin.manifest.header.systemPromptSource)
   const schemaOwner = sourceScenario(pin, pin.manifest.header.toolSchemasSource)
   const prompt = await readFile(join(promptOwner.dir, 'system-prompt.expected.md'), 'utf8')
   const schemas = parseToolSchemasSnapshot(await readFile(join(schemaOwner.dir, 'tool-schemas.expected.json'), 'utf8'))
   const schemaSets = [schemas.initial, ...schemas.changes]
+  expect(schemaSets, `${scenario.name}: pin tool-schema count`).toHaveLength(pinned.length)
   const reconstructed = pinned.map((header, index) => restorePinnedToolSchemas(
     header,
     schemaSets[index] as unknown[],
@@ -705,6 +867,7 @@ async function verifyHeaders(
   for (const [logIndex, log] of ordered.entries()) {
     const headers = normalizedHeaders(scrubSystemPrompts(log.content), ctx)
     const prompts = normalizedSystemPrompts(log.content, ctx)
+    expect(prompts, `${scenario.name}: every header has a system prompt`).toHaveLength(headers.length)
     for (const [index, header] of headers.entries()) {
       const selectedSchemas = childSchemas.get(logIndex)?.[index]
       const base = reconstructed[index] ?? reconstructed[0]
@@ -715,8 +878,12 @@ async function verifyHeaders(
         ? configured
         : { ...configured as JsonObject, tools: selectedSchemas }
       expect(header, `${scenario.name}: session ${logIndex} header ${index + 1}`).toEqual(expected)
-      expect(formatSystemPromptSnapshot(prompts[index] as string), `${scenario.name}: session ${logIndex} prompt ${index + 1}`)
-        .toBe(childPrompts.get(logIndex) ?? prompt)
+    }
+    if (prompts.length > 0) {
+      expect(
+        formatSystemPromptSnapshot(prompts[0] as string, prompts.slice(1)),
+        `${scenario.name}: session ${logIndex} system prompts`,
+      ).toBe(childPrompts.get(logIndex) ?? prompt)
     }
   }
 }
@@ -796,7 +963,15 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       const actualSnapshots = normalizeSessionSnapshots(ordered.map(log => log.content), actualContext)
       const expectedSnapshots = normalizeSessionSnapshots(expectedContents, expectedContext)
       for (const [index, actual] of actualSnapshots.entries()) {
-        expect(actual, `${scenario.name}: session ${index}`).toBe(expectedSnapshots[index])
+        const expected = expectedSnapshots[index]
+        if (assertions.reliabilityFastHandoff === true && index === 0 && expected !== undefined) {
+          const actualDetached = detachReliabilityChanges(actual)
+          const expectedDetached = detachReliabilityChanges(expected)
+          expect(actualDetached.transcript, `${scenario.name}: session ${index}`).toBe(expectedDetached.transcript)
+          expect(actualDetached.changes, `${scenario.name}: detached reliability changes`).toEqual(expectedDetached.changes)
+        } else {
+          expect(actual, `${scenario.name}: session ${index}`).toBe(expected)
+        }
       }
       await verifyHeaders(scenario, ordered, actualContext, assertions.dshSdkChild?.agentConfig)
 
@@ -810,7 +985,13 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
           await writeFile(notificationsExpectedPath, normalizedNotifications)
           await writeFile(resultExpectedPath, normalizedResult)
         }
-        expect(normalizedNotifications).toBe(await readFile(notificationsExpectedPath, 'utf8'))
+        const expectedNotifications = await readFile(notificationsExpectedPath, 'utf8')
+        if (assertions.reliabilityFastHandoff === true) {
+          expect(canonicalConcurrentNotifications(normalizedNotifications))
+            .toBe(canonicalConcurrentNotifications(expectedNotifications))
+        } else {
+          expect(normalizedNotifications).toBe(expectedNotifications)
+        }
         expect(normalizedResult).toBe(await readFile(resultExpectedPath, 'utf8'))
       }
 
@@ -850,6 +1031,11 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
           const system = assembledSystem(parent)
           for (const clause of assertions.runtimeContext.includes) expect(system).not.toContain(clause)
         }
+      }
+      if (assertions.reliabilityFastHandoff === true) {
+        const parent = ordered[0]
+        if (parent === undefined) throw new Error(`${scenario.name} has no parent session log`)
+        assertReliabilityFastHandoff(parent, finalResult, notifications)
       }
       if (ordered.length > 1 && assertions.dshSdkChild === undefined) {
         expect(observedMethods.has('subagent.started')).toBe(true)

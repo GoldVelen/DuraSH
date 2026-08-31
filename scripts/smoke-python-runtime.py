@@ -81,6 +81,8 @@ SNAPSHOT_SESSION_ID = "advanced-executable"
 SNAPSHOT_DIRECT_CHILD_PROMPT = "Reply with exactly DIRECT_CHILD_OK and nothing else."
 SNAPSHOT_WORKFLOW_CHILD_PROMPT = "Reply with exactly WORKFLOW_CHILD_OK and nothing else."
 SNAPSHOT_FINAL_TEXT = "ADVANCED_EXECUTABLE_OK"
+SNAPSHOT_RELIABILITY_LOOP_ID = "python-sdk-reliability-loop"
+SNAPSHOT_RELIABILITY_SUMMARY = "Python SDK projected one terminal reliability result."
 RESTART_FIRST_PROMPT = "Complete the first isolated Python SDK process turn."
 RESTART_FIRST_TEXT = "PROCESS_ONE_OK"
 RESTART_SECOND_PROMPT = "Complete the second isolated Python SDK process turn."
@@ -101,6 +103,48 @@ return (ctx) => {
     },
     async execute(args) {
       return args.value * 2
+    }
+  }))
+  harness.registerTool(ctx, harness.defineTool({
+    name: 'snapshot_emit_reliability_event',
+    description: 'Emit one deterministic reliability event for Python SDK projection verification.',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { emitted: { type: 'boolean', required: true } }
+      },
+      render(_args, value) {
+        return [{ type: 'text', text: JSON.stringify(value) }]
+      }
+    },
+    async execute(_args, exec) {
+      if (exec.agent === undefined) throw new Error('snapshot event tool requires a calling Agent')
+      exec.agent.session.append('reliability-loop/change', {
+        version: 1,
+        turn: null,
+        current: {
+          loopId: 'python-sdk-reliability-loop',
+          revision: 2,
+          stage: 'completed',
+          objectiveSummary: 'Verify Python SDK event projection.',
+          implementation: { provider: 'deepseek-official', model: 'smoke-model' },
+          review: { provider: 'deepseek-official', model: 'smoke-model' },
+          createdAt: '2026-08-31T00:00:00.000Z',
+          updatedAt: '2026-08-31T00:00:01.000Z',
+          settledAt: '2026-08-31T00:00:01.000Z',
+          terminalSummary: 'Python SDK projected one terminal reliability result.'
+        },
+        terminal: {
+          loopId: 'python-sdk-reliability-loop',
+          revision: 2,
+          stage: 'completed',
+          settledAt: '2026-08-31T00:00:01.000Z',
+          summary: 'Python SDK projected one terminal reliability result.'
+        }
+      })
+      return { emitted: true }
     }
   }))
 }
@@ -585,6 +629,15 @@ def advanced_tool_followup(
     if call_id == "advanced-workflow" and tool_name == "workflow":
         if "WORKFLOW_CHILD_OK" not in tool_text:
             raise AssertionError(f"workflow returned no expected child value: {tool_text}")
+        assert_advertised_tool(body, "snapshot_emit_reliability_event")
+        return tool_call_chunks(
+            "advanced-reliability-event",
+            "snapshot_emit_reliability_event",
+            {},
+        )
+    if call_id == "advanced-reliability-event" and tool_name == "snapshot_emit_reliability_event":
+        if '"emitted":true' not in tool_text:
+            raise AssertionError(f"snapshot event tool returned no acknowledgement: {tool_text}")
         assert_advertised_tool(body, "cordis_undefine")
         return tool_call_chunks(
             "advanced-undefine",
@@ -1202,6 +1255,22 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
             raise AssertionError(f"advanced snapshot emitted unexpected subagent lifecycle: {methods}")
         if not any(event.get("type") == "tool/code-dispatch" for event in result.events):
             raise AssertionError("advanced snapshot emitted no tool/code-dispatch event")
+        reliability_events = [
+            event for event in result.events
+            if event.get("type") == "reliability-loop/change"
+        ]
+        if len(reliability_events) != 1:
+            raise AssertionError(
+                f"advanced snapshot emitted unexpected reliability events: {reliability_events}"
+            )
+        reliability_data = reliability_events[0].get("data")
+        if not isinstance(reliability_data, dict):
+            raise AssertionError(f"advanced snapshot reliability event has no data: {reliability_data}")
+        terminal = reliability_data.get("terminal")
+        if not isinstance(terminal, dict) or terminal.get("loopId") != SNAPSHOT_RELIABILITY_LOOP_ID:
+            raise AssertionError(f"advanced snapshot reliability event has no terminal identity: {terminal}")
+        if terminal.get("stage") != "completed" or terminal.get("summary") != SNAPSHOT_RELIABILITY_SUMMARY:
+            raise AssertionError(f"advanced snapshot reliability terminal is incomplete: {terminal}")
 
         logs = read_session_logs(sessions)
         child_ids = snapshot_child_ids(result)
@@ -1212,6 +1281,12 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
             raise AssertionError("first advanced child log has no direct-subagent result")
         if "WORKFLOW_CHILD_OK" not in render_jsonl(logs[child_ids[1]]):
             raise AssertionError("second advanced child log has no workflow-subagent result")
+        parent_reliability = [
+            record for record in logs[SNAPSHOT_SESSION_ID]
+            if record.get("type") == "reliability-loop/change"
+        ]
+        if len(parent_reliability) != 1 or parent_reliability[0].get("data") != reliability_data:
+            raise AssertionError("persisted parent log lost the Python SDK reliability event")
 
         files = build_snapshot_files(result, logs, child_ids, root)
         compare_snapshot_files(

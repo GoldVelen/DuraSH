@@ -10,27 +10,31 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   ReliabilityPolicyConfigureRequest,
   ReliabilityPolicySnapshot,
-  ReliabilityThinking,
 } from '@durash/dsh-reliability-policy/client'
 
+/** Generated Host methods used by the browser policy controller. */
 export interface ReliabilityPolicyRemote {
   policy: (request: { sessionId: SessionId }) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
   ensurePolicy: (request: { sessionId: SessionId }) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
   configure: (request: ReliabilityPolicyConfigureRequest) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
 }
 
+/** Browser-local lifecycle for one Session policy read or write. */
 export type ReliabilityLoadStatus = 'cold' | 'loading' | 'ready' | 'error' | 'configuring'
 
+/** Policy controller state retained for one Session. */
 export interface ReliabilitySessionState {
   readonly status: ReliabilityLoadStatus
   readonly error: string | null
   readonly policy: ReliabilityPolicySnapshot
 }
 
+/** Immutable aggregate exposed through the external-store interface. */
 export interface ReliabilityControllerView {
   sessions: ReadonlyMap<SessionId, ReliabilitySessionState>
 }
 
+/** Classified outcome of one policy controller action. */
 export type ReliabilityActionResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
@@ -56,6 +60,7 @@ function emptySnapshot(sessionId: SessionId): ReliabilityPolicySnapshot {
     reviewThinking: null,
     updatedAt: 0,
     models: [],
+    validationError: null,
   }
 }
 
@@ -77,6 +82,7 @@ function failureMessage(result: ReliabilityActionResult, fallback: string): stri
   return result.ok ? fallback : result.error.message
 }
 
+/** Session-keyed policy controller shared by composer instances. */
 export class ReliabilityPolicyController implements HostObservable<ReliabilityControllerView> {
   private view = INITIAL
   private readonly listeners = new Set<() => void>()
@@ -95,10 +101,20 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return () => { this.listeners.delete(listener) }
   }
 
+  /**
+   * Read the current browser-local state for one Session.
+   * @param sessionId - exact Session identity.
+   * @returns the retained state or a cold initial value.
+   */
   sessionState(sessionId: SessionId): ReliabilitySessionState {
     return this.view.sessions.get(sessionId) ?? coldState(sessionId)
   }
 
+  /**
+   * Load one policy without creating a durable row.
+   * @param sessionId - exact Session identity.
+   * @returns classified read outcome.
+   */
   loadPolicy(sessionId: SessionId): Promise<ReliabilityActionResult> {
     if (this.disposed) return Promise.resolve(DISPOSED)
     const state = this.sessionState(sessionId)
@@ -111,6 +127,11 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return request.finally(() => { this.loadPromises.delete(sessionId) })
   }
 
+  /**
+   * Load one policy and create its disabled row when absent.
+   * @param sessionId - exact Session identity.
+   * @returns classified read or creation outcome.
+   */
   ensurePolicy(sessionId: SessionId): Promise<ReliabilityActionResult> {
     if (this.disposed) return Promise.resolve(DISPOSED)
     const state = this.sessionState(sessionId)
@@ -126,6 +147,11 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return request.finally(() => { this.ensurePromises.delete(sessionId) })
   }
 
+  /**
+   * Replace one Session's policy through the Host.
+   * @param request - complete policy replacement.
+   * @returns classified write outcome.
+   */
   configure(request: ReliabilityPolicyConfigureRequest): Promise<ReliabilityActionResult> {
     if (this.disposed) return Promise.resolve(DISPOSED)
     const current = this.configurePromises.get(request.sessionId)
@@ -137,15 +163,7 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return pending.finally(() => { this.configurePromises.delete(request.sessionId) })
   }
 
-  thinkingLevels(selector: string | null): readonly ReliabilityThinking[] {
-    if (selector === null) return []
-    for (const state of this.view.sessions.values()) {
-      const match = state.policy.models.find(model => model.selector === selector)
-      if (match !== undefined) return match.thinkingLevels
-    }
-    return []
-  }
-
+  /** Stop publishing and release browser-local listeners and requests. */
   dispose(): void {
     this.disposed = true
     this.listeners.clear()
@@ -178,11 +196,10 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
   }
 
   private async writePolicy(request: ReliabilityPolicyConfigureRequest): Promise<ReliabilityActionResult> {
-    if (request.enabled && (request.implementationModel === null || request.implementationThinking === null
-      || request.reviewModel === null || request.reviewThinking === null)) {
+    if (request.enabled && (request.implementationModel === null || request.reviewModel === null)) {
       const incomplete: ReliabilityActionFailure = {
         ok: false,
-        error: { code: 'reliability_policy_incomplete', message: 'Select both models and efforts before enabling the workflow' },
+        error: { code: 'reliability_policy_incomplete', message: 'Select both workflow models before enabling the workflow' },
       }
       if (!this.disposed) {
         const current = this.sessionState(request.sessionId)

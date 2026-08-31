@@ -1322,34 +1322,44 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'reliabilityLoopRuntime',
-    summary: 'The reliability-loop runtime.',
-    description: 'The reliability-loop runtime. One live driver owns one loop; the runtime enforces that single ownership and cancels every live loop to quiescence before its domain closes at teardown.',
+    summary: 'Detached, Host-owned reliability-loop runtime and Remote provider.',
+    description: 'Detached, Host-owned reliability-loop runtime and Remote provider.',
     methods: [
       {
-        signature: 'async start(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>',
-        description: 'Start one loop: write its durable record first, then drive the first stage. The caller owns the returned handle and defines its own interval over `result`.',
-        parameters: [{ name: 'request', description: 'the parent agent and the bounded objective.' }],
-        returns: 'the live loop handle.',
-        throws: ['when the objective is empty or over the handoff bound.'],
-      },
-      {
-        signature: 'resume(loopId: ReliabilityLoopId, parent: Agent): ReliabilityLoopHandle',
-        description: 'Resume one interrupted loop after a restart: drive the state machine from its record\'s current stage. Settled attempts are never re-run; the first unsettled stage re-runs exactly once because the driver owns the loop exclusively.',
-        parameters: [{ name: 'loopId', description: 'the interrupted loop\'s id.' }, { name: 'parent', description: 'the agent on whose behalf the resumed stages run.' }],
-        returns: 'the live loop handle.',
-        throws: ['when the loop is unknown, already settled, or already owned by a live driver.'],
+        signature: 'startDetached(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopStartAck>',
+        description: 'Persist and claim one background loop, then return before any stage settles. A duplicate active start returns that loop\'s current ref and never creates a second writer.',
+        parameters: [{ name: 'request', description: 'root Session, objective, and exact lane snapshots.' }],
+        returns: 'durable acceptance acknowledgement.',
       },
       {
         signature: 'list(): ReliabilityLoopRecord[]',
-        description: 'Every durable loop record, in storage order.',
+        description: 'Every durable record in storage order.',
         parameters: [],
-        returns: 'the record snapshot.',
+        returns: 'record snapshots.',
       },
       {
         signature: 'get(loopId: ReliabilityLoopId): ReliabilityLoopRecord | undefined',
-        description: 'Read one loop\'s durable record.',
-        parameters: [{ name: 'loopId', description: 'the loop\'s id.' }],
-        returns: 'the record, or `undefined` when unknown.',
+        description: 'Read one durable record without granting cross-Session Remote access.',
+        parameters: [{ name: 'loopId', description: 'exact loop identity.' }],
+        returns: 'the record or undefined.',
+      },
+      {
+        signature: '@Remote(\'details\') details(agent: Agent, ref: ReliabilityLoopRef): ReliabilityLoopDetails',
+        description: 'Return the current full record for one loop in the caller\'s Session. Read access is Session-authenticated but not revision-gated so a terminal Conversation node remains useful after its status dock is dismissed.',
+        parameters: [{ name: 'agent', description: 'exact live Agent resolved by Typert.' }, { name: 'ref', description: 'loop identity plus the caller\'s observed revision.' }],
+        returns: 'bounded objective and every settled report.',
+      },
+      {
+        signature: '@Remote(\'cancel\') cancel(agent: Agent, ref: ReliabilityLoopRef): Promise<ReliabilityLoopStatusView>',
+        description: 'Explicitly cancel one active loop and wait for stage resources to stop.',
+        parameters: [{ name: 'agent', description: 'exact live Agent resolved by Typert.' }, { name: 'ref', description: 'expected current revision.' }],
+        returns: 'terminal status after quiescence.',
+      },
+      {
+        signature: '@Remote(\'dismiss\') dismiss(agent: Agent, ref: ReliabilityLoopRef): Promise<ReliabilityLoopRef>',
+        description: 'Hide the currently visible terminal dock without deleting durable history.',
+        parameters: [{ name: 'agent', description: 'exact live Agent resolved by Typert.' }, { name: 'ref', description: 'expected current terminal revision.' }],
+        returns: 'the new tombstone revision.',
       },
     ],
   },
@@ -1365,7 +1375,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the persisted enablement flag, false when no row exists.',
       },
       {
-        signature: 'enabledRoutes(sessionId: SessionId): { readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined',
+        signature: 'async enabledRoutes(sessionId: SessionId): Promise<{ readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined>',
         description: 'Parsed implementation and review routes when the policy is enabled.',
         parameters: [{ name: 'sessionId', description: 'exact Session identity.' }],
         returns: 'both lanes, or `undefined` when the policy is off or incomplete.',
@@ -4788,11 +4798,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReliabilityLaneRoute',
-    declaration: 'export interface ReliabilityLaneRoute {\n    readonly provider: string;\n    readonly model: string;\n}',
+    declaration: 'export interface ReliabilityLaneRoute {\n    readonly provider: string;\n    readonly model: string;\n    readonly reasoningEffort?: ReasoningEffortId;\n}',
   },
   {
-    name: 'ReliabilityLoopHandle',
-    declaration: 'export interface ReliabilityLoopHandle {\n    readonly loopId: ReliabilityLoopId;\n    readonly result: Promise<ReliabilityLoopRecord>;\n    cancel(reason?: string): void;\n    dispose(): Promise<void>;\n}',
+    name: 'ReliabilityLoopDetails',
+    declaration: 'export interface ReliabilityLoopDetails extends ReliabilityLoopStatusView {\n    readonly objective: string;\n    readonly rounds: readonly ReliabilityLoopRoundRecord[];\n}',
   },
   {
     name: 'ReliabilityLoopId',
@@ -4800,19 +4810,35 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReliabilityLoopLane',
-    declaration: 'export interface ReliabilityLoopLane {\n    readonly provider: string;\n    readonly model: string;\n}',
+    declaration: 'export interface ReliabilityLoopLane {\n    readonly provider: string;\n    readonly model: string;\n    readonly reasoningEffort?: ReasoningEffortId | undefined;\n}',
   },
   {
     name: 'ReliabilityLoopRecord',
-    declaration: 'export interface ReliabilityLoopRecord {\n    readonly loopId: ReliabilityLoopId;\n    readonly objective: string;\n    readonly createdAt: string;\n    readonly stage: ReliabilityLoopStage;\n    readonly implement?: ImplementAttempt | undefined;\n    readonly review?: ReviewAttempt | undefined;\n    readonly settledAt?: string | undefined;\n    readonly error?: string | undefined;\n    readonly implementationProvider?: string | undefined;\n    readonly implementationModel?: string | undefined;\n    readonly reviewProvider?: string | undefined;\n    readonly reviewModel?: string | undefined;\n}',
+    declaration: 'export interface ReliabilityLoopRecord extends ReliabilityLoopRef {\n    readonly sessionId: SessionId;\n    readonly objective: string;\n    readonly stage: ReliabilityLoopStage;\n    readonly implementation: ReliabilityLoopLane;\n    readonly review: ReliabilityLoopLane;\n    readonly rounds: readonly ReliabilityLoopRoundRecord[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly settledAt?: string | undefined;\n    readonly error?: string | undefined;\n    readonly dismissedAt?: string | undefined;\n}',
+  },
+  {
+    name: 'ReliabilityLoopRef',
+    declaration: 'export interface ReliabilityLoopRef {\n    readonly loopId: ReliabilityLoopId;\n    readonly revision: number;\n}',
+  },
+  {
+    name: 'ReliabilityLoopRoundRecord',
+    declaration: 'export interface ReliabilityLoopRoundRecord {\n    readonly round: LoopRound;\n    readonly implementation?: ImplementAttempt | undefined;\n    readonly review?: ReviewAttempt | undefined;\n}',
   },
   {
     name: 'ReliabilityLoopStage',
-    declaration: 'export type ReliabilityLoopStage = \'implementing\' | \'reviewing\' | \'rework-implementing\' | \'rework-reviewing\' | \'completed\' | \'blocked\' | \'failed\' | \'cancelled\';',
+    declaration: 'export type ReliabilityLoopStage = \'accepted\' | \'implementing\' | \'reviewing\' | \'rework-implementing\' | \'rework-reviewing\' | \'completed\' | \'blocked\' | \'failed\' | \'cancelled\';',
+  },
+  {
+    name: 'ReliabilityLoopStartAck',
+    declaration: 'export interface ReliabilityLoopStartAck extends ReliabilityLoopRef {\n    readonly status: \'accepted\';\n}',
   },
   {
     name: 'ReliabilityLoopStartRequest',
-    declaration: 'export interface ReliabilityLoopStartRequest {\n    parent: Agent;\n    objective: string;\n    implementation?: ReliabilityLoopLane;\n    review?: ReliabilityLoopLane;\n}',
+    declaration: 'export interface ReliabilityLoopStartRequest {\n    readonly parent: Agent;\n    readonly objective: string;\n    readonly implementation: ReliabilityLoopLane;\n    readonly review: ReliabilityLoopLane;\n}',
+  },
+  {
+    name: 'ReliabilityLoopStatusView',
+    declaration: 'export interface ReliabilityLoopStatusView extends ReliabilityLoopRef {\n    readonly stage: ReliabilityLoopStage;\n    readonly objectiveSummary: string;\n    readonly implementation: ReliabilityLoopLane;\n    readonly review: ReliabilityLoopLane;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly settledAt?: string | undefined;\n    readonly error?: string | undefined;\n    readonly terminalSummary?: string | undefined;\n}',
   },
   {
     name: 'ReliabilityModelBadge',
@@ -4820,7 +4846,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReliabilityModelOption',
-    declaration: 'export interface ReliabilityModelOption {\n    readonly selector: string;\n    readonly label: string;\n    readonly provider: string;\n    readonly model: string;\n    readonly badges: readonly ReliabilityModelBadge[];\n    readonly thinkingLevels: readonly ReliabilityThinking[];\n}',
+    declaration: 'export interface ReliabilityModelOption {\n    readonly selector: string;\n    readonly label: string;\n    readonly provider: string;\n    readonly model: string;\n    readonly badges: readonly ReliabilityModelBadge[];\n    readonly reasoningEfforts: readonly ReliabilityReasoningEffortOption[];\n}',
   },
   {
     name: 'ReliabilityPolicyConfigureRequest',
@@ -4832,7 +4858,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReliabilityPolicySnapshot',
-    declaration: 'export interface ReliabilityPolicySnapshot {\n    readonly sessionId: SessionId;\n    readonly revision: number;\n    readonly enabled: boolean;\n    readonly implementationModel: string | null;\n    readonly implementationThinking: ReliabilityThinking | null;\n    readonly reviewModel: string | null;\n    readonly reviewThinking: ReliabilityThinking | null;\n    readonly updatedAt: number;\n    readonly models: readonly ReliabilityModelOption[];\n}',
+    declaration: 'export interface ReliabilityPolicySnapshot {\n    readonly sessionId: SessionId;\n    readonly revision: number;\n    readonly enabled: boolean;\n    readonly implementationModel: string | null;\n    readonly implementationThinking: ReliabilityThinking | null;\n    readonly reviewModel: string | null;\n    readonly reviewThinking: ReliabilityThinking | null;\n    readonly updatedAt: number;\n    readonly models: readonly ReliabilityModelOption[];\n    readonly validationError: string | null;\n}',
+  },
+  {
+    name: 'ReliabilityReasoningEffortOption',
+    declaration: 'export interface ReliabilityReasoningEffortOption {\n    readonly id: ReliabilityThinking;\n    readonly name: string;\n    readonly description?: string;\n    readonly isDefault: boolean;\n}',
   },
   {
     name: 'ReliabilityThinking',

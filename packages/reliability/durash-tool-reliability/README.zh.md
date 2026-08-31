@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-reliability` 注册 `dsh_reliability_handoff`。工具在进程内始终存在，但除非本会话的 composer 开关打开，否则会闭门失败。启用后，它用该会话的实施与审查路由启动一次可靠性闭环，并等待终态记录。
+`dsh-tool-reliability` 注册 `dsh_reliability_handoff`。工具在进程内始终存在，但除非本会话的 composer 开关打开，否则会闭门失败。启用后，它用该会话的精确实施与审查通道持久创建一次可靠性闭环，并立即返回持久接管回执；Host 在后台继续实施与审查。
 
 ## 目录
 
@@ -35,7 +35,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-工具要求存活的根代理、该会话上的直接人类用户消息，以及已启用的策略路由。取消工具信号会取消存活闭环。压缩结果是闭环终态、有界摘要，以及存在时的审查裁决。
+工具要求处在活动驱动中的精确存活根 Agent，并验证当前开放回合由直接人类输入发起。它修剪并校验目标，依据实时模型目录重新校验两条策略通道，调用 `startDetached()`，返回 `{ loopId, revision, status: 'accepted' }`。工具信号、回合结束、浏览器断开与外层代码运行超时都不会取消闭环。进度来自会话状态投影；取消是显式且受鉴权的 Remote 操作。
 
 </details>
 
@@ -62,7 +62,7 @@ kind: "package-reference"
 ##### 可靠性交接指导
 
 ```markdown
-For this Session the reliability loop is enabled. This tool is the only implementer dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another model or agent. Analyze the human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only review stay on this Session and do not hand off. The call remains in the current model turn until the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain that result to the human. If the workflow is disabled, the tool fails closed.
+For this Session the reliability workflow is enabled. Analyze the direct human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff once with the complete objective. The call returns a durable acceptance receipt; implementation and review continue under Host ownership after this model turn ends. Do not poll, repeat the handoff, or narrate live telemetry. The composer status bar shows progress and the conversation receives one persistent terminal result. Ordinary questions and read-only review stay on this Session and do not hand off.
 ```
 
 #### Token 影响
@@ -92,7 +92,6 @@ schema 成员关系是进程级的；只有指导段落随会话策略移动。
 <a id="known-limitations-and-deferred-work"></a>
 
 - **没有首轮 intake 字段检查** — 3081 时代要求可见计划里出现字段标签，这里不再强制；指导要求给出计划，Host 只证明存活的根人类回合。
-- **思考强度不会传给子代理** — 通道模型会传；思考强度留在策略行上，直到 workflow 引擎支持 `effort`。
 
 <a id="dev-note"></a>
 ### 开发备注

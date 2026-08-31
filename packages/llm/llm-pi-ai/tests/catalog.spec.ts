@@ -75,6 +75,23 @@ async function harness(config: LlmPiAi.Config): Promise<Context> {
 }
 
 describe('hand-declared providers', () => {
+  it('projects every Grok 4.6 reasoning effort shipped by the installed catalog', async () => {
+    const catalogModel = getBuiltinModels('xai').find(model => model.id === 'grok-4.6')
+    if (catalogModel === undefined) throw new Error('the installed catalog ships no grok-4.6 model')
+    expect(getSupportedThinkingLevels(catalogModel)).toEqual(['low', 'medium', 'high', 'xhigh'])
+
+    const ctx = await harness({ providers: { xai: {} } })
+    const info = await ctx.llm.resolveModelInfo('xai', 'grok-4.6')
+    expect(info.reasoning).toEqual({
+      efforts: [
+        { id: 'low', name: 'Low' },
+        { id: 'medium', name: 'Medium' },
+        { id: 'high', name: 'High' },
+        { id: 'xhigh', name: 'Xhigh' },
+      ],
+    })
+  })
+
   it('serves a route pi-ai has never heard of from its own declaration', async () => {
     const server = await mockServer([{ events: textEvents }])
     const ctx = await harness(gateway(`${server.url}/v1`))
@@ -910,19 +927,21 @@ describe('compat switches', () => {
   })
 
   it('skips models of other protocols on a mixed route instead of failing them', () => {
-    // xai ships both completions and responses models, so a route-level switch
+    // Cloudflare AI Gateway ships both completions and responses models, so a route-level switch
     // must land on the former without invalidating the latter.
-    const catalog = getBuiltinModels('xai') as readonly Model<Api>[]
+    const catalog = getBuiltinModels('cloudflare-ai-gateway') as readonly Model<Api>[]
     const completions = catalog.find(model => model.api === 'openai-completions')
     const responses = catalog.find(model => model.api === 'openai-responses')
-    if (completions === undefined || responses === undefined) throw new Error('xai no longer ships a mixed catalog')
+    if (completions === undefined || responses === undefined) {
+      throw new Error('cloudflare-ai-gateway no longer ships a mixed catalog')
+    }
 
     const models = modelsOf({
-      xai: {
+      'cloudflare-ai-gateway': {
         compat: { supportsReasoningEffort: false },
         models: [{ id: completions.id }, { id: responses.id }],
       },
-    }, 'xai')
+    }, 'cloudflare-ai-gateway')
 
     expect((models.get(completions.id)?.compat as OpenAICompletionsCompat).supportsReasoningEffort).toBe(false)
     expect(models.get(responses.id)?.compat).toEqual(responses.compat)
@@ -991,18 +1010,20 @@ describe('compat switches', () => {
   })
 
   it('lands each route switch only on the models whose protocol declares it', () => {
-    const catalog = getBuiltinModels('xai') as readonly Model<Api>[]
+    const catalog = getBuiltinModels('cloudflare-ai-gateway') as readonly Model<Api>[]
     const completions = catalog.find(model => model.api === 'openai-completions')
     const responses = catalog.find(model => model.api === 'openai-responses')
-    if (completions === undefined || responses === undefined) throw new Error('xai no longer ships a mixed catalog')
+    if (completions === undefined || responses === undefined) {
+      throw new Error('cloudflare-ai-gateway no longer ships a mixed catalog')
+    }
 
     const models = modelsOf({
-      xai: {
+      'cloudflare-ai-gateway': {
         // Both protocols take the first switch; only completions takes the second.
         compat: { supportsDeveloperRole: false, thinkingFormat: 'openai' },
         models: [{ id: completions.id }, { id: responses.id }],
       },
-    }, 'xai')
+    }, 'cloudflare-ai-gateway')
 
     const onCompletions = models.get(completions.id)?.compat as OpenAICompletionsCompat
     expect(onCompletions.supportsDeveloperRole).toBe(false)
@@ -1044,8 +1065,8 @@ describe('compat switches', () => {
           compat: {
             supportsFinishReason: false,
             thinkingFormat: 'baseten',
-            chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
-            supportsThinkingTokenBudget: true,
+            chatTemplateArgs: { thinking_budget: { $var: 'thinking.budget' } },
+            thinkingTokenBudgetField: 'thinking_budget',
           },
         }],
       },
@@ -1054,8 +1075,8 @@ describe('compat switches', () => {
     expect(models.get('reasoning-local')?.compat).toEqual({
       supportsFinishReason: false,
       thinkingFormat: 'baseten',
-      chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
-      supportsThinkingTokenBudget: true,
+      chatTemplateArgs: { thinking_budget: { $var: 'thinking.budget' } },
+      thinkingTokenBudgetField: 'thinking_budget',
     })
   })
 
