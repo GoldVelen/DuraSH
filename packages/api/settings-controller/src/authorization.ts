@@ -76,7 +76,7 @@ const NETWORK_FIELDS: readonly NetworkMetadataField[] = ['code', 'syscall', 'hos
 
 function redactAuthorizationText(text: string): string {
   return text
-    .replace(/\bBearer\s+\S+/giu, `Bearer ${REDACTED}`)
+    .replace(/\bBearer\s+[^\s]+/giu, `Bearer ${REDACTED}`)
     .replace(
       /([?&](?:access_token|refresh_token|id_token|client_secret|client_assertion|code_verifier|code)=)[^&#\s]+/giu,
       `$1${REDACTED}`,
