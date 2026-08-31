@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-llm-pi-ai` is the pi-ai-backed multi-provider adapter for the harness LLM service: one plugin instance owns a dictionary of provider routes, each served through [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai). A route naming an installed pi-ai provider inherits its endpoint, wire protocol, and model catalog as defaults; a route pi-ai does not ship is declared outright, so an OpenAI-compatible gateway or self-hosted server is configuration, not a code change. Profiles and credentials resolve per request over the optional settings and credential seams, so editing the user settings document changes the next request without a restart. A provider that ships a login can be signed into through the harness authorization seam, and the stored sign-in — an OAuth grant, or a key typed into pi-ai's own login prompt — authenticates its route and refreshes itself under the store's cross-process lock. The plugin can mount dormant with zero routes and activate them the moment a settings section supplies profiles.
+`@deepseek-ai/dsh-llm-pi-ai` is the pi-ai-backed multi-provider adapter for the harness LLM service: one plugin instance owns a dictionary of provider routes, each served through [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai). A route inherits the installed catalog under its own key by default, or explicitly selects another installed provider as its catalog source while keeping its own route identity; a route with no catalog source is declared outright. An OpenAI-compatible gateway or self-hosted server is therefore configuration, not a code change. Profiles and credentials resolve per request over the optional settings and credential seams, so editing the user settings document changes the next request without a restart. A provider that ships a login can be signed into through the harness authorization seam, and the stored sign-in — an OAuth grant, or a key typed into pi-ai's own login prompt — authenticates its route and refreshes itself under the store's cross-process lock. The plugin can mount dormant with zero routes and activate them the moment a settings section supplies profiles.
 
 ## Table of Contents
 
@@ -54,6 +54,13 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
         models:
           - id: claude-sonnet-4-5
             contextWindow: 200000
+      openai-proxy:
+        catalogProvider: openai
+        apiKeyEnv: OPENAI_PROXY_API_KEY
+        api: openai-completions
+        baseURL: https://gateway.example/v1
+        models:
+          - id: gpt-5.6-sol
       acme-gateway:
         displayName: Acme Gateway
         apiKeyEnv: ACME_GATEWAY_API_KEY
@@ -74,7 +81,8 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
 |---|---|---|
 | `apiKeyEnv` | absent | Credential reference resolved per request; omission defers to pi-ai ambient discovery |
 | `displayName` | provider name | Label shown by selector surfaces |
-| `api` | catalog protocol | Wire protocol; only needed for routes the catalog does not supply |
+| `catalogProvider` | provider name | Installed provider whose catalog, protocol, endpoint, and auth supply defaults without changing the route key |
+| `api` | catalog protocol | Wire protocol override; required when no catalog source supplies one |
 | `baseURL` | catalog endpoint | Endpoint of every model on the route |
 | `models` | installed catalog | Replaces the route's catalog wholesale; each entry defaults from the installed model |
 | `modelOverrides` | none | Reshapes individual installed-catalog models without replacing the rest |
@@ -94,7 +102,9 @@ A provider pi-ai ships a login for can be signed into through the harness author
 
 ### Resolve the model catalog
 
-A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
+A profile's catalog source is its route key unless `catalogProvider` explicitly names another installed provider. The latter is useful when a private gateway serves an official provider's models under a deployment-specific route name: the route keeps its own endpoint, credential, and selection identity while inheriting model capabilities such as context, modalities, and reasoning efforts. DSH does not infer this source from model ids because different gateways may implement the same id differently; an empty or unavailable source is refused.
+
+A profile's `models` list replaces the selected installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a route with no catalog source, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
 
 ### Run with reasoning and wire compatibility
 
@@ -110,7 +120,7 @@ The plugin answers "which models can this provider serve?" for a route a configu
 
 ### Failures and recovery
 
-A route pi-ai does not ship needs `api`, `baseURL`, and a non-empty `models` list; an unserviceable profile is refused where it is written, naming the route and model. Failures carry stable codes: a credential that cannot be used fails with `INVALID_CREDENTIAL` naming the route and reference, a route whose `apiKeyEnv` reference resolves to nothing fails with `MISSING_CREDENTIAL`, an unconfigured model fails with `UNKNOWN_MODEL`, and terminal provider failures distinguish `QUOTA` from transient `RATE_LIMIT`. `GenerateOptions.stop` is rejected with `UNSUPPORTED_OPTION` because pi-ai's common streaming UI cannot guarantee it across providers.
+A route with no installed catalog source needs `api`, `baseURL`, and a non-empty `models` list; an explicit `catalogProvider` must name an installed provider. An unserviceable profile is refused where it is written, naming the route and model. Failures carry stable codes: a credential that cannot be used fails with `INVALID_CREDENTIAL` naming the route and reference, a route whose `apiKeyEnv` reference resolves to nothing fails with `MISSING_CREDENTIAL`, an unconfigured model fails with `UNKNOWN_MODEL`, and terminal provider failures distinguish `QUOTA` from transient `RATE_LIMIT`. `GenerateOptions.stop` is rejected with `UNSUPPORTED_OPTION` because pi-ai's common streaming UI cannot guarantee it across providers.
 
 -----
 

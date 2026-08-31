@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`@deepseek-ai/dsh-llm-pi-ai` 是 harness LLM 服务基于 pi-ai 的多提供方适配器：一个插件实例拥有一份提供方路由字典，每条路由都通过 [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai) 服务。点名已安装 pi-ai 提供方的路由会继承其端点、协议格式与模型目录作为默认值；pi-ai 不提供的路由可以直接声明，因此 OpenAI 兼容网关或自托管服务器只是配置，而非代码变更。profile 与凭据通过可选 settings 与凭据 seam 按请求解析，因此编辑用户设置文档即可改变下一个请求，无需重启。提供登录的提供方可以通过 harness 授权 seam 登录，存储的登录——OAuth grant，或在 pi-ai 自己的登录提示里键入的密钥——为其路由完成认证，并在存储的跨进程锁下自行刷新。插件可以零路由休眠挂载，一旦 settings 分节提供 profile 便立即激活它们。
+`@deepseek-ai/dsh-llm-pi-ai` 是 harness LLM 服务基于 pi-ai 的多提供方适配器：一个插件实例拥有一份提供方路由字典，每条路由都通过 [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai) 服务。路由默认继承自身键下的已安装目录，也可以显式选择另一个已安装提供方作为目录来源、同时保留自己的路由身份；没有目录来源的路由则直接声明。因此 OpenAI 兼容网关或自托管服务器只是配置，而非代码变更。profile 与凭据通过可选 settings 与凭据 seam 按请求解析，因此编辑用户设置文档即可改变下一个请求，无需重启。提供登录的提供方可以通过 harness 授权 seam 登录，存储的登录——OAuth grant，或在 pi-ai 自己的登录提示里键入的密钥——为其路由完成认证，并在存储的跨进程锁下自行刷新。插件可以零路由休眠挂载，一旦 settings 分节提供 profile 便立即激活它们。
 
 ## 目录
 
@@ -54,6 +54,13 @@ kind: "package-reference"
         models:
           - id: claude-sonnet-4-5
             contextWindow: 200000
+      openai-proxy:
+        catalogProvider: openai
+        apiKeyEnv: OPENAI_PROXY_API_KEY
+        api: openai-completions
+        baseURL: https://gateway.example/v1
+        models:
+          - id: gpt-5.6-sol
       acme-gateway:
         displayName: Acme Gateway
         apiKeyEnv: ACME_GATEWAY_API_KEY
@@ -74,7 +81,8 @@ kind: "package-reference"
 |---|---|---|
 | `apiKeyEnv` | 无 | 按请求解析的凭据引用；省略时交由 pi-ai 环境发现 |
 | `displayName` | 提供方名 | 选择器界面显示的标签 |
-| `api` | 目录协议 | 协议格式；仅目录不提供的路由需要 |
+| `catalogProvider` | 提供方名 | 提供目录、协议、端点与 auth 默认值的已安装提供方，不改变路由键 |
+| `api` | 目录协议 | 协议格式覆盖；没有目录来源提供默认值时必填 |
 | `baseURL` | 目录端点 | 路由上所有模型的端点 |
 | `models` | 已安装目录 | 整体替换路由目录；每个条目从已安装模型取默认值 |
 | `modelOverrides` | 无 | 重塑个别已安装目录模型，而不替换其余模型 |
@@ -94,7 +102,9 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程�
 
 ### 解析模型目录
 
-profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
+除非 `catalogProvider` 显式点名另一个已安装提供方，否则 profile 的目录来源就是路由键。私有网关以部署专用路由名服务官方提供方模型时可使用前一种方式：路由保留自己的端点、凭据与选择身份，同时继承上下文、模态和推理档位等模型能力。DSH 不会根据模型 id 猜测来源，因为不同网关可能用相同 id 实现不同能力；空值或不存在的来源会被拒绝。
+
+profile 的 `models` 列表会替换而非扩展选定的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于没有目录来源的路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
 
 ### 带推理与协议兼容运行
 
@@ -110,7 +120,7 @@ profile 通过可选 settings seam 每次操作重新读取：base 与用户的 
 
 ### 失败与恢复
 
-pi-ai 不提供的路由需要 `api`、`baseURL` 与非空 `models` 列表；无法服务的 profile 会在写入处被拒绝，并点名路由与模型。失败携带稳定 code：无法使用的凭据以 `INVALID_CREDENTIAL` 失败并点名路由与引用，`apiKeyEnv` 引用解析为空的路由以 `MISSING_CREDENTIAL` 失败，未配置模型以 `UNKNOWN_MODEL` 失败，终止性提供方失败则区分 `QUOTA` 与暂时性 `RATE_LIMIT`。`GenerateOptions.stop` 以 `UNSUPPORTED_OPTION` 被拒绝，因为 pi-ai 的通用流式 UI 无法跨提供方保证它。
+没有已安装目录来源的路由需要 `api`、`baseURL` 与非空 `models` 列表；显式的 `catalogProvider` 必须点名已安装提供方。无法服务的 profile 会在写入处被拒绝，并点名路由与模型。失败携带稳定 code：无法使用的凭据以 `INVALID_CREDENTIAL` 失败并点名路由与引用，`apiKeyEnv` 引用解析为空的路由以 `MISSING_CREDENTIAL` 失败，未配置模型以 `UNKNOWN_MODEL` 失败，终止性提供方失败则区分 `QUOTA` 与暂时性 `RATE_LIMIT`。`GenerateOptions.stop` 以 `UNSUPPORTED_OPTION` 被拒绝，因为 pi-ai 的通用流式 UI 无法跨提供方保证它。
 
 -----
 

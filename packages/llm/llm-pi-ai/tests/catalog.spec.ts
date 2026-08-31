@@ -113,6 +113,114 @@ describe('hand-declared providers', () => {
     })
   })
 
+  it('reuses an explicitly selected installed catalog under a custom route key', async () => {
+    const catalogModel = getBuiltinModels('openai').find(model => model.id === 'gpt-5.6-sol')
+    if (catalogModel === undefined) throw new Error('the installed catalog ships no gpt-5.6-sol model')
+    const server = await mockServer([{ events: textEvents }])
+    const providers = {
+      'openai-proxy': {
+        catalogProvider: 'openai',
+        apiKeyEnv: KEY_ENV,
+        api: 'openai-completions',
+        baseURL: `${server.url}/v1`,
+        models: [{ id: catalogModel.id }],
+      },
+    } satisfies Record<string, LlmPiAi.PiAiProviderProfile>
+    const ctx = await harness({ providers })
+
+    const info = await ctx.llm.resolveModelInfo('openai-proxy', catalogModel.id)
+    expect(info).toMatchObject({
+      provider: 'openai-proxy',
+      id: catalogModel.id,
+      name: catalogModel.name,
+      context: { contextWindow: catalogModel.contextWindow },
+      reasoning: { efforts: [
+        { id: 'off' },
+        { id: 'low' },
+        { id: 'medium' },
+        { id: 'high' },
+        { id: 'xhigh' },
+        { id: 'max' },
+      ] },
+    })
+    const [model] = resolveProfiles(providers).get('openai-proxy')?.piProvider.getModels() ?? []
+    expect(model).toMatchObject({
+      provider: 'openai-proxy',
+      id: catalogModel.id,
+      api: 'openai-completions',
+      baseUrl: `${server.url}/v1`,
+    })
+    expect(getSupportedThinkingLevels(model as Model<Api>))
+      .toEqual(['off', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(model?.thinkingLevelMap).toMatchObject({
+      off: 'none',
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: 'xhigh',
+      max: 'max',
+    })
+
+    const result = await assemble(ctx, { provider: 'openai-proxy', model: catalogModel.id, messages: [] })
+    expect(result.finish).toEqual({ kind: 'stop' })
+    expect(server.paths).toEqual(['/v1/chat/completions'])
+  })
+
+  it('serves the selected source catalog when a custom route lists no models', async () => {
+    const server = await mockServer([{
+      status: 401,
+      body: JSON.stringify({ error: { message: 'expected mock failure' } }),
+    }])
+    const config = {
+      providers: {
+        'openai-proxy': {
+          catalogProvider: 'openai',
+          apiKeyEnv: KEY_ENV,
+          baseURL: `${server.url}/v1`,
+        },
+      },
+    } satisfies LlmPiAi.Config
+    const resolved = resolveProfiles(config.providers)
+    const provider = resolved.get('openai-proxy')?.piProvider
+
+    expect(provider?.id).toBe('openai-proxy')
+    expect(provider?.getModels().map(model => model.id).sort())
+      .toEqual(getBuiltinModels('openai').map(model => model.id).sort())
+    expect(provider?.getModels().every(model => model.provider === 'openai-proxy')).toBe(true)
+
+    const ctx = await harness(config)
+    const result = await assemble(ctx, { provider: 'openai-proxy', model: 'gpt-5.6-sol', messages: [] })
+    expect(result.finish.kind).toBe('error')
+    expect(server.paths).toEqual(['/v1/responses'])
+  })
+
+  it('accepts an explicit catalog source through the user-settings schema', async () => {
+    const dir = await home()
+    const ctx = await bootWithSettings(dir, {})
+    await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+      providers: {
+        'openai-proxy': {
+          catalogProvider: 'openai',
+          api: 'openai-completions',
+          baseURL: 'https://gateway.example/v1',
+          models: [{ id: 'gpt-5.6-sol' }],
+        },
+      },
+    })
+
+    await expect(ctx.llm.resolveModelInfo('openai-proxy', 'gpt-5.6-sol')).resolves.toMatchObject({
+      provider: 'openai-proxy',
+      reasoning: { efforts: [
+        { id: 'off' },
+        { id: 'low' },
+        { id: 'medium' },
+        { id: 'high' },
+        { id: 'xhigh' },
+        { id: 'max' },
+      ] },
+    })
+  })
+
   it('offers no reasoning control it could not honour', async () => {
     const server = await mockServer([])
     const ctx = await harness(gateway(`${server.url}/v1`))
@@ -396,6 +504,13 @@ describe('hand-declared providers', () => {
     })
     expect(resolved.get('acme-gateway')?.displayName).toBe('acme-gateway')
     expect(() => resolveProfiles({ 'acme-gateway': { displayName: '' } })).toThrow(/empty displayName/)
+  })
+
+  it('refuses an empty or unavailable catalog source', () => {
+    expect(() => resolveProfiles({ 'openai-proxy': { catalogProvider: '' } }))
+      .toThrow(/empty catalogProvider/)
+    expect(() => resolveProfiles({ 'openai-proxy': { catalogProvider: 'not-installed' } }))
+      .toThrow(/catalogProvider "not-installed".*does not provide/)
   })
 })
 

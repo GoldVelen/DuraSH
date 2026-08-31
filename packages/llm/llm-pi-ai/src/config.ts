@@ -3,12 +3,11 @@
  * Profiles are a dict keyed by provider route, so the composition base and a
  * user-settings layer merge per provider and the route set is structural.
  *
- * A route key is not required to name an installed pi-ai provider. When it does,
- * that provider's endpoint, protocol, display name, and model catalog are the
- * profile's defaults and the profile overrides them field by field; when it does
- * not, the profile is the whole provider declaration. Resolution therefore ends
- * in a built pi-ai `Provider` per route: everything a request needs is decided
- * once, while the configuration key that made a route unserviceable can still be
+ * A route key is not required to name an installed pi-ai provider. It may use
+ * the catalog under its own key, explicitly select another installed provider
+ * as its catalog source, or declare every model itself. Resolution ends in a
+ * built pi-ai `Provider` per route: everything a request needs is decided once,
+ * while the configuration key that made a route unserviceable can still be
  * named in the failure.
  *
  * @module dsh-llm-pi-ai/config
@@ -91,17 +90,23 @@ export interface PiAiProviderProfile {
   /** Name shown by configuration surfaces; defaults to the route key. */
   displayName?: string
   /**
+   * Installed pi-ai provider whose model, endpoint, protocol, and auth
+   * defaults this route reuses. Omission uses the route key. The route keeps
+   * its own key and may override `api`, `baseURL`, credential, and model fields.
+   */
+  catalogProvider?: string
+  /**
    * Wire protocol every model on this route speaks. Omission keeps each
-   * installed catalog model's own protocol, which is why a catalog route needs
-   * no protocol at all; a route the catalog does not ship must name one.
+   * selected catalog model's own protocol, which is why a route with a catalog
+   * source needs no protocol at all; a route with no source must name one.
    */
   api?: string
-  /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
+  /** Endpoint for this route's models; defaults to the selected catalog's endpoint. */
   baseURL?: string
   /**
-   * This route's model catalog. Omission serves the installed catalog for the
-   * route unchanged; an explicit list replaces it, each entry defaulting its
-   * unset fields from the installed model of the same id.
+   * This route's model catalog. Omission serves the selected installed catalog
+   * unchanged; an explicit list replaces it, each entry defaulting its unset
+   * fields from the installed model of the same id.
    */
   models?: PiAiModelProfile[]
   /**
@@ -109,7 +114,7 @@ export interface PiAiProviderProfile {
    * one model with the same fields a {@link models} entry takes, while the
    * rest of the catalog keeps serving untouched. Only meaningful on a catalog
    * route with no `models` list — `models` already replaces the catalog, so
-   * an override beside it, on a route the catalog does not ship, or naming a
+   * an override beside it, on a route with no catalog source, or naming a
    * model the catalog does not describe is refused rather than skipped.
    */
   modelOverrides?: Record<string, PiAiModelOverride>
@@ -123,21 +128,21 @@ export interface PiAiProviderProfile {
   compat?: PiAiCompatProfile
   /**
    * Context capacity for a model this route lists that neither the entry nor
-   * the installed catalog sizes (default 262,144). A guess by construction, so
+   * the selected catalog sizes (default 262,144). A guess by construction, so
    * a deployment whose gateway serves smaller models corrects it here.
    */
   defaultContextWindow?: number
   /**
    * Output capability for a model this route lists that neither the entry nor
-   * the installed catalog sizes (default 32,768). This sizes the model; it
+   * the selected catalog sizes (default 32,768). This sizes the model; it
    * never becomes a per-request cap on its own.
    */
   defaultMaxTokens?: number
   /**
    * Request modalities for a model this route lists that neither its entry's
-   * {@link PiAiModelProfile.input} nor the installed catalog declares (default
+   * {@link PiAiModelProfile.input} nor the selected catalog declares (default
    * `[text]`). A fallback like the capacities above, not an override: a
-   * catalog model keeps the modalities the catalog records for it, and this
+   * selected catalog model keeps the modalities the catalog records for it, and this
    * value never narrows one. A gateway serving vision models the catalog does
    * not describe declares `[text, image]` once here instead of on every entry.
    * Unlike an entry's list, this one may not be empty — nothing sits below it
@@ -314,6 +319,7 @@ const modelOverride: z<PiAiModelOverride> = z.object(modelFields)
 const profile = z.object({
   apiKeyEnv: z.string().role('credential-ref'),
   displayName: z.string(),
+  catalogProvider: z.string(),
   api: z.union(supportedProtocols()),
   baseURL: z.string(),
   models: z.array(modelProfile),
@@ -435,6 +441,7 @@ export function resolveProfiles(
     const displayName = source.displayName ?? provider
     const catalog = resolveRouteModels({
       provider,
+      ...source.catalogProvider === undefined ? {} : { catalogProvider: source.catalogProvider },
       ...source.api === undefined ? {} : { api: source.api },
       ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
       ...source.models === undefined ? {} : { models: source.models },
@@ -461,6 +468,7 @@ export function resolveProfiles(
       piProvider: buildProvider({
         provider,
         displayName,
+        ...source.catalogProvider === undefined ? {} : { catalogProvider: source.catalogProvider },
         ...source.api === undefined ? {} : { api: source.api },
         ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
         models: catalog.models,

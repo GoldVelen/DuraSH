@@ -2,14 +2,14 @@
  * Construction of the pi-ai `Provider` that one configured route registers into
  * the adapter's `Models` collection.
  *
- * Two constructions, one decision: a route the installed catalog ships, whose
- * profile does not override the wire protocol, **reuses that catalog provider**
- * with its models replaced — the catalog provider owns API implementations this
+ * Two constructions, one decision: a route whose selected catalog provider
+ * keeps its wire protocol **reuses that catalog provider** with its models and
+ * route identity replaced. The catalog provider owns API implementations this
  * package cannot reconstruct (Bedrock loads its Smithy module through a
  * separate entry point), so rebuilding it from parts would silently narrow
- * which providers work. Every other route — one pi-ai has never heard of, or a
- * catalog route pointed at a different protocol — is built by `createProvider`
- * over the protocol table below.
+ * which providers work. Every other route — one with no catalog source, or a
+ * route pointed at a different protocol — is built by `createProvider` over
+ * the protocol table below.
  *
  * Credentials never reach this module's storage: the harness resolves a route's
  * key through `ctx.credentials` before the request enters pi-ai and hands it
@@ -24,7 +24,7 @@ import type { Api, ApiKeyAuth, Model, Provider, ProviderStreams } from '@earendi
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
-import { catalogProvider } from './catalog.ts'
+import { catalogProvider as installedCatalogProvider } from './catalog.ts'
 
 /**
  * Wire protocols a configured route may name, mapped to pi-ai's lazily loaded
@@ -88,6 +88,8 @@ function harnessApiKeyAuth(name: string): ApiKeyAuth {
 export interface ProviderSpec {
   /** Provider route key; also the `Models` collection key and each model's `provider`. */
   provider: string
+  /** Installed provider whose implementation and auth defaults this route reuses. */
+  catalogProvider?: string
   /** Display name for selectors and status labels. */
   displayName: string
   /** Wire protocol override; absent means each model keeps its catalog protocol. */
@@ -165,9 +167,9 @@ function reuseCatalogProvider(base: Provider, spec: ProviderSpec): Provider {
  * @throws Error when the route names a wire protocol this build cannot serve.
  */
 export function buildProvider(spec: ProviderSpec): Provider {
-  const catalog = catalogProvider(spec.provider)
-  // A catalog route keeping its catalog protocol reuses the catalog provider;
-  // an explicit protocol means the deployment is repointing the route at a
+  const catalog = installedCatalogProvider(spec.catalogProvider ?? spec.provider)
+  // A route keeping its selected catalog protocol reuses that provider; an
+  // explicit protocol means the deployment is repointing the route at a
   // different wire format, which only the protocol table can serve.
   if (catalog !== undefined && spec.api === undefined) return reuseCatalogProvider(catalog, spec)
 

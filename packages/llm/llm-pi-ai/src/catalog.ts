@@ -1,9 +1,10 @@
 /**
  * Materialization of one provider route's model catalog. The installed pi-ai
  * catalog supplies defaults keyed by model id, and a profile's own model
- * entries override them field by field, so a route naming a catalog provider
- * stays configuration-free while a route pi-ai has never heard of is fully
- * describable from `settings.yaml`.
+ * entries override them field by field. A route may use the catalog under its
+ * own key or explicitly select another installed provider as its catalog
+ * source, while a route pi-ai has never heard of remains fully describable
+ * from `settings.yaml`.
  *
  * Every pi-ai `Model` field the harness cannot default is required here rather
  * than at request time: an unserviceable route fails while its configuration is
@@ -597,21 +598,23 @@ export type PiAiModelOverride = Omit<PiAiModelProfile, 'id'>
 export interface RouteCatalogRequest {
   /** Provider route key, stamped onto every materialized model. */
   provider: string
+  /** Installed provider whose catalog supplies defaults; absent uses {@link provider}. */
+  catalogProvider?: string
   /** Wire protocol override; absent defers to each catalog model's own API. */
   api?: string
-  /** Endpoint override; absent defers to the catalog model, then the catalog provider. */
+  /** Endpoint override; absent defers to the selected catalog model, then its provider. */
   baseURL?: string
-  /** Configured catalog; absent means the whole installed catalog for this route. */
+  /** Configured catalog; absent means the whole selected installed catalog. */
   models?: readonly PiAiModelProfile[]
-  /** Installed-catalog customizations by model id; only meaningful while `models` is absent. */
+  /** Selected-catalog customizations by model id; only meaningful while `models` is absent. */
   modelOverrides?: Readonly<Record<string, PiAiModelOverride>>
   /** Route-level wire-compatibility switches, landing on each model whose protocol declares them; entries override per field. */
   compat?: PiAiCompatProfile
-  /** Context capacity for a model neither the entry nor the catalog sizes. */
+  /** Context capacity for a model neither the entry nor the selected catalog sizes. */
   defaultContextWindow: number
-  /** Output capability for a model neither the entry nor the catalog sizes. */
+  /** Output capability for a model neither the entry nor the selected catalog sizes. */
   defaultMaxTokens: number
-  /** Modalities for a model neither the entry nor the catalog declares. */
+  /** Modalities for a model neither the entry nor the selected catalog declares. */
   defaultInput: Model<Api>['input']
 }
 
@@ -787,17 +790,23 @@ export interface RouteCatalog {
 }
 
 /**
- * Materialize one route's catalog by merging the installed catalog defaults
+ * Materialize one route's catalog by merging the selected installed catalog defaults
  * under the configured entries. A route with no configured `models` serves the
- * installed catalog unchanged, which is what keeps an existing
+ * selected catalog unchanged, which is what keeps an existing
  * `providers: { deepseek: { apiKeyEnv: … } }` profile working untouched.
  * @param request - the route-level catalog facts.
  * @returns the materialized models and the explicitly configured request caps.
  */
 export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
   const { provider } = request
-  const defaults = catalogModels(provider)
-  const providerBaseUrl = catalogProvider(provider)?.baseUrl
+  const sourceProvider = request.catalogProvider ?? provider
+  if (sourceProvider.length === 0) invalid(provider, 'has an empty catalogProvider')
+  const sourceCatalog = catalogProvider(sourceProvider)
+  if (request.catalogProvider !== undefined && sourceCatalog === undefined) {
+    invalid(provider, `names catalogProvider "${sourceProvider}", which the installed catalog does not provide`)
+  }
+  const defaults = catalogModels(sourceProvider)
+  const providerBaseUrl = sourceCatalog?.baseUrl
   // An absent `models` key and an empty one are the same request: the config
   // schema materializes `[]` for the absent case, and an empty catalog could
   // serve no request anyway, so both mean "serve the installed catalog".

@@ -1062,17 +1062,23 @@ export interface PiAiProviderProfile {
   /** Name shown by configuration surfaces; defaults to the route key. */
   displayName?: string
   /**
+   * Installed pi-ai provider whose model, endpoint, protocol, and auth
+   * defaults this route reuses. Omission uses the route key. The route keeps
+   * its own key and may override `api`, `baseURL`, credential, and model fields.
+   */
+  catalogProvider?: string
+  /**
    * Wire protocol every model on this route speaks. Omission keeps each
-   * installed catalog model's own protocol, which is why a catalog route needs
-   * no protocol at all; a route the catalog does not ship must name one.
+   * selected catalog model's own protocol, which is why a route with a catalog
+   * source needs no protocol at all; a route with no source must name one.
    */
   api?: string
-  /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
+  /** Endpoint for this route's models; defaults to the selected catalog's endpoint. */
   baseURL?: string
   /**
-   * This route's model catalog. Omission serves the installed catalog for the
-   * route unchanged; an explicit list replaces it, each entry defaulting its
-   * unset fields from the installed model of the same id.
+   * This route's model catalog. Omission serves the selected installed catalog
+   * unchanged; an explicit list replaces it, each entry defaulting its unset
+   * fields from the installed model of the same id.
    */
   models?: PiAiModelProfile[]
   /**
@@ -1080,7 +1086,7 @@ export interface PiAiProviderProfile {
    * one model with the same fields a {@link models} entry takes, while the
    * rest of the catalog keeps serving untouched. Only meaningful on a catalog
    * route with no `models` list — `models` already replaces the catalog, so
-   * an override beside it, on a route the catalog does not ship, or naming a
+   * an override beside it, on a route with no catalog source, or naming a
    * model the catalog does not describe is refused rather than skipped.
    */
   modelOverrides?: Record<string, PiAiModelOverride>
@@ -1094,21 +1100,21 @@ export interface PiAiProviderProfile {
   compat?: PiAiCompatProfile
   /**
    * Context capacity for a model this route lists that neither the entry nor
-   * the installed catalog sizes (default 262,144). A guess by construction, so
+   * the selected catalog sizes (default 262,144). A guess by construction, so
    * a deployment whose gateway serves smaller models corrects it here.
    */
   defaultContextWindow?: number
   /**
    * Output capability for a model this route lists that neither the entry nor
-   * the installed catalog sizes (default 32,768). This sizes the model; it
+   * the selected catalog sizes (default 32,768). This sizes the model; it
    * never becomes a per-request cap on its own.
    */
   defaultMaxTokens?: number
   /**
    * Request modalities for a model this route lists that neither its entry's
-   * {@link PiAiModelProfile.input} nor the installed catalog declares (default
+   * {@link PiAiModelProfile.input} nor the selected catalog declares (default
    * `[text]`). A fallback like the capacities above, not an override: a
-   * catalog model keeps the modalities the catalog records for it, and this
+   * selected catalog model keeps the modalities the catalog records for it, and this
    * value never narrows one. A gateway serving vision models the catalog does
    * not describe declares `[text, image]` once here instead of on every entry.
    * Unlike an entry's list, this one may not be empty — nothing sits below it
@@ -1302,7 +1308,7 @@ export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFo
 
 Depends on: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`)
 
-Source: [`packages/llm/llm-pi-ai/src/config.ts:216`](../packages/llm/llm-pi-ai/src/config.ts)
+Source: [`packages/llm/llm-pi-ai/src/config.ts:221`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -3499,6 +3505,9 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-webhook` — requires `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` ([`packages/webhook/webhook/src/index.ts`](../packages/webhook/webhook/src/index.ts))
 - `@deepseek-ai/dsh-workspace` — requires `storageDomain` · `sessionPersistence` ([`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts))
 - `@durash/dsh-client-ui-brand` ([`packages/client/ui-brand-durash/src/index.ts`](../packages/client/ui-brand-durash/src/index.ts))
+- `@durash/dsh-client-ui-reliability` ([`packages/client/ui-reliability/src/index.ts`](../packages/client/ui-reliability/src/index.ts))
+- `@durash/dsh-reliability-policy` — requires `storageDomain` · `llm` ([`packages/reliability/durash-reliability-policy/src/index.ts`](../packages/reliability/durash-reliability-policy/src/index.ts))
+- `@durash/dsh-tool-reliability` — requires `tools` · `systemPrompt` · `agents` · `reliabilityPolicy` · `reliabilityLoopRuntime` ([`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts))
 
 ## Seam packages (not directly loadable)
 

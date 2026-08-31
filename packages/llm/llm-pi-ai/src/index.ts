@@ -1,9 +1,9 @@
 /**
  * Generic pi-ai-backed LLM adapter plugin. One plugin instance owns a dict of
- * provider routes; a route naming an installed pi-ai provider inherits that
- * provider's endpoint, protocol, and model catalog as defaults, and a route
- * pi-ai does not ship is declared outright. Profile facts resolve per request
- * over the optional `llm-pi-ai` user-settings section and the optional
+ * provider routes; a route may inherit the installed catalog under its own key
+ * or explicitly select another provider's catalog while keeping its route
+ * identity, and a route with no catalog source is declared outright. Profile
+ * facts resolve per request over the optional `llm-pi-ai` user-settings section and the optional
  * credential seam, so a changed key, endpoint, model, or knob reaches the next
  * request without a restart; a changed *route set* (or a route's
  * registration-captured retry policy) re-registers the same adapter instance
@@ -26,6 +26,14 @@
  *         models:
  *           - id: claude-sonnet-4-5
  *             contextWindow: 200000
+ *       # Custom route reusing OpenAI's official catalog metadata.
+ *       openai-proxy:
+ *         catalogProvider: openai
+ *         apiKeyEnv: OPENAI_PROXY_API_KEY
+ *         api: openai-completions
+ *         baseURL: https://proxy.example/v1
+ *         models:
+ *           - id: gpt-5.6-sol
  *       # Hand-declared route: pi-ai ships nothing under this key.
  *       acme-gateway:
  *         displayName: Acme Gateway
