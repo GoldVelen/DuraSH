@@ -163,7 +163,7 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     const describing = ctx.authorizationController.describe()
     await readStarted.promise
     await ctx.authorizationController.begin({ key: KEY_WIRE })
-    allowRead.resolve()
+    allowRead.resolve(undefined)
 
     expect((await describing).attempts).toEqual([{
       key: KEY_WIRE,
