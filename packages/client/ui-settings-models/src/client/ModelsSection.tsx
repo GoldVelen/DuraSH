@@ -19,8 +19,9 @@ import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-sl
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
-import { deriveKeyRef, messageOf, protocolChoices, providerUsable } from './store.ts'
-import type { ModelsSettingsStore, ModelsWire, ProviderRow } from './store.ts'
+import { deriveKeyRef, protocolChoices, providerUsable } from './store.ts'
+import type { ModelsSettingsStore, ProviderRow } from './store.ts'
+import type { ModelsOperations } from './operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
 import { SignInSection } from './SignInSection.tsx'
@@ -40,8 +41,8 @@ export interface ModelsSectionInjected {
   }
   /** The sign-in area controller (flows and their live attempts). */
   signIn: SignInStore
-  /** Wire faces the editor writes through. */
-  api: ModelsWire
+  /** The Host operations the section and its cards invoke. */
+  operations: ModelsOperations
   /** Settings schema and immutable path callbacks. */
   schema: SettingsSchemaOperations
   /** Section copy. */
@@ -86,7 +87,7 @@ interface EditorTarget extends ProviderIdentity {
 /** Values that vary around the shared provider-editor rendering. */
 interface ProviderEditorRenderProps extends Pick<
   ProviderEditorProps,
-  'namespace' | 'schema' | 'api' | 't' | 'readOnly' | 'onClose'
+  'namespace' | 'schema' | 'operations' | 't' | 'readOnly' | 'onClose'
 > {
   target: EditorTarget
 }
@@ -110,32 +111,26 @@ function renderProviderEditor({ target, ...props }: ProviderEditorRenderProps): 
  * and the whole operation safely retryable; both unsets are idempotent.
  * The settings removal names the profile rather than rebuilding its whole
  * namespace from a partial view.
- * @param api - settings and credential wire faces.
+ * @param operations - the page's Host operations.
  * @param controller - the page store to refresh.
  * @param target - the provider's settings address and optional managed credential.
  * @returns the failure message, or undefined once the write and reload landed.
  */
 export async function removeProviderProfile(
-  api: Pick<ModelsWire, 'settings' | 'credentials'>,
+  operations: ModelsOperations,
   controller: ModelsSettingsStore,
   target: { settingsNs: string; settingsPath: readonly string[]; credentialRef?: string },
 ): Promise<string | undefined> {
-  try {
-    if (target.credentialRef !== undefined) {
-      const credential = await api.credentials.unset(target.credentialRef)
-      if (!credential.ok) return credential.error.message
-    }
-    const response = await api.settings.mutate(
-      target.settingsNs,
-      [{ op: 'unset', path: [...target.settingsPath] }],
-      undefined,
-    )
-    if (!response.ok) return response.error.message
-  } catch (error) {
-    // The transport rejected rather than answering; the caller must be able
-    // to retry the idempotent operation instead of the row silently staying.
-    return messageOf(error)
+  if (target.credentialRef !== undefined) {
+    const credential = await operations.removeCredential(target.credentialRef)
+    if (credential !== undefined) return credential
   }
+  const written = await operations.writeSettings(
+    target.settingsNs,
+    [{ op: 'unset', path: [...target.settingsPath] }],
+    undefined,
+  )
+  if (written.kind !== 'written') return written.message
   await controller.load()
   return undefined
 }
@@ -158,26 +153,22 @@ export function rowForAuthorizationKey(
  * Materialize a reference-free native-auth profile for a just-signed-in
  * provider — the same empty object the add card writes when the key is left
  * blank. A catalog route then registers and its models join the picker.
- * @param api - the settings write face.
+ * @param operations - the page's Host operations.
  * @param controller - the page store to refresh.
  * @param target - the provider's settings address.
  * @returns the failure message, or undefined once the write and reload landed.
  */
 export async function enableNativeProviderProfile(
-  api: Pick<ModelsWire, 'settings'>,
+  operations: Pick<ModelsOperations, 'writeSettings'>,
   controller: ModelsSettingsStore,
   target: { settingsNs: string; settingsPath: readonly string[] },
 ): Promise<string | undefined> {
-  try {
-    const response = await api.settings.mutate(
-      target.settingsNs,
-      [{ op: 'set', path: [...target.settingsPath], value: {} }],
-      undefined,
-    )
-    if (!response.ok) return response.error.message
-  } catch (error) {
-    return messageOf(error)
-  }
+  const written = await operations.writeSettings(
+    target.settingsNs,
+    [{ op: 'set', path: [...target.settingsPath], value: {} }],
+    undefined,
+  )
+  if (written.kind !== 'written') return written.message
   await controller.load()
   return undefined
 }
@@ -246,16 +237,21 @@ export function providerCopy(template: string, target: ProviderIdentity): string
  * @returns the section, or null while the shell has not injected yet.
  */
 export function ModelsSection(props: ModelsSectionProps): ReactNode {
-  const { controller, useSnapshot, useSignIn, signIn, api, schema, t, renderSlot } = props
+  const { controller, useSnapshot, useSignIn, signIn, operations, schema, t, renderSlot } = props
   if (
     controller === undefined || useSnapshot === undefined || useSignIn === undefined || signIn === undefined
-    || api === undefined || schema === undefined || t === undefined
+    || operations === undefined || schema === undefined || t === undefined
   ) return null
-  return <Loaded injected={{ controller, useSnapshot, useSignIn, signIn, api, schema, t }} renderSlot={renderSlot} />
+  return (
+    <Loaded
+      injected={{ controller, useSnapshot, useSignIn, signIn, operations, schema, t }}
+      renderSlot={renderSlot}
+    />
+  )
 }
 
 function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderSlot: ModelsRenderSlot }): ReactNode {
-  const { controller, useSignIn, signIn, api, schema, t } = injected
+  const { controller, useSignIn, signIn, operations, schema, t } = injected
   const state = injected.useSnapshot(snapshot => snapshot)
   const signInState = injected.useSignIn(snapshot => snapshot)
   const [editing, setEditing] = useState<EditorTarget | undefined>(undefined)
@@ -305,7 +301,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
     if (deleteTarget === undefined || deleting) return
     setDeleting(true)
     setDeleteFailure(undefined)
-    void removeProviderProfile(api, controller, deleteTarget)
+    void removeProviderProfile(operations, controller, deleteTarget)
       .then((failure) => {
         if (failure !== undefined) {
           setDeleteFailure(failure)
@@ -327,7 +323,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
       enabledSignIns.current.add(attempt.key)
       if (row.configured) continue
       const identity = { provider: row.entry.provider, displayName: row.entry.displayName }
-      void enableNativeProviderProfile(api, controller, {
+      void enableNativeProviderProfile(operations, controller, {
         settingsNs: row.entry.settingsNs,
         settingsPath: row.entry.settingsPath,
       }).then((failure) => {
@@ -342,7 +338,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
         if (next !== undefined) setEditing(targetOf(next))
       })
     }
-  }, [api, controller, signInState.attempts, signInState.status, state.rows, state.status, state.writable])
+  }, [controller, operations, signInState.attempts, signInState.status, state.rows, state.status, state.writable])
 
   if (state.status === 'idle') void controller.load()
   if (state.status === 'error') {
@@ -417,7 +413,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                   target,
                   namespace,
                   schema,
-                  api,
+                  operations,
                   t,
                   readOnly: !state.writable,
                   onClose: (changed) => { closeSetup(changed, target) },
@@ -512,7 +508,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                   target,
                   namespace,
                   schema,
-                  api,
+                  operations,
                   t,
                   readOnly: !state.writable,
                   onClose: (changed) => { closeEditor(changed, target) },
@@ -552,7 +548,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                 namespace={addNamespace}
                 schema={schema}
                 settingsPath={addTarget.settingsPath}
-                api={api}
+                operations={operations}
                 t={t}
                 readOnly={!state.writable}
                 onClose={(changed) => { closeEditor(changed, addTarget) }}
@@ -574,7 +570,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                   protocols={protocols}
                   /* v8 ignore next -- the card only opens from a button disabled without this namespace */
                   revision={state.namespaces.get('llm-pi-ai')?.revision ?? 0}
-                  api={api}
+                  operations={operations}
                   t={t}
                   readOnly={!state.writable}
                   onClose={(changed) => {

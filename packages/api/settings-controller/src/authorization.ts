@@ -19,7 +19,7 @@ import {
   type AuthorizationEntry, type AuthorizationNotice, type AuthorizationPrompt,
 } from '@deepseek-ai/dsh-authorization'
 import { parseCredentialKey } from '@deepseek-ai/dsh-credentials'
-import { Remote, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
 import type {
   AuthorizationAttemptView, AuthorizationDescribeValue, AuthorizationPromptView,
@@ -48,11 +48,11 @@ const cancelRequestSchema = z.object({ key: credentialKeySchema })
 function parseRequest<T>(method: string, schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value)
   if (!parsed.success) {
-    throw new TypertRemoteFailure({
-      code: 'bad-request',
-      message: `invalid payload for ${method}`,
-      details: { issues: parsed.error.issues },
-    })
+    throw new RemoteError(
+      'gateway/bad-request',
+      `invalid payload for ${method}`,
+      { issues: parsed.error.issues },
+    )
   }
   return parsed.data
 }
@@ -198,7 +198,7 @@ export class AuthorizationController extends TypertRemoteService {
   /**
    * Snapshot every registered flow and every tracked attempt.
    * @returns the flows a sign-in surface offers, and the attempts it may be watching.
-   * @throws TypertRemoteFailure when no authorization service is mounted.
+   * @throws RemoteError when no authorization service is mounted.
    */
   @Remote
   describe(): Promise<AuthorizationDescribeValue> {
@@ -238,8 +238,9 @@ export class AuthorizationController extends TypertRemoteService {
    * @param request - the credential key whose flow to run, and optionally the
    *   method; defaults to the flow's first.
    * @returns confirmation that the attempt started; poll `describe` for its progress.
-   * @throws TypertRemoteFailure `bad-request` for a malformed payload, `not-found`
-   *   when no flow claims the key, or `conflict` when an attempt is already running.
+   * @throws RemoteError `gateway/bad-request` for a malformed payload,
+   *   `authorization/not-found` when no flow claims the key, or
+   *   `authorization/conflict` when an attempt is already running.
    */
   @Remote
   begin(request: { key: string; method?: string }): Promise<{ started: true }> {
@@ -260,27 +261,27 @@ export class AuthorizationController extends TypertRemoteService {
     try {
       branded = parseCredentialKey(parsed.key)
     } catch (error) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: error instanceof Error ? error.message : String(error),
-        details: { key: parsed.key },
-      })
+      throw new RemoteError(
+        'gateway/bad-request',
+        error instanceof Error ? error.message : String(error),
+        {},
+      )
     }
     const entry = this.flowFor(branded)
     const method = parsed.method ?? entry.methods[0]?.id ?? ''
     if (!entry.methods.some(candidate => candidate.id === method)) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: `authorization flow for "${parsed.key}" offers no method "${method}"`,
-        details: { key: parsed.key },
-      })
+      throw new RemoteError(
+        'gateway/bad-request',
+        `authorization flow for "${parsed.key}" offers no method "${method}"`,
+        {},
+      )
     }
     if (entry.inFlight) {
-      throw new TypertRemoteFailure({
-        code: 'conflict',
-        message: `an authorization attempt for "${parsed.key}" is already running`,
-        details: { key: parsed.key },
-      })
+      throw new RemoteError(
+        'authorization/conflict',
+        `an authorization attempt for "${parsed.key}" is already running`,
+        { key: parsed.key },
+      )
     }
     // A fresh begin supersedes the previous attempt's terminal view.
     this.attempts.delete(parsed.key)
@@ -311,8 +312,8 @@ export class AuthorizationController extends TypertRemoteService {
    * Answer the pending prompt of one running attempt.
    * @param request - the key, the prompt id from `describe`, and either the
    *   answer or a decline.
-   * @throws TypertRemoteFailure `bad-request` for a malformed payload or a stale
-   *   prompt id, `not-found` when no running attempt exists for the key.
+   * @throws RemoteError `gateway/bad-request` for a malformed payload or a stale
+   *   prompt id, or `authorization/not-found` when no running attempt exists.
    */
   @Remote
   respond(request: { key: string; promptId: string; value?: string; declined?: true }): Promise<void> {
@@ -325,11 +326,11 @@ export class AuthorizationController extends TypertRemoteService {
     const parsed = parseRequest('authorization.respond', respondRequestSchema, request)
     const record = this.runningFor(parsed.key)
     if (record.pending === undefined || record.pending.id !== parsed.promptId) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: `no pending prompt "${parsed.promptId}" for "${parsed.key}"`,
-        details: { key: parsed.key },
-      })
+      throw new RemoteError(
+        'gateway/bad-request',
+        `no pending prompt "${parsed.promptId}" for "${parsed.key}"`,
+        {},
+      )
     }
     const pending = record.pending
     if (parsed.declined === true) pending.fail(new AuthorizationDeclinedError())
@@ -339,7 +340,7 @@ export class AuthorizationController extends TypertRemoteService {
   /**
    * Withdraw the running attempt for a key, if any.
    * @param request - the key whose attempt should stop.
-   * @throws TypertRemoteFailure `bad-request` for a malformed payload.
+   * @throws RemoteError `gateway/bad-request` for a malformed payload.
    */
   @Remote
   cancel(request: { key: string }): Promise<void> {
@@ -354,11 +355,11 @@ export class AuthorizationController extends TypertRemoteService {
     try {
       branded = parseCredentialKey(parsed.key)
     } catch (error) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: error instanceof Error ? error.message : String(error),
-        details: { key: parsed.key },
-      })
+      throw new RemoteError(
+        'gateway/bad-request',
+        error instanceof Error ? error.message : String(error),
+        {},
+      )
     }
     this.service().cancel(branded)
   }
@@ -367,38 +368,38 @@ export class AuthorizationController extends TypertRemoteService {
   private service() {
     const authorization = this.ctx.get('authorization')
     if (authorization === undefined) {
-      throw new TypertRemoteFailure({
-        code: 'internal',
-        message: 'authorization service is absent: this deployment does not mount @deepseek-ai/dsh-authorization'
+      throw new RemoteError(
+        'gateway/internal',
+        'authorization service is absent: this deployment does not mount @deepseek-ai/dsh-authorization'
           + ' in its composition, so no sign-in flow can run',
-        details: {},
-      })
+        {},
+      )
     }
     return authorization
   }
 
-  /** The registered flow for a key, or a `not-found` refusal naming it. */
+  /** The registered flow for a key, or an `authorization/not-found` refusal naming it. */
   private flowFor(key: ReturnType<typeof parseCredentialKey>): AuthorizationEntry {
     const entry = this.service().describe(key)
     if (entry === undefined) {
-      throw new TypertRemoteFailure({
-        code: 'not-found',
-        message: `no authorization flow is registered for "${key}"`,
-        details: { key },
-      })
+      throw new RemoteError(
+        'authorization/not-found',
+        `no authorization flow is registered for "${key}"`,
+        { key },
+      )
     }
     return entry
   }
 
-  /** The tracked attempt for a key, or a `not-found` refusal when none is running. */
+  /** The tracked attempt for a key, or an `authorization/not-found` refusal when none is running. */
   private runningFor(key: string): AttemptRecord {
     const record = this.attempts.get(key)
     if (record === undefined || record.status !== 'running') {
-      throw new TypertRemoteFailure({
-        code: 'not-found',
-        message: `no running authorization attempt for "${key}"`,
-        details: { key },
-      })
+      throw new RemoteError(
+        'authorization/not-found',
+        `no running authorization attempt for "${key}"`,
+        { key },
+      )
     }
     return record
   }

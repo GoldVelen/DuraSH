@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-tool-reliability` 注册 `dsh_reliability_handoff`。工具在进程内始终存在，但除非本会话的 composer 开关打开，否则会闭门失败。启用后，它用该会话的实施与审查路由启动一次可靠性闭环，并等待终态记录。
 
@@ -55,9 +55,9 @@ kind: "package-reference"
 
 ### 请求上下文与条件
 
-`tool:reliability-handoff` 系统提示段落只为策略已启用的根代理组装。未启用的会话没有该段落。
-
 #### 模型看到什么
+
+`tool:reliability-handoff` 系统提示段落只为策略已启用的根代理组装。未启用的会话没有该段落。
 
 ##### 可靠性交接指导
 
@@ -75,11 +75,9 @@ For this Session the reliability loop is enabled. This tool is the only implemen
 
 ### 工具 schema
 
-生成的[工具目录](../../../docs/tool-catalog.zh.md)拥有 `dsh_reliability_handoff` schema。本包的描述要求模型先给出计划，再带着完整目标调用。
-
 #### 模型看到什么
 
-`dsh_reliability_handoff` 的目录条目。
+生成的[工具目录](../../../docs/tool-catalog.zh.md#durashdsh-tool-reliability)拥有 `dsh_reliability_handoff` schema。本包的描述要求模型先给出计划，再带着完整目标调用。模型会看到 `dsh_reliability_handoff` 的目录条目。
 
 #### Token 影响
 

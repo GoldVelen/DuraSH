@@ -93,6 +93,14 @@ interface ReliabilityLoopRecord {
   readonly settledAt?: string | undefined
   /** Failure detail; present iff `stage` is `failed`. */
   readonly error?: string | undefined
+  /** Implementation-stage provider route, when the caller selected one. */
+  readonly implementationProvider?: string | undefined
+  /** Implementation-stage model id, when the caller selected one. */
+  readonly implementationModel?: string | undefined
+  /** Review-stage provider route, when the caller selected one. */
+  readonly reviewProvider?: string | undefined
+  /** Review-stage model id, when the caller selected one. */
+  readonly reviewModel?: string | undefined
 }
 ```
 
@@ -103,6 +111,10 @@ interface ReliabilityLoopStartRequest {
   parent: Agent
   /** What the implementation must achieve; bounded by `maxHandoffChars`. */
   objective: string
+  /** Implementation-stage child route; omitted children inherit the parent. */
+  implementation?: ReliabilityLoopLane
+  /** Review-stage child route; omitted children inherit the parent. */
+  review?: ReliabilityLoopLane
 }
 ```
 
@@ -134,6 +146,83 @@ interface ReliabilityLoopHandle {
    * Never rejects; idempotent; safe on every path.
    */
   dispose(): Promise<void>
+}
+```
+
+## Session policy types
+
+[`@durash/dsh-reliability-policy`](../../packages/reliability/durash-reliability-policy) stores the composer switch and its implementation/review route selections. Thinking effort is durable policy data; the current worker-thread engine does not yet apply it to stage children.
+
+```ts type-equiv
+/** Thinking effort stored on a lane; the worker-thread engine does not yet apply it to children. */
+type ReliabilityThinking = string
+```
+
+```ts type-equiv
+/** One catalog badge rendered next to a model option. */
+interface ReliabilityModelBadge {
+  readonly kind: 'channel' | 'provider'
+  readonly label: string
+}
+```
+
+```ts type-equiv
+/** One selectable implementation or review model. */
+interface ReliabilityModelOption {
+  /** `provider/model` selector persisted on the policy row. */
+  readonly selector: string
+  /** Human-readable model name. */
+  readonly label: string
+  /** Provider route that owns the model. */
+  readonly provider: string
+  /** Model id passed to the stage child. */
+  readonly model: string
+  /** Channel and provider badges for the picker. */
+  readonly badges: readonly ReliabilityModelBadge[]
+  /** Effort levels the switch offers for this model. */
+  readonly thinkingLevels: readonly ReliabilityThinking[]
+}
+```
+
+```ts type-equiv
+/** Parsed provider/model override for one loop lane. */
+interface ReliabilityLaneRoute {
+  readonly provider: string
+  readonly model: string
+}
+```
+
+```ts type-equiv
+/** Session-bound policy the composer switch reads and writes. */
+interface ReliabilityPolicySnapshot {
+  readonly sessionId: SessionId
+  readonly revision: number
+  readonly enabled: boolean
+  readonly implementationModel: string | null
+  readonly implementationThinking: ReliabilityThinking | null
+  readonly reviewModel: string | null
+  readonly reviewThinking: ReliabilityThinking | null
+  readonly updatedAt: number
+  readonly models: readonly ReliabilityModelOption[]
+}
+```
+
+```ts type-equiv
+/** Session identity for a policy read. */
+interface ReliabilityPolicyRequest {
+  readonly sessionId: SessionId
+}
+```
+
+```ts type-equiv
+/** Session policy replacement from the composer switch. */
+interface ReliabilityPolicyConfigureRequest {
+  readonly sessionId: SessionId
+  readonly enabled: boolean
+  readonly implementationModel: string | null
+  readonly implementationThinking: ReliabilityThinking | null
+  readonly reviewModel: string | null
+  readonly reviewThinking: ReliabilityThinking | null
 }
 ```
 
@@ -212,4 +301,52 @@ get(loopId: ReliabilityLoopId): ReliabilityLoopRecord | undefined
 Types: [Agent](core.md)
 
 Source: [`packages/reliability/durash-reliability-loop/src/index.ts`](../../packages/reliability/durash-reliability-loop/src/index.ts)
+
+<a id="ctxreliabilitypolicy--reliabilitypolicyservice"></a>
+
+### `ctx.reliabilityPolicy` — `ReliabilityPolicyService`
+
+Session-keyed reliability policy (`ctx.reliabilityPolicy`). Catalog reads go through `ctx.llm`; the durable row never stores the directory.
+
+```ts cordis-catalog
+/**
+ * Whether the reliability handoff tool is enabled for this Session.
+ * @param sessionId - exact Session identity.
+ * @returns the persisted enablement flag, false when no row exists.
+ */
+workflowEnabled(sessionId: SessionId): boolean
+
+/**
+ * Parsed implementation and review routes when the policy is enabled.
+ * @param sessionId - exact Session identity.
+ * @returns both lanes, or `undefined` when the policy is off or incomplete.
+ */
+enabledRoutes(sessionId: SessionId): { readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined
+
+/**
+ * Read the Session policy and the current LLM catalog.
+ * @param request - Session identity.
+ * @returns the snapshot the composer switch renders.
+ */
+@Remote('policy') policy(request: ReliabilityPolicyRequest): Promise<ReliabilityPolicySnapshot>
+
+/**
+ * Ensure a durable row exists, then return it with the current catalog.
+ * @param request - Session identity.
+ * @returns the snapshot, creating a disabled row when none exists.
+ */
+@Remote('ensurePolicy') ensurePolicy(request: ReliabilityPolicyRequest): Promise<ReliabilityPolicySnapshot>
+
+/**
+ * Replace the Session policy. Enabling requires both lanes to name catalog
+ * models; a missing route cannot stay enabled.
+ * @param request - complete replacement.
+ * @returns the committed snapshot.
+ */
+@Remote('configure') configure(request: ReliabilityPolicyConfigureRequest): Promise<ReliabilityPolicySnapshot>
+```
+
+Types: [SessionId](core.md)
+
+Source: [`packages/reliability/durash-reliability-policy/src/index.ts`](../../packages/reliability/durash-reliability-policy/src/index.ts)
 <!-- END GENERATED cordis-surface -->

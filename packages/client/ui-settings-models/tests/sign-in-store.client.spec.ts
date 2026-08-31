@@ -1,6 +1,6 @@
 /** Sign-in store: Host-authored attempt views, poll lifecycle, and action refusals. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AuthorizationDescribeValue } from '@deepseek-ai/dsh-api-remotes/client'
 import { SignInStore } from '../src/client/sign-in-store.ts'
 
@@ -11,7 +11,7 @@ function ok<T>(value: T): Answer<T> {
   return Promise.resolve({ ok: true, value })
 }
 function fail(message: string): Answer<never> {
-  return Promise.resolve({ ok: false, error: { code: 'internal', message, details: {} } })
+  return Promise.resolve({ ok: false, error: new RemoteError('gateway/internal', message, {}) })
 }
 
 const FLOWS: AuthorizationDescribeValue['flows'] = [

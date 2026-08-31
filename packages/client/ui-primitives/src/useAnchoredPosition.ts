@@ -4,12 +4,10 @@
  * A portaled panel is positioned from its anchor's viewport rect, which stops
  * being true the moment anything scrolls or the window resizes. This owns that
  * one concern: measure the anchor, offset the panel on the requested side,
- * clamp the result inside the viewport where the panel grows downward, and
+ * clamp the result inside the viewport, and
  * re-run on scroll (capture phase, so scrollers nested inside the page are
  * caught too), on resize, and on the panel's or anchor's size changes while
- * the element is open. An above-anchored panel keeps its facing edges fixed
- * while space permits, then detaches only far enough to preserve the viewport
- * margin.
+ * the element is open.
  * @module @deepseek-ai/dsh-client-ui-primitives/useAnchoredPosition
  */
 
@@ -23,21 +21,21 @@ export interface AnchoredPositionOptions {
   anchorRef: RefObject<HTMLElement | null>
   /** The floating element, measured so the clamp uses real dimensions. */
   panelRef: RefObject<HTMLElement | null>
-  /** Distance kept between the facing edges of the anchor and panel. */
+  /** Which anchor edge the panel hangs from: below it (`bottom`, the default) or above it (`top`). */
+  side?: 'top' | 'bottom'
+  /** Distance kept between the anchor edge named by `side` and the panel. */
   gap: number
   /** Distance kept between the panel and each viewport edge. */
   margin: number
-  /** Which side of the anchor receives the panel. */
-  placement?: 'below' | 'above'
 }
 
 /**
  * Track an anchor and return the panel's fixed coordinates.
- * @param options - the open state, the two refs, and the gap/margin distances.
- * @returns fixed coordinates for the panel, or `null` before the first measurement.
+ * @param options - the open state, the two refs, the placement side, and the gap/margin distances.
+ * @returns `left`/`top` for the panel, or `null` before the first measurement.
  */
 export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProperties | null {
-  const { open, anchorRef, panelRef, gap, margin, placement = 'below' } = options
+  const { open, anchorRef, panelRef, side = 'bottom', gap, margin } = options
   const [position, setPosition] = useState<CSSProperties | null>(null)
   useLayoutEffect(() => {
     if (!open) {
@@ -52,17 +50,10 @@ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProper
       if (rect === undefined) return
       const panel = panelRef.current
       const width = panel?.offsetWidth ?? 0
-      let left = rect.left
-      if (width > 0) left = Math.min(Math.max(left, margin), window.innerWidth - width - margin)
-      if (placement === 'above') {
-        let bottom = window.innerHeight - rect.top + gap
-        const height = panel?.offsetHeight ?? 0
-        if (height > 0) bottom = Math.min(Math.max(bottom, margin), window.innerHeight - height - margin)
-        setPosition({ left, bottom })
-        return
-      }
       const height = panel?.offsetHeight ?? 0
-      let top = rect.bottom + gap
+      let left = rect.left
+      let top = side === 'top' ? rect.top - gap - height : rect.bottom + gap
+      if (width > 0) left = Math.min(Math.max(left, margin), window.innerWidth - width - margin)
       if (height > 0) top = Math.min(Math.max(top, margin), window.innerHeight - height - margin)
       /* v8 ignore stop */
       setPosition({ left, top })
@@ -89,6 +80,6 @@ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProper
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
-  }, [open, anchorRef, panelRef, gap, margin, placement])
+  }, [open, anchorRef, panelRef, side, gap, margin])
   return position
 }

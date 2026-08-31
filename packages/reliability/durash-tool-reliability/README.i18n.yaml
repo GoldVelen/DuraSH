@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/reliability/durash-tool-reliability/README.md
-README.md: 571a39f5e738fd7e47c00d8fa8d804e658a2e4f9
-README.zh.md: 661e0025656bba92a03b1b1a4ea57280a57c331c
+README.md: 15b9778b4af72d72d4caa7f412c0ec37fb87f004
+README.zh.md: e3aac8ecf8ae3ed35576b26960113be05fb595cd

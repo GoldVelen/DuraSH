@@ -52,10 +52,10 @@ function stubResizeObserver(): Recorded[] {
  * @param props - whether the panel is open.
  * @returns the anchor and, while open, the panel carrying the position.
  */
-function Host({ open, placement = 'below' }: { open: boolean; placement?: 'below' | 'above' }) {
+function Host({ open, side = 'bottom' }: { open: boolean; side?: 'top' | 'bottom' }) {
   const anchorRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const position = useAnchoredPosition({ open, anchorRef, panelRef, gap: 4, margin: 12, placement })
+  const position = useAnchoredPosition({ open, anchorRef, panelRef, gap: 4, margin: 12, side })
   return (
     <>
       <button ref={anchorRef} type="button">anchor</button>
@@ -109,17 +109,17 @@ describe('useAnchoredPosition', () => {
     add.mockRestore()
   })
 
-  it('returns a bottom offset when the panel opens above its anchor', () => {
-    const ui = render(<Host open placement="above" />)
+  it('returns a top offset when the panel opens above its anchor', () => {
+    const ui = render(<Host open side="top" />)
     const panel = ui.getByTestId('panel')
 
-    expect(panel.style.bottom).toBe('772px')
-    expect(panel.style.top).toBe('')
+    expect(panel.style.top).toBe('-4px')
+    expect(panel.style.bottom).toBe('')
   })
 
   it('detaches an above panel only when its measured size would cross the viewport margin', () => {
     const made = stubResizeObserver()
-    const ui = render(<Host open placement="above" />)
+    const ui = render(<Host open side="top" />)
     const anchor = ui.getByRole('button', { name: 'anchor' })
     const panel = ui.getByTestId('panel')
     vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue({
@@ -134,7 +134,6 @@ describe('useAnchoredPosition', () => {
     act(() => { made[0]?.callback([], {} as ResizeObserver) })
 
     expect(panel.style.left).toBe('572px')
-    expect(panel.style.bottom).toBe('276px')
-    expect(window.innerHeight - 276 - 480).toBe(12)
+    expect(panel.style.top).toBe('12px')
   })
 })

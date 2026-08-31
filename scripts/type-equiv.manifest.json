@@ -649,27 +649,27 @@
     {
       "doc": "docs/subsystems/session-title.md",
       "symbol": "SessionTitleProviderId",
-      "source": "packages/session/session-title/src/index.ts"
+      "source": "packages/session/session-title/src/types.ts"
     },
     {
       "doc": "docs/subsystems/session-title.md",
       "symbol": "SessionTitleModelProvenance",
-      "source": "packages/session/session-title/src/index.ts"
+      "source": "packages/session/session-title/src/types.ts"
     },
     {
       "doc": "docs/subsystems/session-title.md",
       "symbol": "SessionTitleSource",
-      "source": "packages/session/session-title/src/index.ts"
+      "source": "packages/session/session-title/src/types.ts"
     },
     {
       "doc": "docs/subsystems/session-title.md",
       "symbol": "SessionTitleEventData",
-      "source": "packages/session/session-title/src/index.ts"
+      "source": "packages/session/session-title/src/types.ts"
     },
     {
       "doc": "docs/subsystems/session-title.md",
       "symbol": "SessionTitleSnapshot",
-      "source": "packages/session/session-title/src/index.ts"
+      "source": "packages/session/session-title/src/types.ts"
     },
     {
       "doc": "docs/subsystems/session-title.md",
@@ -679,7 +679,7 @@
     {
       "doc": "docs/subsystems/session-title.md",
       "symbol": "SessionTitleUserMessage",
-      "source": "packages/session/session-title/src/index.ts"
+      "source": "packages/session/session-title/src/types.ts"
     },
     {
       "doc": "docs/subsystems/session-title.md",
@@ -2055,6 +2055,41 @@
       "doc": "docs/subsystems/reliability-loop.md",
       "symbol": "ReliabilityLoopHandle",
       "source": "packages/reliability/durash-reliability-loop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityThinking",
+      "source": "packages/reliability/durash-reliability-policy/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityModelBadge",
+      "source": "packages/reliability/durash-reliability-policy/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityModelOption",
+      "source": "packages/reliability/durash-reliability-policy/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityLaneRoute",
+      "source": "packages/reliability/durash-reliability-policy/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityPolicySnapshot",
+      "source": "packages/reliability/durash-reliability-policy/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityPolicyRequest",
+      "source": "packages/reliability/durash-reliability-policy/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/reliability-loop.md",
+      "symbol": "ReliabilityPolicyConfigureRequest",
+      "source": "packages/reliability/durash-reliability-policy/src/types.ts"
     }
   ]
 }

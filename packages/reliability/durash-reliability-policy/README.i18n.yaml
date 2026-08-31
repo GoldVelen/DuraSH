@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/reliability/durash-reliability-policy/README.md
 README.md: 6556f713208ce9356c576c7c67bccda70a99e125
-README.zh.md: 99f74bfee8eae0e60749bbfb71912f63ba53e52b
+README.zh.md: 377b8c119ac765c9d92b57ca1d2827f7717047c2

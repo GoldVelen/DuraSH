@@ -132,7 +132,7 @@ Host service backing the generated `ctx.remote.authorization` namespace. It carr
 /**
  * Snapshot every registered flow and every tracked attempt.
  * @returns the flows a sign-in surface offers, and the attempts it may be watching.
- * @throws TypertRemoteFailure when no authorization service is mounted.
+ * @throws RemoteError when no authorization service is mounted.
  */
 @Remote describe(): Promise<AuthorizationDescribeValue>
 
@@ -141,8 +141,9 @@ Host service backing the generated `ctx.remote.authorization` namespace. It carr
  * @param request - the credential key whose flow to run, and optionally the
  *   method; defaults to the flow's first.
  * @returns confirmation that the attempt started; poll `describe` for its progress.
- * @throws TypertRemoteFailure `bad-request` for a malformed payload, `not-found`
- *   when no flow claims the key, or `conflict` when an attempt is already running.
+ * @throws RemoteError `gateway/bad-request` for a malformed payload,
+ *   `authorization/not-found` when no flow claims the key, or
+ *   `authorization/conflict` when an attempt is already running.
  */
 @Remote begin(request: { key: string; method?: string }): Promise<{ started: true }>
 
@@ -150,15 +151,15 @@ Host service backing the generated `ctx.remote.authorization` namespace. It carr
  * Answer the pending prompt of one running attempt.
  * @param request - the key, the prompt id from `describe`, and either the
  *   answer or a decline.
- * @throws TypertRemoteFailure `bad-request` for a malformed payload or a stale
- *   prompt id, `not-found` when no running attempt exists for the key.
+ * @throws RemoteError `gateway/bad-request` for a malformed payload or a stale
+ *   prompt id, or `authorization/not-found` when no running attempt exists.
  */
 @Remote respond(request: { key: string; promptId: string; value?: string; declined?: true }): Promise<void>
 
 /**
  * Withdraw the running attempt for a key, if any.
  * @param request - the key whose attempt should stop.
- * @throws TypertRemoteFailure `bad-request` for a malformed payload.
+ * @throws RemoteError `gateway/bad-request` for a malformed payload.
  */
 @Remote cancel(request: { key: string }): Promise<void>
 ```
@@ -270,9 +271,10 @@ Host service backing the generated `ctx.remote.credentials` namespace. It carrie
  * Describe several references for one configuration surface. Batched because
  * a settings page describes every reference its rows name at once, and one
  * round trip keeps those rows from settling separately.
- * @param refs - reference names, at most {@link MAX_DESCRIBE_REFS}; a name outside the grammar rejects the whole call as `bad-request`.
+ * @param refs - reference names, at most {@link MAX_DESCRIBE_REFS}; a name outside the grammar
+ *   rejects the whole call as `gateway/bad-request`.
  * @returns one view per requested name, keyed by that name.
- * @throws TypertRemoteFailure when the request is invalid or no credential provider is mounted.
+ * @throws RemoteError when the request is invalid or no credential provider is mounted.
  */
 @Remote async describe(refs: string[]): Promise<Record<string, CredentialInfo>>
 
@@ -281,14 +283,14 @@ Host service backing the generated `ctx.remote.credentials` namespace. It carrie
  * this direction only: no read path returns it.
  * @param ref - reference name to store under.
  * @param value - the non-empty secret value.
- * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+ * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
  */
 @Remote async set(ref: string, value: string): Promise<void>
 
 /**
  * Remove one reference from a configuration surface.
  * @param ref - reference name to remove.
- * @throws TypertRemoteFailure when the request is invalid, no provider is mounted, or the provider refuses the write.
+ * @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
  */
 @Remote async unset(ref: string): Promise<void>
 ```

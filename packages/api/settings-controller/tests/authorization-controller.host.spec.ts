@@ -3,7 +3,8 @@ import { Context } from '@deepseek-ai/cordis'
 import AuthorizationService from '@deepseek-ai/dsh-authorization'
 import type { AuthorizationSession } from '@deepseek-ai/dsh-authorization'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
-import { TypertRemoteFailure, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
+import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
+import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import AuthorizationController from '../src/authorization.ts'
 import { MemoryCredentials } from '../../../credentials/authorization/tests/memory.ts'
 
@@ -71,12 +72,14 @@ async function boot(flow: FlowScript | undefined): Promise<AuthorizationControll
 }
 
 /** The controller's projected refusal, whether the call threw or rejected. */
-async function failureOf(call: () => unknown): Promise<TypertRemoteFailure> {
+async function failureOf(call: () => unknown): Promise<RemoteFailure> {
   try {
     await call()
   } catch (error: unknown) {
-    expect(error).toBeInstanceOf(TypertRemoteFailure)
-    return error as TypertRemoteFailure
+    const failure = remoteErrorOf(error)
+    expect(failure).toBeDefined()
+    if (failure === undefined) throw error
+    return failure
   }
   throw new Error('expected the call to fail')
 }
@@ -108,8 +111,8 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     await ctx.plugin(MemoryCredentials)
     await ctx.plugin(AuthorizationController)
     const failure = await failureOf(() => ctx.authorizationController.describe())
-    expect(failure.failure.code).toBe('internal')
-    expect(failure.failure.message).toContain('does not mount @deepseek-ai/dsh-authorization')
+    expect(failure.code).toBe('gateway/internal')
+    expect(failure.message).toContain('does not mount @deepseek-ai/dsh-authorization')
   })
 
   it('projects a stored grant as an authorized attempt when none is in flight', async () => {
@@ -189,19 +192,19 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
   it('refuses to begin a key no flow claims, as not-found', async () => {
     const controller = await boot({})
     const failure = await failureOf(() => controller.begin({ key: 'other-plugin/thing' }))
-    expect(failure.failure.code).toBe('not-found')
+    expect(failure.code).toBe('authorization/not-found')
   })
 
   it('rejects a key outside the credential grammar, as bad-request', async () => {
     const controller = await boot({})
     const failure = await failureOf(() => controller.begin({ key: 'Test Plugin/Thing' }))
-    expect(failure.failure.code).toBe('bad-request')
+    expect(failure.code).toBe('gateway/bad-request')
   })
 
   it('refuses an unknown method, as bad-request', async () => {
     const controller = await boot({})
     const failure = await failureOf(() => controller.begin({ key: KEY_WIRE, method: 'device' }))
-    expect(failure.failure.code).toBe('bad-request')
+    expect(failure.code).toBe('gateway/bad-request')
   })
 
   it('surfaces notices and prompts to describe, and a respond settles the attempt', async () => {
@@ -323,7 +326,7 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     const failure = await failureOf(() => controller.respond({
       key: KEY_WIRE, promptId: promptId, value: 'late',
     }))
-    expect(failure.failure.code).toBe('bad-request')
+    expect(failure.code).toBe('gateway/bad-request')
     gate.open()
     await awaitSettled(controller, 'authorized')
   })
@@ -334,7 +337,7 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
 
     await controller.begin({ key: KEY_WIRE })
     const failure = await failureOf(() => controller.begin({ key: KEY_WIRE }))
-    expect(failure.failure.code).toBe('conflict')
+    expect(failure.code).toBe('authorization/conflict')
     gate.open()
     await awaitSettled(controller, 'authorized')
   })
@@ -344,7 +347,7 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     const failure = await failureOf(() => controller.respond({
       key: KEY_WIRE, promptId: 'prompt-1', value: 'x',
     }))
-    expect(failure.failure.code).toBe('not-found')
+    expect(failure.code).toBe('authorization/not-found')
   })
 
   it('records a flow that commits nothing as failed with the seam refusal', async () => {
@@ -477,6 +480,6 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
   it('rejects a respond payload naming neither value nor decline, as bad-request', async () => {
     const controller = await boot({})
     const failure = await failureOf(() => controller.respond({ key: KEY_WIRE, promptId: 'prompt-1' }))
-    expect(failure.failure.code).toBe('bad-request')
+    expect(failure.code).toBe('gateway/bad-request')
   })
 })

@@ -103,10 +103,10 @@ function SignInLoaded({
             answer={attemptByKey.get(flow.key)?.pendingPrompt?.id === pending?.id ? answer : ''}
             onAnswer={setAnswer}
             t={t}
-            onBegin={() => run(() => controller.begin(flow.key, 'oauth'))}
-            onCancel={() => run(() => controller.cancel(flow.key))}
-            onRespond={(promptId, value) => run(() => controller.respond(flow.key, promptId, { value }))}
-            onDecline={promptId => run(() => controller.respond(flow.key, promptId, { declined: true }))}
+            onBegin={() => { run(() => controller.begin(flow.key, 'oauth')) }}
+            onCancel={() => { run(() => controller.cancel(flow.key)) }}
+            onRespond={(promptId, value) => { run(() => controller.respond(flow.key, promptId, { value })) }}
+            onDecline={(promptId) => { run(() => controller.respond(flow.key, promptId, { declined: true })) }}
           />
         ))}
       </ul>

@@ -55,9 +55,9 @@ The tool requires the live root agent, a direct human user message on that Sessi
 
 ### Request context and condition
 
-The `tool:reliability-handoff` system-prompt section is assembled for a root agent whose Session policy is enabled. Disabled Sessions receive no section.
-
 #### What the model sees
+
+The `tool:reliability-handoff` system-prompt section is assembled for a root agent whose Session policy is enabled. Disabled Sessions receive no section.
 
 ##### Reliability handoff guidance
 
@@ -75,11 +75,9 @@ Enabling or disabling the composer switch adds or removes this section from the 
 
 ### Tool schema
 
-The generated [tool catalog](../../../docs/tool-catalog.md) owns the `dsh_reliability_handoff` schema. This package's description tells the model to present a plan first, then call with the complete objective.
-
 #### What the model sees
 
-The catalog entry for `dsh_reliability_handoff`.
+The generated [tool catalog](../../../docs/tool-catalog.md#durashdsh-tool-reliability) owns the `dsh_reliability_handoff` schema. This package's description tells the model to present a plan first, then call with the complete objective. The model sees the catalog entry for `dsh_reliability_handoff`.
 
 #### Token effect
 

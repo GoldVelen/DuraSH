@@ -7,28 +7,30 @@
  * @module @deepseek-ai/dsh-api-settings-controller/types
  */
 
-/** Stable settings failure details returned by the `settings` namespace. */
-export interface SettingsErrorDetailsMap {
-  /**
-   * Every seam refusal that is not a stale write: an unregistered or malformed
-   * namespace, a read-only provider, schema validation, storage.
-   */
-  'settings-rejected': { readonly ns: string }
-  /**
-   * The stored revision moved after the caller read it. Its own outcome rather
-   * than an invalid request: the caller must re-read and re-apply.
-   */
-  'settings-conflict': { readonly ns: string; readonly expected: number; readonly actual: number }
-}
-
-/** Settings business failure carried by a rejected Remote call. */
-export type SettingsError = {
-  [Code in keyof SettingsErrorDetailsMap]: {
-    readonly code: Code
-    readonly message: string
-    readonly details: SettingsErrorDetailsMap[Code]
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /**
+     * Every seam refusal that is not a stale write: an unregistered or malformed
+     * namespace, a read-only provider, schema validation, storage.
+     */
+    'settings/rejected': { readonly ns: string }
+    /**
+     * The stored revision moved after the caller read it. Its own outcome rather
+     * than an invalid request: the caller must re-read and re-apply.
+     */
+    'settings/conflict': { readonly ns: string; readonly expected: number; readonly actual: number }
+    /**
+     * The provider refused a valid credential write, for example because a
+     * read-only source shadows the reference. The details name only the
+     * reference, never the value.
+     */
+    'credential/rejected': { readonly ref: string }
+    /** The requested key does not name a registered flow or running attempt. */
+    'authorization/not-found': { readonly key: string }
+    /** An authorization attempt for the key is already running. */
+    'authorization/conflict': { readonly key: string }
   }
-}[keyof SettingsErrorDetailsMap]
+}
 
 /** Confirmation that the settings document was handed to the native editor. */
 export interface SettingsDocumentOpenValue {
@@ -39,41 +41,6 @@ export interface SettingsDocumentOpenValue {
 export type AgentPresetDirectoryOpenValue =
   | { readonly opened: true }
   | { readonly opened: false; readonly path: string }
-
-/** Stable credential failure details returned by the `credentials` namespace. */
-export interface CredentialErrorDetailsMap {
-  /**
-   * The provider refused a valid write, for example because a read-only source
-   * shadows the reference. The details name only the reference, never the value.
-   */
-  'credential-rejected': { readonly ref: string }
-}
-
-/** Credential business failure carried by a rejected Remote call. */
-export type CredentialError = {
-  [Code in keyof CredentialErrorDetailsMap]: {
-    readonly code: Code
-    readonly message: string
-    readonly details: CredentialErrorDetailsMap[Code]
-  }
-}[keyof CredentialErrorDetailsMap]
-
-/** Stable authorization failure details returned by the `authorization` namespace. */
-export interface AuthorizationErrorDetailsMap {
-  /** The requested key or prompt does not name a flow or live attempt. */
-  'not-found': { readonly key: string }
-  /** An attempt for the key is already running. */
-  conflict: { readonly key: string }
-}
-
-/** Authorization business failure carried by a rejected Remote call. */
-export type AuthorizationError = {
-  [Code in keyof AuthorizationErrorDetailsMap]: {
-    readonly code: Code
-    readonly message: string
-    readonly details: AuthorizationErrorDetailsMap[Code]
-  }
-}[keyof AuthorizationErrorDetailsMap]
 
 /** One registered sign-in flow as the Models page lists it. */
 export interface AuthorizationFlowView {

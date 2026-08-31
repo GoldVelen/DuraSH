@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-reliability-policy` 是 composer 工作流开关背后的 Host 服务。每个会话一行持久记录保存闭环是否开启，以及下一次交接将使用的实施模型与审查模型。每次读取都从 `ctx.llm` 重建模型目录，因此已离开目录的路由不能保持启用。本服务只组合进 `durash` profile。
 

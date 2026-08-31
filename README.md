@@ -1,6 +1,20 @@
 # DuraSH
 
+> **把复杂任务交给一条按需分配模型、成本优先、可恢复的可靠性工作流。**
+>
+> 你可以按会话分别选择实施模型和审查模型，把更强、更贵的模型留给关键检查，而不是让整条任务都跑同一档位。当前版本由用户选择，不声称自动完成成本调度。
+>
+> **目标流程：计划 → 实施 → 多路对抗性审查 → 统一总结。** **当前可用：实施 → 独立审查 → 最多一轮返工 → 结果交付。** 计划协调与多路审查属于下一阶段，尚未伪装成已完成能力。
+
 English | [中文](README.zh.md)
+
+## What DuraSH does today
+
+- **Cost-aware model roles** — choose separate implementation and review models per Session, so the strongest model can be reserved for the work that justifies it. Selection is explicit today, not an automatic cost scheduler.
+- **Durable reviewed delivery** — one implementation, one independent review, and at most one bounded rework. Loop state survives restart, completed stages are not repeated, and cancellation converges without a background writer.
+- **A product overlay, not another stale fork** — DuraSH adds its brand, workflow policy, composer controls, and reliability engine as plugins over the current verified DeepSeek Harness baseline.
+
+The intended larger workflow is planning → coordinated implementation → multi-path adversarial review → one final summary. That pipeline is the next product milestone; the current developer preview ships the smaller bounded loop above.
 
 DuraSH is an independent reliability distribution built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`DSH`). It keeps upstream as the base, adds product-owned capabilities through plugins and profile overlays, and makes upstream drift visible instead of silently becoming an old fork.
 
@@ -8,13 +22,13 @@ DuraSH is not an official DeepSeek product and is not endorsed by DeepSeek.
 
 It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
 
-The current source base is the latest verified upstream release at the time of this migration: `dsh-v0.1.2-alpha.1` / `cd5ef8148158`. See [upstream policy](UPSTREAM.md), [integration status](INTEGRATION_STATUS.md), and [open-source attribution](OPEN_SOURCE_ATTRIBUTION.md) for the exact boundaries.
+The current source base is the latest verified upstream release at the time of this synchronization: `dsh-v0.1.2-alpha.2` / `0a53fb55bea1`. See [upstream policy](UPSTREAM.md), [integration status](INTEGRATION_STATUS.md), and [open-source attribution](OPEN_SOURCE_ATTRIBUTION.md) for the exact boundaries.
 
 ## Developer preview
 
 DuraSH is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
 
-Review the [safety notice](SAFETY.md) before running the project. The independent brand/profile and continuous-update controls are implemented; the older fork's durable review-and-rework engine is still being migrated onto the latest DSH workflow seam. Do not interpret this preview as a claim that every reliability capability is already complete.
+Review the [safety notice](SAFETY.md) before running the project. The independent brand/profile, continuous-update controls, per-session model policy, composer switch, and bounded durable review-and-rework loop are implemented. Coordination, multi-review aggregation, member-level durable progress, and applying saved thinking effort to stage children remain incomplete.
 
 <a id="run-from-source"></a>
 

@@ -25,7 +25,7 @@ The only faithful source of truth is the schema the registry actually holds afte
 
 ### Restoring "nothing silently omitted"
 
-Booting has a cost the AST pass did not: there is no source declaration set to enumerate, so a new tool package could simply be forgotten. A **completeness guard** restores the guarantee — `assertManifestComplete` globs every `tool-*` package under `packages/` and hard-errors if any is absent from the generator's boot manifest. A new tool package fails the generator, and therefore `doc-sync`, until it is registered. This is the same structural property the cordis generator gets for free from enumerating source, re-created for a boot-based generator.
+Booting has a cost the AST pass did not: there is no source declaration set to enumerate, so a new tool package could simply be forgotten. A **completeness guard** restores the guarantee — `assertManifestComplete` globs every `tool-*` package and every DuraSH `durash-tool-*` product-overlay package under `packages/`, then hard-errors if any is absent from the generator's boot manifest. A new tool package fails the generator, and therefore `doc-sync`, until it is registered. This is the same structural property the cordis generator gets for free from enumerating source, re-created for a boot-based generator.
 
 ### A hand-maintained boot manifest is the irreducible policy
 
@@ -33,7 +33,9 @@ The filesystem discovers the tool-package inventory and the completeness guard r
 
 ### Scope
 
-Shipped product tool packages under `packages/*/tool-*`, each booted with its default config, including `dsh-tool-bash` (`bash`), `dsh-tool-jobs` (`job_output`, `job_list`, `job_kill`), and `dsh-tool-subagent` (`subagent`). Example-only tools are excluded.
+Shipped product tool packages under `packages/*/tool-*` and DuraSH product-overlay packages under `packages/*/durash-tool-*`, each booted with its default config, including `dsh-tool-bash` (`bash`), `dsh-tool-jobs` (`job_output`, `job_list`, `job_kill`), `dsh-tool-subagent` (`subagent`), and `dsh-tool-reliability` (`dsh_reliability_handoff`). Example-only tools are excluded.
+
+The DuraSH handoff tool requires product-owned agent, policy, and loop services before its plugin registers. Its catalog recipe supplies inert service identities because schema harvest never executes the tool; storage and workflow backends remain outside the generator.
 
 The catalog unit is a package, not every configured tool instance. Each package boots once with default config; load-time aliases such as `subagent_fork` are noted without enumerating every deployment permutation. A deployment inventory is a separate, unbounded surface.
 
@@ -49,7 +51,7 @@ Schema blocks use ` ```json `, not a bespoke `ts`-family fence. `doc-typecheck` 
 
 ## Consequences
 
-- The catalog cannot drift: a tool schema change the committed file doesn't reflect fails `verify-tool-catalog` in `doc-sync` and CI. A new `tool-*` package not added to the manifest fails the completeness guard outright.
+- The catalog cannot drift: a tool schema change the committed file doesn't reflect fails `verify-tool-catalog` in `doc-sync` and CI. A new `tool-*` or `durash-tool-*` package not added to the manifest fails the completeness guard outright.
 - Tool description prose has a single home — the `defineTool` `description` at the source — and the generated entry is only as good as it, the same forcing function the cordis catalog applies to event JSDoc.
 - The generator imports and executes workspace packages (the first repo script to do so; the others only read text). It runs under `tsx` via the root `tsconfig` `paths` map, the same unbuilt-source path the demos and tests use, so it needs no build step.
 - A new capability seam behind a future tool means a new manifest recipe entry (which seams to mount). This is the deliberate hand-written cost called out above; it changes only when a tool package is added.

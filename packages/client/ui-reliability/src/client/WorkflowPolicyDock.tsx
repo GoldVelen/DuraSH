@@ -186,7 +186,7 @@ function EffortField({ label, value, levels, disabled, t, onChange }: EffortFiel
         selectedId={value ?? UNSET_EFFORT}
         onSelect={(id) => {
           setOpen(false)
-          onChange(id === UNSET_EFFORT ? null : id as ReliabilityThinking)
+          onChange(id === UNSET_EFFORT ? null : id)
         }}
         align="end"
         portal
@@ -226,7 +226,7 @@ function ModelPicker({ anchorRef, value, options, disabled, t, onSelect }: Model
     panelRef: pickerRef,
     gap: 4,
     margin: 12,
-    placement: 'below',
+    side: 'bottom',
   })
   const [channel, setChannel] = useState<PickerChannel>(() => channelOf(options.find(model => model.selector === value)))
   const [query, setQuery] = useState('')
@@ -407,9 +407,9 @@ export function WorkflowPolicyDock({
     panelRef,
     gap: 8,
     margin: 12,
-    placement: 'above',
+    side: 'top',
   })
-  const panelMaxHeight = useAnchoredMaxHeight(panelRef, 480, panelPosition?.bottom)
+  const panelMaxHeight = useAnchoredMaxHeight(panelRef, 480, panelPosition?.top)
   const loading = state.status === 'loading'
   const saving = state.status === 'configuring'
   const models = state.policy.models
@@ -552,7 +552,7 @@ export function WorkflowPolicyDock({
         ref={panelRef}
         data-workflow-panel=""
         style={{
-          ...(panelPosition ?? { visibility: 'hidden', left: 0, bottom: 0 }),
+          ...(panelPosition ?? { visibility: 'hidden', left: 0, top: 0 }),
           maxHeight: panelMaxHeight,
         }}
         role="dialog"
@@ -597,7 +597,7 @@ export function WorkflowPolicyDock({
             open={openPicker === 'implementation'}
             t={t}
             onToggle={() => { setOpenPicker(current => current === 'implementation' ? null : 'implementation') }}
-            onSelect={selector => selectLane('implementation', selector)}
+            onSelect={(selector) => { selectLane('implementation', selector) }}
           />
 
           <EffortField
@@ -620,7 +620,7 @@ export function WorkflowPolicyDock({
             open={openPicker === 'review'}
             t={t}
             onToggle={() => { setOpenPicker(current => current === 'review' ? null : 'review') }}
-            onSelect={selector => selectLane('review', selector)}
+            onSelect={(selector) => { selectLane('review', selector) }}
           />
 
           <EffortField
