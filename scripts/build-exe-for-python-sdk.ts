@@ -153,7 +153,7 @@ class BuildCli {
   private constructor(
     /** Build targets; defaults to the host platform only. */
     readonly targets: readonly Target[],
-    /** Skip step 1 (`pnpm run build`); lib/ artifacts must already exist. */
+    /** Skip step 1 (`pnpm run build:official`); lib/ artifacts must already exist. */
     readonly skipBuild: boolean,
     /** Print every command and config patch instead of executing. */
     readonly dryRun: boolean,
@@ -211,7 +211,7 @@ class BuildCli {
       '',
       '  --targets=<t1,t2,...>  pkg targets, e.g. node24-linux-x64,node24-linux-arm64,node24-macos-arm64,node24-win-x64.',
       '                         Default: the host platform only (on node24).',
-      '  --skip-build           skip `pnpm run build` (lib/ artifacts must already exist).',
+      '  --skip-build           skip `pnpm run build:official` (lib/ artifacts must already exist).',
       '  --dry-run              print every command and config patch without executing.',
       '  --help                 print this help.',
       '',
@@ -275,10 +275,10 @@ class SingleExeBuild {
   /** Build all package artifacts unless `--skip-build` was passed. */
   async build(): Promise<void> {
     if (this.cli.skipBuild) {
-      console.log('build-exe-for-python-sdk: skipping pnpm run build (--skip-build)')
+      console.log('build-exe-for-python-sdk: skipping pnpm run build:official (--skip-build)')
       return
     }
-    await this.runPnpm('build', ['run', 'build'])
+    await this.runPnpm('build', ['run', 'build:official'])
   }
 
   /** Clear and deploy the runtime closure into the node carrier. */

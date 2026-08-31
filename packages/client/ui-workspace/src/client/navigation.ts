@@ -21,7 +21,7 @@ export interface UiWorkspace {
    */
   connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>
   /**
-   * Start a New Session flow and navigate to its Session.
+   * Create a New Session and navigate to it.
    * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
    */
   startSession(workspaceId?: WorkspaceId): void
@@ -127,7 +127,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       this.sessions.clear()
       return
     }
-    void this.connectWorkspace(target).then(
+    void this.sessions.create({ workspaceId: target }).then(
       (sessionId) => { this.sessions.open(sessionId) },
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )

@@ -106,7 +106,7 @@ export const en = {
   signInOpenPage: 'Open the sign-in page',
   signInSubmit: 'Submit',
   signInDecline: 'Skip',
-  signInAuthorized: 'Signed in. Add or enable the provider below to use its models.',
+  signInAuthorized: 'Signed in. This provider is enabled — pick a model in the conversation, or edit its catalog below.',
   signInCancelled: 'Sign-in cancelled.',
   signInFailed: 'Sign-in failed',
 }
@@ -220,7 +220,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   signInOpenPage: '打开登录页',
   signInSubmit: '提交',
   signInDecline: '跳过',
-  signInAuthorized: '已登录。在下方添加或启用该提供方即可使用其模型。',
+  signInAuthorized: '已登录，该提供方已启用。可在对话中选择模型，或在下方编辑模型目录。',
   signInCancelled: '登录已取消。',
   signInFailed: '登录失败',
 }

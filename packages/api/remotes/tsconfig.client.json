@@ -74,6 +74,9 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../reliability/durash-reliability-policy"
     }
   ]
 }

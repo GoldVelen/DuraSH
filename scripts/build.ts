@@ -28,7 +28,7 @@ function runScript(script: string, environment: NodeJS.ProcessEnv): void {
   }
 }
 
-/** Run the full build selected by `--profile` or `DSH_BUILD_CLIENT_PROFILE`. */
+/** Run the full build selected by `--profile` or `DSH_BUILD_CLIENT_PROFILE`, defaulting to DuraSH. */
 function main(): void {
   const { values } = parseArgs({
     options: { profile: { type: 'string' } },
@@ -36,7 +36,7 @@ function main(): void {
   })
   const root = resolve(import.meta.dirname, '..')
   const repositoryEnvironment = repositoryClientBuildEnvironment(root, process.env)
-  const profile = values.profile ?? process.env[CLIENT_BUILD_PROFILE_SELECTOR]
+  const profile = values.profile ?? process.env[CLIENT_BUILD_PROFILE_SELECTOR] ?? 'durash'
   const clientEnvironment = resolveClientBuildEnvironment(repositoryEnvironment, profile)
   const buildEnvironment = clientBuildProcessEnvironment(process.env, clientEnvironment)
 

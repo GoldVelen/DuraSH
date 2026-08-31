@@ -6,7 +6,8 @@ import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { JsonValue, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import {
-  ModelsSection, needsSetup, providerCopy, providerTargetLabel, removeProviderProfile,
+  enableNativeProviderProfile, ModelsSection, needsSetup, providerCopy, providerTargetLabel,
+  removeProviderProfile, rowForAuthorizationKey,
 } from '../src/client/ModelsSection.tsx'
 import type { ModelsSectionInjected, ModelsSectionProps } from '../src/client/ModelsSection.tsx'
 import { pathOps } from '../src/client/ProviderEditor.tsx'
@@ -229,13 +230,16 @@ function cardSeatCalls(
     ])
 }
 
-async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
+async function mountFace(
+  scripted: ReturnType<typeof scriptedFace>,
+  options: { signIn?: SignInStore } = {},
+) {
   const { face, update, mutate, set, unset } = scripted
   const mirror = new SettingsDescribeMirror(face as never)
   const controller = new ModelsSettingsStore(face as unknown as WireFace, settingsSchema, mirror)
   await controller.load()
   const renderSlot = stubRenderSlot()
-  const signIn = new SignInStore({
+  const signIn = options.signIn ?? new SignInStore({
     describe: () => Promise.resolve({ ok: true as const, value: { flows: [], attempts: [] } }),
     begin: () => Promise.resolve({ ok: true as const, value: { started: true } }),
     respond: () => Promise.resolve({ ok: true as const, value: undefined }),
@@ -258,8 +262,11 @@ async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
   return { view, face, update, mutate, set, unset, controller, mirror, renderSlot }
 }
 
-async function mountSection(overrides: Parameters<typeof scriptedFace>[0] = {}) {
-  return mountFace(scriptedFace(overrides))
+async function mountSection(
+  overrides: Parameters<typeof scriptedFace>[0] = {},
+  options: { signIn?: SignInStore } = {},
+) {
+  return mountFace(scriptedFace(overrides), options)
 }
 
 /**
@@ -1377,6 +1384,55 @@ describe('ModelsSection', () => {
       renderSlot={() => null}
     />)
     await screen.findByText('DeepSeek')
+  })
+
+  it('addresses a sign-in flow by the joined settings-namespace and provider id', async () => {
+    const { controller } = await mountSection()
+    const rows = controller.store.getSnapshot().rows
+    expect(rowForAuthorizationKey(rows, 'llm-pi-ai/anthropic')?.entry.provider).toBe('anthropic')
+    expect(rowForAuthorizationKey(rows, 'llm-pi-ai/missing')).toBeUndefined()
+  })
+
+  it('writes the blank native profile when a sign-in attempt authorizes', async () => {
+    const signIn = new SignInStore({
+      describe: () => Promise.resolve({
+        ok: true as const,
+        value: {
+          flows: [{
+            key: 'llm-pi-ai/anthropic',
+            label: 'Anthropic',
+            methods: [{ id: 'oauth', label: 'Anthropic (Claude Pro/Max)' }],
+            inFlight: false,
+          }],
+          attempts: [{ key: 'llm-pi-ai/anthropic', status: 'authorized' as const, notices: [] }],
+        },
+      }),
+      begin: () => Promise.resolve({ ok: true as const, value: { started: true as const } }),
+      respond: () => Promise.resolve({ ok: true as const, value: undefined }),
+      cancel: () => Promise.resolve({ ok: true as const, value: undefined }),
+    })
+    const { mutate } = await mountSection({}, { signIn })
+    await waitFor(() => {
+      expect(mutate).toHaveBeenCalledWith(
+        'llm-pi-ai',
+        [{ op: 'set', path: ['providers', 'anthropic'], value: {} }],
+        undefined,
+      )
+    })
+  })
+
+  it('enables a signed-in provider by writing the blank native-auth profile', async () => {
+    const { face, mutate, controller } = await mountSection()
+    await enableNativeProviderProfile(
+      face as unknown as Parameters<typeof enableNativeProviderProfile>[0],
+      controller,
+      { settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'anthropic'] },
+    )
+    expect(mutate.mock.calls[0]).toEqual([
+      'llm-pi-ai',
+      [{ op: 'set', path: ['providers', 'anthropic'], value: {} }],
+      undefined,
+    ])
   })
 
   it('removes by unsetting the profile path, never by rebuilding the section', async () => {

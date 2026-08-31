@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The reliability group holds DuraSH-owned orchestration policies that turn raw model work into certified outcomes. Its first member is the bounded implement/review loop: one implementation stage, one review stage, and at most one rework cycle, driven over `ctx.workflowEngine` with the loop's state machine persisted as product-owned records in the storage-domain form. The group composes only into the `durash` profile; it adds no model-facing tool and no agent-loop behavior. Nothing here re-implements a workflow engine or a subagent provider — those seams stay the sole execution path, and this group owns only the durable state machine and its bounds.
+The reliability group holds DuraSH-owned orchestration policies that turn raw model work into certified outcomes. Its first member is the bounded implement/review loop: one implementation stage, one review stage, and at most one rework cycle, driven over `ctx.workflowEngine` with the loop's state machine persisted as product-owned records in the storage-domain form. The group composes only into the `durash` profile. The loop runtime still adds no agent-loop behavior; the composer switch, per-session policy, and gated handoff tool are the model-facing consumer of that loop. Nothing here re-implements a workflow engine or a subagent provider — those seams stay the sole execution path, and this group owns the durable state machine, its bounds, and the Session policy that admits a handoff.
 
 ## Table of Contents
 
@@ -25,6 +25,8 @@ The reliability group holds DuraSH-owned orchestration policies that turn raw mo
 | Package | Role | ctx key |
 |---|---|---|
 | [`durash-reliability-loop`](durash-reliability-loop/README.md) | One bounded implement-review-rework cycle with durable state, restart recovery, and cancellation quiescence | `ctx.reliabilityLoopRuntime` |
+| [`durash-reliability-policy`](durash-reliability-policy/README.md) | Per-session enablement and implementation/review model selection for the composer switch | `ctx.reliabilityPolicy` |
+| [`durash-tool-reliability`](durash-tool-reliability/README.md) | Model-facing `dsh_reliability_handoff` tool gated by the Session policy | — |
 
 -----
 
@@ -45,6 +47,6 @@ The reliability group holds DuraSH-owned orchestration policies that turn raw mo
 
 This Dev Note is working context for maintainers: open directions that are not decided. It is explicitly non-authoritative — shipped behavior, limits, and accepted rationale live in the sections above, the package code, and the linked Agent Notes.
 
-Deferred directions: a model-facing consumer tool for the loop; member-level durable progress projection; coordination and three-way review stages; and durable execution for the workflow engine itself, which remains process-local.
+Deferred directions: member-level durable progress projection; coordination and three-way review stages; applying stored thinking effort to stage children; and durable execution for the workflow engine itself, which remains process-local.
 
 </details>

@@ -12,7 +12,7 @@
  * re-renders from pushed invalidations or the post-apply reload.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
@@ -141,6 +141,48 @@ export async function removeProviderProfile(
 }
 
 /**
+ * The joined row an authorization flow writes: its credential key is
+ * `<settingsNs>/<provider>`, the same address `llm-pi-ai` registers.
+ * @param rows - the page's joined directory.
+ * @param key - the flow's joined credential key.
+ * @returns the matching row, or undefined when the directory has none.
+ */
+export function rowForAuthorizationKey(
+  rows: readonly ProviderRow[],
+  key: string,
+): ProviderRow | undefined {
+  return rows.find(row => `${row.entry.settingsNs}/${row.entry.provider}` === key)
+}
+
+/**
+ * Materialize a reference-free native-auth profile for a just-signed-in
+ * provider — the same empty object the add card writes when the key is left
+ * blank. A catalog route then registers and its models join the picker.
+ * @param api - the settings write face.
+ * @param controller - the page store to refresh.
+ * @param target - the provider's settings address.
+ * @returns the failure message, or undefined once the write and reload landed.
+ */
+export async function enableNativeProviderProfile(
+  api: Pick<ModelsWire, 'settings'>,
+  controller: ModelsSettingsStore,
+  target: { settingsNs: string; settingsPath: readonly string[] },
+): Promise<string | undefined> {
+  try {
+    const response = await api.settings.mutate(
+      target.settingsNs,
+      [{ op: 'set', path: [...target.settingsPath], value: {} }],
+      undefined,
+    )
+    if (!response.ok) return response.error.message
+  } catch (error) {
+    return messageOf(error)
+  }
+  await controller.load()
+  return undefined
+}
+
+/**
  * Whether a whole-section provider still needs its first key: an unconfigured
  * credential opens the setup card instead of showing a row. This is the
  * first-run posture alone — a user who can already reach some provider gets an
@@ -224,6 +266,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const [savedTarget, setSavedTarget] = useState<ProviderIdentity | undefined>(undefined)
   const [declaring, setDeclaring] = useState(false)
   const [dismissedSetup, setDismissedSetup] = useState<ReadonlySet<string>>(() => new Set())
+  const enabledSignIns = useRef(new Set<string>())
 
   const announceSaved = (target: ProviderIdentity): void => {
     // Announced only once the refreshed directory is in the snapshot the
@@ -272,6 +315,34 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
       })
       .finally(() => { setDeleting(false) })
   }
+
+  useEffect(() => {
+    if (signInState.status !== 'ready' || state.status !== 'ready' || !state.writable) return
+    for (const attempt of signInState.attempts) {
+      if (attempt.status === 'running') enabledSignIns.current.delete(attempt.key)
+      if (attempt.status !== 'authorized') continue
+      if (enabledSignIns.current.has(attempt.key)) continue
+      const row = rowForAuthorizationKey(state.rows, attempt.key)
+      if (row === undefined) continue
+      enabledSignIns.current.add(attempt.key)
+      if (row.configured) continue
+      const identity = { provider: row.entry.provider, displayName: row.entry.displayName }
+      void enableNativeProviderProfile(api, controller, {
+        settingsNs: row.entry.settingsNs,
+        settingsPath: row.entry.settingsPath,
+      }).then((failure) => {
+        if (failure !== undefined) {
+          enabledSignIns.current.delete(attempt.key)
+          return
+        }
+        setAdding(false)
+        setDeclaring(false)
+        setSavedTarget(identity)
+        const next = controller.store.getSnapshot().rows.find(item => item.entry.provider === row.entry.provider)
+        if (next !== undefined) setEditing(targetOf(next))
+      })
+    }
+  }, [api, controller, signInState.attempts, signInState.status, state.rows, state.status, state.writable])
 
   if (state.status === 'idle') void controller.load()
   if (state.status === 'error') {

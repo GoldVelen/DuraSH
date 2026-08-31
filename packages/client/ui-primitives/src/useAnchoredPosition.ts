@@ -3,10 +3,13 @@
  *
  * A portaled panel is positioned from its anchor's viewport rect, which stops
  * being true the moment anything scrolls or the window resizes. This owns that
- * one concern: measure the anchor, offset the panel below it, clamp the result
- * inside the viewport, and re-run on scroll (capture phase, so scrollers nested
- * inside the page are caught too), on resize, and on the panel's own size
- * changes while the element is open.
+ * one concern: measure the anchor, offset the panel on the requested side,
+ * clamp the result inside the viewport where the panel grows downward, and
+ * re-run on scroll (capture phase, so scrollers nested inside the page are
+ * caught too), on resize, and on the panel's or anchor's size changes while
+ * the element is open. An above-anchored panel keeps its facing edges fixed
+ * while space permits, then detaches only far enough to preserve the viewport
+ * margin.
  * @module @deepseek-ai/dsh-client-ui-primitives/useAnchoredPosition
  */
 
@@ -20,19 +23,21 @@ export interface AnchoredPositionOptions {
   anchorRef: RefObject<HTMLElement | null>
   /** The floating element, measured so the clamp uses real dimensions. */
   panelRef: RefObject<HTMLElement | null>
-  /** Distance kept between the anchor's bottom edge and the panel's top. */
+  /** Distance kept between the facing edges of the anchor and panel. */
   gap: number
   /** Distance kept between the panel and each viewport edge. */
   margin: number
+  /** Which side of the anchor receives the panel. */
+  placement?: 'below' | 'above'
 }
 
 /**
  * Track an anchor and return the panel's fixed coordinates.
  * @param options - the open state, the two refs, and the gap/margin distances.
- * @returns `left`/`top` for the panel, or `null` before the first measurement.
+ * @returns fixed coordinates for the panel, or `null` before the first measurement.
  */
 export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProperties | null {
-  const { open, anchorRef, panelRef, gap, margin } = options
+  const { open, anchorRef, panelRef, gap, margin, placement = 'below' } = options
   const [position, setPosition] = useState<CSSProperties | null>(null)
   useLayoutEffect(() => {
     if (!open) {
@@ -47,10 +52,17 @@ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProper
       if (rect === undefined) return
       const panel = panelRef.current
       const width = panel?.offsetWidth ?? 0
-      const height = panel?.offsetHeight ?? 0
       let left = rect.left
-      let top = rect.bottom + gap
       if (width > 0) left = Math.min(Math.max(left, margin), window.innerWidth - width - margin)
+      if (placement === 'above') {
+        let bottom = window.innerHeight - rect.top + gap
+        const height = panel?.offsetHeight ?? 0
+        if (height > 0) bottom = Math.min(Math.max(bottom, margin), window.innerHeight - height - margin)
+        setPosition({ left, bottom })
+        return
+      }
+      const height = panel?.offsetHeight ?? 0
+      let top = rect.bottom + gap
       if (height > 0) top = Math.min(Math.max(top, margin), window.innerHeight - height - margin)
       /* v8 ignore stop */
       setPosition({ left, top })
@@ -62,20 +74,21 @@ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProper
     window.addEventListener('resize', place)
     // The panel's own height changes without either event — a status line
     // appearing inside it, or a `resize: vertical` textarea dragged taller —
-    // and a stale clamp would let a panel near the bottom edge cross the
-    // margin it is supposed to respect. The guard keeps the hook usable where
-    // `ResizeObserver` is absent, which is how jsdom runs.
+    // and the anchor can change size as its label wraps. The guard keeps the
+    // hook usable where `ResizeObserver` is absent, which is how jsdom runs.
     const panel = panelRef.current
+    const anchor = anchorRef.current
     let observer: ResizeObserver | null = null
-    if (typeof ResizeObserver !== 'undefined' && panel !== null) {
+    if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(place)
-      observer.observe(panel)
+      if (panel !== null) observer.observe(panel)
+      if (anchor !== null) observer.observe(anchor)
     }
     return () => {
       observer?.disconnect()
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
-  }, [open, anchorRef, panelRef, gap, margin])
+  }, [open, anchorRef, panelRef, gap, margin, placement])
   return position
 }

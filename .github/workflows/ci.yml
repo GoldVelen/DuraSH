@@ -468,7 +468,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build before coverage
         shell: pwsh
-        run: pnpm run build
+        run: pnpm run build:official
       - name: Run Windows coverage
         shell: pwsh
         run: pnpm run check:ci:coverage

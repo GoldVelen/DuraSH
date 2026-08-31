@@ -112,7 +112,7 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **无面向模型入口** — 循环目前只是程序化服务；面向模型的工具或命令延期到下一个切片。
+- **本包没有面向模型入口** — composer 开关、会话策略与 `dsh_reliability_handoff` 工具在本组的兄弟包中。
 - **无成员级持久进度** — 记录持久化阶段转换，而不是阶段 run 内的每子代理进度；workflow 引擎没有日志，阶段中途崩溃会重跑该阶段。
 - **一个实施者、一个审查者** — 没有协调阶段、三路审查或阶段内扇出；这些流水线形态在本基线上仍属旧分叉历史。
 - **blocked 即终态** — `blocked` 的循环需要新循环；尚无持久的 `needs_replan` 轮次词汇。
@@ -125,6 +125,6 @@ kind: "package-reference"
 
 本 Dev Note 是维护者的工作上下文：尚未决定的方向。它明确不具权威性——已发布的行为、限制与既定依据以上方章节、包源码和链接的 Agent Note 为准。
 
-待定方向：面向模型的消费者及其 UI 呈现；基于 `workflow/agent-*` 的成员级进度投影；在 blocked 阶段之上的 `needs_replan` 轮次词汇；以及如果单轮返工边界将来泛化，所需的多尝试槽位。
+待定方向：基于 `workflow/agent-*` 的成员级进度投影；把已保存的思考强度传给阶段子代理；在 blocked 阶段之上的 `needs_replan` 轮次词汇；以及如果单轮返工边界将来泛化，所需的多尝试槽位。
 
 </details>

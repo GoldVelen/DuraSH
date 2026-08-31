@@ -28,11 +28,11 @@ DuraSH 目前尚未发布 npm 版本。在当前 checkout 中运行：
 
 ```sh
 pnpm install
-pnpm run build:durash
-pnpm dsh --profile durash
+pnpm run build
+pnpm start
 ```
 
-Web UI 默认启动在 `http://127.0.0.1:3080`。上游 `web`、SDK 与 headless 运行 profile 以及官方客户端构建保持不变；DuraSH 是附加 profile，而不是给上游内部实现整体改名。
+默认构建与启动命令会同时选择 DuraSH 客户端和 `durash` 运行 profile。Web UI 默认启动在 `http://127.0.0.1:3080`。如需上游源码开发客户端，请先运行 `pnpm run build:local`，再运行 `pnpm dsh web`；如需官方发布产物，请运行 `pnpm run build:official`。SDK 与 headless 运行 profile 保持不变。
 
 ## 哪些内容属于 DuraSH？
 

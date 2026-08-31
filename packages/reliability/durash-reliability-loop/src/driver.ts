@@ -161,7 +161,12 @@ export class LoopDriver {
       run = this.engine.start({
         script: request.script,
         meta: { name: request.metaName, description: STAGE_DESCRIPTIONS[kind] },
-        args: { prompt: request.prompt, label: kind },
+        args: {
+          prompt: request.prompt,
+          label: kind,
+          ...request.provider === undefined ? {} : { provider: request.provider },
+          ...request.model === undefined ? {} : { model: request.model },
+        },
         parent: this.parent,
       })
     } catch (error) {
@@ -261,23 +266,40 @@ export class LoopDriver {
     kind: 'implement' | 'review',
     round: LoopRound,
     record: ReliabilityLoopRecord,
-  ): { script: string; metaName: string; prompt: string } {
+  ): { script: string; metaName: string; prompt: string; provider?: string; model?: string } {
+    const lane = kind === 'implement'
+      ? { provider: record.implementationProvider, model: record.implementationModel }
+      : { provider: record.reviewProvider, model: record.reviewModel }
+    const route = {
+      ...lane.provider === undefined ? {} : { provider: lane.provider },
+      ...lane.model === undefined ? {} : { model: lane.model },
+    }
     if (kind === 'implement') {
       if (round === 1) {
-        return { script: IMPLEMENT_SCRIPT, metaName: IMPLEMENT_META_NAME, prompt: implementPrompt(record.objective) }
+        return { script: IMPLEMENT_SCRIPT, metaName: IMPLEMENT_META_NAME, prompt: implementPrompt(record.objective), ...route }
       }
       /* v8 ignore next -- the record invariant guarantees a round-1 changes-requested review for a rework stage */
       const feedback = record.review?.feedback ?? ''
-      return { script: IMPLEMENT_SCRIPT, metaName: IMPLEMENT_META_NAME, prompt: implementReworkPrompt(record.objective, feedback) }
+      return {
+        script: IMPLEMENT_SCRIPT,
+        metaName: IMPLEMENT_META_NAME,
+        prompt: implementReworkPrompt(record.objective, feedback),
+        ...route,
+      }
     }
     /* v8 ignore next -- the record invariant guarantees a settled implementation for a review stage */
     const summary = record.implement?.summary ?? ''
     if (round === 1) {
-      return { script: REVIEW_SCRIPT, metaName: REVIEW_META_NAME, prompt: reviewPrompt(record.objective, summary) }
+      return { script: REVIEW_SCRIPT, metaName: REVIEW_META_NAME, prompt: reviewPrompt(record.objective, summary), ...route }
     }
     /* v8 ignore next -- the record invariant guarantees the round-1 changes-requested feedback */
     const priorFeedback = record.review?.feedback ?? ''
-    return { script: REVIEW_SCRIPT, metaName: REVIEW_META_NAME, prompt: reworkReviewPrompt(record.objective, summary, priorFeedback) }
+    return {
+      script: REVIEW_SCRIPT,
+      metaName: REVIEW_META_NAME,
+      prompt: reworkReviewPrompt(record.objective, summary, priorFeedback),
+      ...route,
+    }
   }
 
   /** Read this loop's record, asserting the owned stage/slot relationships. */

@@ -57,6 +57,10 @@ export const reliabilityLoopRecord = z.object({
   review: reviewAttempt.optional(),
   settledAt: z.string().optional(),
   error: z.string().optional(),
+  implementationProvider: z.string().optional(),
+  implementationModel: z.string().optional(),
+  reviewProvider: z.string().optional(),
+  reviewModel: z.string().optional(),
 }) satisfies z.ZodType<ReliabilityLoopRecord>
 
 /**

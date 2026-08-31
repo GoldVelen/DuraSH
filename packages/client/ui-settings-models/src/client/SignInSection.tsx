@@ -1,11 +1,11 @@
 /**
- * Sign-in area of the Models settings section: the registered authorization
- * flows (ChatGPT, Grok/X, Claude, and the other subscription providers the
- * pi-ai adapter ships logins for), each startable in place. An attempt renders
- * its Host-reported progress — the page to open, the code to type, and one
- * pending question at a time — and its terminal outcome. The state is the
- * Host's own: reloading the page rejoins the running attempt instead of
- * starting over.
+ * Sign-in area of the Models settings section: each Host authorization flow
+ * that offers OAuth (ChatGPT, Grok/X, Claude, and the other subscription
+ * providers the pi-ai adapter ships logins for), startable in place. An
+ * attempt renders its Host-reported progress — the page to open, the code to
+ * type, and one pending question at a time — and its terminal outcome. The
+ * state is the Host's own: reloading the page rejoins the running attempt
+ * instead of starting over.
  */
 
 import { useEffect, useState } from 'react'
@@ -33,8 +33,21 @@ export interface SignInInjected {
 export type SignInSectionProps = Partial<InjectFace<SignInInjected>>
 
 /**
- * Render the sign-in area, or nothing while the Host offers no flows — a
- * composition without the authorization service legitimately has no surface
+ * The subscription logins this area offers: Host flows that declare an
+ * `oauth` method. API-key-only catalog logins stay on the add form, which is
+ * already the place a pasted key is stored.
+ * @param flows - the Host `describe` list, registration order preserved.
+ * @returns the OAuth subset, still in Host order.
+ */
+export function oauthSignInFlows(
+  flows: readonly AuthorizationFlowView[],
+): readonly AuthorizationFlowView[] {
+  return flows.filter(flow => flow.methods.some(method => method.id === 'oauth'))
+}
+
+/**
+ * Render the sign-in area, or nothing while the Host offers no OAuth flows —
+ * a composition without the authorization service legitimately has no surface
  * to sign in from, and an absent area is that absence rendered.
  */
 export function SignInSection(props: SignInSectionProps): ReactNode {
@@ -64,7 +77,8 @@ function SignInLoaded({
   const pending = state.attempts.find(view => view.pendingPrompt !== undefined)?.pendingPrompt
   useEffect(() => { setAnswer('') }, [pending?.id])
 
-  if (state.status === 'error' || state.flows.length === 0) return null
+  const flows = oauthSignInFlows(state.flows)
+  if (state.status === 'error' || flows.length === 0) return null
 
   const run = (action: () => Promise<string | undefined>): void => {
     if (working) return
@@ -80,7 +94,7 @@ function SignInLoaded({
       <p className={signInStyles['signInIntro']}>{t('signInIntro')}</p>
       {failure !== undefined && <p className={styles['error']} role="alert">{failure}</p>}
       <ul className={signInStyles['flowList']}>
-        {state.flows.map(flow => (
+        {flows.map(flow => (
           <FlowRow
             key={flow.key}
             flow={flow}
@@ -89,7 +103,7 @@ function SignInLoaded({
             answer={attemptByKey.get(flow.key)?.pendingPrompt?.id === pending?.id ? answer : ''}
             onAnswer={setAnswer}
             t={t}
-            onBegin={() => run(() => controller.begin(flow.key))}
+            onBegin={() => run(() => controller.begin(flow.key, 'oauth'))}
             onCancel={() => run(() => controller.cancel(flow.key))}
             onRespond={(promptId, value) => run(() => controller.respond(flow.key, promptId, { value }))}
             onDecline={promptId => run(() => controller.respond(flow.key, promptId, { declined: true }))}
@@ -155,24 +169,26 @@ function FlowRow({
       </div>
       {attempt !== undefined && (
         <div className={signInStyles['attempt']}>
-          {attempt.notices.map((notice, index) => (
-            <p key={index} className={signInStyles['noticeLine']}>
-              {notice.message}
-              {notice.url !== undefined && (
-                <>
-                  {' '}
-                  <a href={notice.url} target="_blank" rel="noreferrer">{t('signInOpenPage')}</a>
-                </>
-              )}
-              {notice.code !== undefined && (
-                <>
-                  {' '}
-                  <code className={signInStyles['noticeCode']}>{notice.code}</code>
-                </>
-              )}
-            </p>
-          ))}
-          {pending !== undefined && (
+          {running
+            ? attempt.notices.map((notice, index) => (
+              <p key={index} className={signInStyles['noticeLine']}>
+                {notice.message}
+                {notice.url !== undefined && (
+                  <>
+                    {' '}
+                    <a href={notice.url} target="_blank" rel="noreferrer">{t('signInOpenPage')}</a>
+                  </>
+                )}
+                {notice.code !== undefined && (
+                  <>
+                    {' '}
+                    <code className={signInStyles['noticeCode']}>{notice.code}</code>
+                  </>
+                )}
+              </p>
+            ))
+            : null}
+          {running && pending !== undefined && (
             <div className={signInStyles['prompt']}>
               <p className={signInStyles['promptMessage']}>{pending.message}</p>
               {pending.kind === 'select' && pending.options !== undefined ? (

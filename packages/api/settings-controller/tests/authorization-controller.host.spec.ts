@@ -112,6 +112,68 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     expect(failure.failure.message).toContain('does not mount @deepseek-ai/dsh-authorization')
   })
 
+  it('projects a stored grant as an authorized attempt when none is in flight', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MemoryCredentials)
+    await ctx.plugin(AuthorizationService)
+    await ctx.plugin(AuthorizationController)
+    ctx.authorization.registerFlow({
+      key: KEY,
+      label: 'Test Provider',
+      methods: [{ id: 'oauth', label: 'Sign in with Test' }],
+      run: () => Promise.resolve(),
+    })
+    await ctx.credentials.modifyRecord(KEY, () => Promise.resolve({ kind: 'grant', payload: { token: 'kept' } }))
+    const described = await ctx.authorizationController.describe()
+    expect(described.attempts).toEqual([{
+      key: KEY_WIRE,
+      status: 'authorized',
+      notices: [],
+    }])
+  })
+
+  it('lets an attempt started during a credential read override the stored projection', async () => {
+    const ctx = new Context()
+    const gate = new Gate()
+    gate.close()
+    await ctx.plugin(MemoryCredentials)
+    await ctx.plugin(AuthorizationService)
+    await ctx.plugin(AuthorizationController)
+    ctx.authorization.registerFlow({
+      key: KEY,
+      label: 'Test Provider',
+      methods: [{ id: 'oauth', label: 'Sign in with Test' }],
+      async run() {
+        await gate.wait()
+        await ctx.credentials.modifyRecord(KEY, () =>
+          Promise.resolve({ kind: 'grant', payload: { token: 'new' } }))
+      },
+    })
+    await ctx.credentials.modifyRecord(KEY, () =>
+      Promise.resolve({ kind: 'grant', payload: { token: 'kept' } }))
+    const readStarted = Promise.withResolvers<undefined>()
+    const allowRead = Promise.withResolvers<undefined>()
+    const describeRecord = ctx.credentials.describeRecord.bind(ctx.credentials)
+    vi.spyOn(ctx.credentials, 'describeRecord').mockImplementation(async (key) => {
+      readStarted.resolve(undefined)
+      await allowRead.promise
+      return describeRecord(key)
+    })
+
+    const describing = ctx.authorizationController.describe()
+    await readStarted.promise
+    await ctx.authorizationController.begin({ key: KEY_WIRE })
+    allowRead.resolve()
+
+    expect((await describing).attempts).toEqual([{
+      key: KEY_WIRE,
+      status: 'running',
+      notices: [],
+    }])
+    gate.open()
+    await awaitSettled(ctx.authorizationController, 'authorized')
+  })
+
   it('lists the registered flows', async () => {
     const controller = await boot({})
     const described = await controller.describe()
@@ -291,7 +353,125 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     await controller.begin({ key: KEY_WIRE })
     await awaitSettled(controller, 'failed')
     const settled = (await controller.describe()).attempts[0]
+    expect(settled?.message).toContain('reached credential storage')
     expect(settled?.message).toContain('without committing a credential record')
+  })
+
+  it('states when a flow failed before the controller received a notice or prompt', async () => {
+    const controller = await boot({
+      prompt: () => Promise.reject(new Error('provider failed before surface interaction')),
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'failed')
+    const settled = (await controller.describe()).attempts[0]
+    expect(settled?.message).toBe(
+      'the sign-in attempt failed before the controller received a notice or prompt:'
+      + ' provider failed before surface interaction',
+    )
+  })
+
+  it('keeps the post-notice failure and only exposes allowlisted network metadata from the cause', async () => {
+    const controller = await boot({
+      notify: (session) => { session.notify({ message: 'Open the page', url: 'https://example.test/login' }) },
+      prompt: () => {
+        const cause = new Error('secret cause text must stay hidden')
+        Object.assign(cause, {
+          code: 'ECONNREFUSED',
+          syscall: 'connect',
+          hostname: 'auth.x.ai',
+          address: '127.0.0.1',
+          port: 443,
+          access_token: 'should-not-appear',
+        })
+        return Promise.reject(new TypeError('fetch failed', { cause }))
+      },
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'failed')
+    const settled = (await controller.describe()).attempts[0]
+    expect(settled?.message).toContain('failed after the controller received a notice or prompt')
+    expect(settled?.message).toContain('fetch failed')
+    expect(settled?.message).toContain('[code=ECONNREFUSED syscall=connect hostname=auth.x.ai address=127.0.0.1 port=443]')
+    expect(settled?.message).not.toContain('secret cause text must stay hidden')
+    expect(settled?.message).not.toContain('should-not-appear')
+  })
+
+  it('redacts outer-message bearer tokens and OAuth query parameters from a failed attempt message', async () => {
+    const controller = await boot({
+      notify: (session) => { session.notify({ message: 'Open the page', url: 'https://example.test/login' }) },
+      prompt: () => Promise.reject(new Error(
+        'provider returned Bearer topsecret and https://callback.test/cb?code=abc123&refresh_token=rt456',
+      )),
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'failed')
+    const settled = (await controller.describe()).attempts[0]
+    expect(settled?.message).toContain('Bearer <redacted>')
+    expect(settled?.message).toContain('code=<redacted>')
+    expect(settled?.message).toContain('refresh_token=<redacted>')
+    expect(settled?.message).not.toContain('topsecret')
+    expect(settled?.message).not.toContain('abc123')
+    expect(settled?.message).not.toContain('rt456')
+  })
+
+  it('keeps AggregateError network metadata but never its member messages', async () => {
+    const controller = await boot({
+      notify: (session) => { session.notify({ message: 'Open the page', url: 'https://example.test/login' }) },
+      prompt: () => {
+        const first = new Error('dns token leak')
+        Object.assign(first, { code: 'ENOTFOUND', syscall: 'getaddrinfo', hostname: 'api.x.ai' })
+        const second = new Error('socket secret leak')
+        Object.assign(second, { code: 'ECONNREFUSED', address: '127.0.0.1', port: 443 })
+        return Promise.reject(new TypeError('fetch failed', {
+          cause: new AggregateError([first, second], 'aggregate secret text'),
+        }))
+      },
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'failed')
+    const settled = (await controller.describe()).attempts[0]
+    expect(settled?.message).toContain('fetch failed')
+    expect(settled?.message).toContain('code=ENOTFOUND')
+    expect(settled?.message).toContain('hostname=api.x.ai')
+    expect(settled?.message).toContain('code=ECONNREFUSED')
+    expect(settled?.message).toContain('address=127.0.0.1')
+    expect(settled?.message).toContain('port=443')
+    expect(settled?.message).not.toContain('dns token leak')
+    expect(settled?.message).not.toContain('socket secret leak')
+    expect(settled?.message).not.toContain('aggregate secret text')
+  })
+
+  it('caps the number of rendered network metadata entries from AggregateError causes', async () => {
+    const controller = await boot({
+      notify: (session) => { session.notify({ message: 'Open the page', url: 'https://example.test/login' }) },
+      prompt: () => {
+        const errors = [
+          Object.assign(new Error('hidden-1'), { code: 'ECONNREFUSED', address: '127.0.0.1', port: 443 }),
+          Object.assign(new Error('hidden-2'), { code: 'ENOTFOUND', hostname: 'api.x.ai', syscall: 'getaddrinfo' }),
+          Object.assign(new Error('hidden-3'), { code: 'ECONNRESET', hostname: 'edge.x.ai', syscall: 'read' }),
+          Object.assign(new Error('hidden-4'), { code: 'ETIMEDOUT', address: '10.0.0.8', port: 8443 }),
+          Object.assign(new Error('hidden-5'), { code: 'EHOSTUNREACH', address: '10.0.0.9', port: 9443 }),
+        ]
+        return Promise.reject(new TypeError('fetch failed', { cause: new AggregateError(errors, 'hidden-agg') }))
+      },
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'failed')
+    const settled = (await controller.describe()).attempts[0]
+    const message = settled?.message ?? ''
+    expect(message).toContain('code=ECONNREFUSED')
+    expect(message).toContain('code=ENOTFOUND')
+    expect(message).toContain('code=ECONNRESET')
+    expect(message).toContain('code=ETIMEDOUT')
+    expect(message).not.toContain('code=EHOSTUNREACH')
+    expect(message).not.toContain('hidden-1')
+    expect(message).not.toContain('hidden-5')
+    expect(message.split('; ')).toHaveLength(4)
   })
 
   it('rejects a respond payload naming neither value nor decline, as bad-request', async () => {

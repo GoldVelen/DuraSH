@@ -38,7 +38,10 @@
   },
   "dependencies": {
     "@durash/dsh-client-ui-brand": "workspace:^",
-    "@durash/dsh-reliability-loop": "workspace:^"
+    "@durash/dsh-client-ui-reliability": "workspace:^",
+    "@durash/dsh-reliability-loop": "workspace:^",
+    "@durash/dsh-reliability-policy": "workspace:^",
+    "@durash/dsh-tool-reliability": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-invariants": "workspace:^",

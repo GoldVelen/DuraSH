@@ -265,6 +265,21 @@ describe('durash-reliability-loop', () => {
     expect(manual.runs.every(run => run.disposed)).toBe(true)
   })
 
+  it('passes stored implementation and review routes to the stage children', async () => {
+    const { runtime, manual } = await harness()
+    await runtime.start({
+      parent: fakeParent(),
+      objective: 'ship the widget',
+      implementation: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+      review: { provider: 'openai-codex', model: 'gpt-5' },
+    })
+    const implement = await awaitChild(manual, 1)
+    expect(implement.request.agentOptions).toEqual({ provider: 'deepseek-official', model: 'deepseek-v4-pro' })
+    await settleAndAwaitStage(runtime, implement, implementReply('did the work'), 'reviewing')
+    const review = await awaitChild(manual, 2)
+    expect(review.request.agentOptions).toEqual({ provider: 'openai-codex', model: 'gpt-5' })
+  })
+
   it('runs exactly one bounded rework when the first review requests changes, then blocks', async () => {
     const { runtime, manual } = await harness()
     const handle = await runtime.start({ parent: fakeParent(), objective: 'ship the widget' })

@@ -60,11 +60,103 @@ function parseRequest<T>(method: string, schema: z.ZodType<T>, value: unknown): 
 /** Notices retained per attempt; older entries fall off as the flow reports more. */
 const MAX_NOTICES = 50
 
+type AuthorizationFailurePhase =
+  | 'starting'
+  | 'awaiting-provider'
+  | 'committing-credential'
+
+type NetworkMetadataField = 'code' | 'syscall' | 'hostname' | 'address' | 'port'
+
+const REDACTED = '<redacted>'
+const SAFE_TEXT = /^[A-Za-z0-9.:-]+$/u
+const MAX_TEXT = 128
+const MAX_CAUSE_DEPTH = 8
+const MAX_NETWORK_METADATA = 4
+const NETWORK_FIELDS: readonly NetworkMetadataField[] = ['code', 'syscall', 'hostname', 'address', 'port']
+
+function redactAuthorizationText(text: string): string {
+  return text
+    .replace(/\bBearer\s+\S+/giu, `Bearer ${REDACTED}`)
+    .replace(
+      /([?&](?:access_token|refresh_token|id_token|client_secret|client_assertion|code_verifier|code)=)[^&#\s]+/giu,
+      `$1${REDACTED}`,
+    )
+    .replace(
+      /("(?:access_token|refresh_token|id_token|client_secret|client_assertion|code_verifier|code)"\s*:\s*")[^"]+(")/giu,
+      `$1${REDACTED}$2`,
+    )
+}
+
+function safeText(value: unknown): string | undefined {
+  if (typeof value === 'number') return Number.isInteger(value) && value >= 0 ? String(value) : undefined
+  if (typeof value !== 'string') return undefined
+  if (value.length === 0 || value.length > MAX_TEXT || !SAFE_TEXT.test(value)) return undefined
+  return value
+}
+
+function networkMetadataOf(error: Error): string | undefined {
+  const parts: string[] = []
+  for (const field of NETWORK_FIELDS) {
+    const candidate = safeText(Reflect.get(error, field))
+    if (candidate === undefined) continue
+    parts.push(`${field}=${candidate}`)
+  }
+  return parts.length === 0 ? undefined : parts.join(' ')
+}
+
+function collectNetworkMetadata(value: unknown): string[] {
+  const seen = new Set<string>()
+  const details: string[] = []
+  const visit = (current: unknown, depth: number): void => {
+    if (depth > MAX_CAUSE_DEPTH || details.length >= MAX_NETWORK_METADATA || !(current instanceof Error)) return
+    const metadata = networkMetadataOf(current)
+    if (metadata !== undefined && !seen.has(metadata) && details.length < MAX_NETWORK_METADATA) {
+      seen.add(metadata)
+      details.push(metadata)
+    }
+    if (current instanceof AggregateError) {
+      for (const item of current.errors) {
+        visit(item, depth + 1)
+        if (details.length >= MAX_NETWORK_METADATA) return
+      }
+    }
+    if (current.cause !== undefined && current.cause !== null) visit(current.cause, depth + 1)
+  }
+  visit(value, 0)
+  return details
+}
+
+function phaseMessageOf(phase: AuthorizationFailurePhase): string {
+  switch (phase) {
+    case 'starting':
+      return 'the sign-in attempt failed before the controller received a notice or prompt'
+    case 'awaiting-provider':
+      return 'the sign-in attempt failed after the controller received a notice or prompt'
+    case 'committing-credential':
+      return 'the sign-in attempt reached credential storage but did not finish committing a usable credential'
+  }
+}
+
+function failurePhaseOf(record: AttemptRecord, error: unknown): AuthorizationFailurePhase {
+  if (error instanceof AuthorizationError && error.code === 'NOT_COMMITTED') return 'committing-credential'
+  return record.controllerObservedInteraction ? 'awaiting-provider' : 'starting'
+}
+
+function failureMessageOf(record: AttemptRecord, error: unknown): string {
+  const phase = failurePhaseOf(record, error)
+  const outer = error instanceof Error ? error.message : String(error)
+  const detail = redactAuthorizationText(outer)
+  const metadata = collectNetworkMetadata(error)
+  const suffix = metadata.length === 0 ? '' : ` [${metadata.join('; ')}]`
+  return `${phaseMessageOf(phase)}: ${detail}${suffix}`
+}
+
 /** One controller-tracked attempt: the service owns the run, this owns the view. */
 interface AttemptRecord {
   /** The joined credential key the attempt runs for; the wire view carries it. */
   key: string
   status: 'running' | 'authorized' | 'cancelled' | 'failed'
+  controllerObservedInteraction: boolean
   notices: AuthorizationNotice[]
   pending: {
     id: string
@@ -110,14 +202,34 @@ export class AuthorizationController extends TypertRemoteService {
    */
   @Remote
   describe(): Promise<AuthorizationDescribeValue> {
-    return Promise.resolve(this.describeSnapshot())
+    return this.describeSnapshot()
   }
 
-  /** Assemble the flows-and-attempts snapshot from the seam and this tracker. */
-  private describeSnapshot(): AuthorizationDescribeValue {
+  /**
+   * Assemble the flows-and-attempts snapshot from the seam, this tracker, and
+   * stored credential records. A grant that survived a restart has no in-memory
+   * attempt, so it is projected as an already-authorized attempt the Models
+   * page can enable from.
+   */
+  private async describeSnapshot(): Promise<AuthorizationDescribeValue> {
+    const flows = this.service().list()
+    const stored: Array<AuthorizationDescribeValue['attempts'][number]> = []
+    const credentials = this.ctx.get('credentials')
+    if (credentials !== undefined) {
+      for (const entry of flows) {
+        const record = await credentials.describeRecord(entry.key)
+        if (!record.configured) continue
+        stored.push({ key: entry.key, status: 'authorized', notices: [] })
+      }
+    }
+    // Snapshot tracked attempts after the asynchronous metadata reads. A begin
+    // that starts while describe is reading credentials must win over the
+    // stored projection in this same response.
+    const tracked = [...this.attempts.values()].map(record => this.projectAttempt(record))
+    const trackedKeys = new Set(this.attempts.keys())
     return {
-      flows: this.service().list().map(entry => this.projectFlow(entry)),
-      attempts: [...this.attempts.values()].map(record => this.projectAttempt(record)),
+      flows: flows.map(entry => this.projectFlow(entry)),
+      attempts: [...tracked, ...stored.filter(attempt => !trackedKeys.has(attempt.key))],
     }
   }
 
@@ -134,7 +246,14 @@ export class AuthorizationController extends TypertRemoteService {
     return Promise.resolve(this.beginAttempt(request))
   }
 
-  /** Validate and start one attempt against a controller-tracked record. */
+  /**
+   * Validate and start one attempt against a controller-tracked record.
+   *
+   * The record tracks only facts this controller directly observed. It does not
+   * infer anything about the provider's internal state beyond whether a notice
+   * or prompt reached the controller, and whether the authorization seam later
+   * reported `NOT_COMMITTED`.
+   */
   private beginAttempt(request: { key: string; method?: string }): { started: true } {
     const parsed = parseRequest('authorization.begin', beginRequestSchema, request)
     let branded
@@ -167,7 +286,7 @@ export class AuthorizationController extends TypertRemoteService {
     this.attempts.delete(parsed.key)
     const record: AttemptRecord = {
       key: parsed.key,
-      status: 'running', notices: [], pending: undefined, message: undefined,
+      status: 'running', controllerObservedInteraction: false, notices: [], pending: undefined, message: undefined,
     }
     this.attempts.set(parsed.key, record)
     void this.service().begin({
@@ -182,7 +301,7 @@ export class AuthorizationController extends TypertRemoteService {
       this.endPending(record)
     }, (error: unknown) => {
       record.status = 'failed'
-      record.message = error instanceof Error ? error.message : String(error)
+      record.message = failureMessageOf(record, error)
       this.endPending(record)
     })
     return { started: true }
@@ -286,6 +405,7 @@ export class AuthorizationController extends TypertRemoteService {
 
   /** Append one flow notice under the retention bound; a notice never stalls a flow. */
   private recordNotice(record: AttemptRecord, notice: AuthorizationNotice): void {
+    record.controllerObservedInteraction = true
     record.notices.push(notice)
     if (record.notices.length > MAX_NOTICES) record.notices.splice(0, record.notices.length - MAX_NOTICES)
   }
@@ -298,6 +418,7 @@ export class AuthorizationController extends TypertRemoteService {
    */
   private awaitPrompt(record: AttemptRecord, prompt: AuthorizationPrompt): Promise<string> {
     return new Promise<string>((resolve, reject) => {
+      record.controllerObservedInteraction = true
       this.promptSeq += 1
       const id = `prompt-${String(this.promptSeq)}`
       let settled = false

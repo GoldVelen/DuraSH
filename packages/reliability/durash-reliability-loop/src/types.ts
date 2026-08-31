@@ -109,6 +109,14 @@ export interface ReliabilityLoopRecord {
   readonly settledAt?: string | undefined
   /** Failure detail; present iff `stage` is `failed`. */
   readonly error?: string | undefined
+  /** Implementation-stage provider route, when the caller selected one. */
+  readonly implementationProvider?: string | undefined
+  /** Implementation-stage model id, when the caller selected one. */
+  readonly implementationModel?: string | undefined
+  /** Review-stage provider route, when the caller selected one. */
+  readonly reviewProvider?: string | undefined
+  /** Review-stage model id, when the caller selected one. */
+  readonly reviewModel?: string | undefined
 }
 
 /**
@@ -140,10 +148,22 @@ export interface ReliabilityLoopHandle {
   dispose(): Promise<void>
 }
 
+/** Optional provider/model override for one stage lane. */
+export interface ReliabilityLoopLane {
+  /** Provider route for that lane's child. */
+  readonly provider: string
+  /** Model id for that lane's child. */
+  readonly model: string
+}
+
 /** What a caller asks for when starting one loop. */
 export interface ReliabilityLoopStartRequest {
   /** The agent on whose behalf the loop runs (parent of every stage child). */
   parent: Agent
   /** What the implementation must achieve; bounded by `maxHandoffChars`. */
   objective: string
+  /** Implementation-stage child route; omitted children inherit the parent. */
+  implementation?: ReliabilityLoopLane
+  /** Review-stage child route; omitted children inherit the parent. */
+  review?: ReliabilityLoopLane
 }

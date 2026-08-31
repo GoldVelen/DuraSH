@@ -29,7 +29,7 @@ kind: "package-reference"
 
 `settings.describe()` 返回部署信息，以及在 `redactSecrets: true` 下读取的所有 namespace。`settings.update`、`settings.replace` 与 `settings.mutate` 暴露 settings service 的三种写入操作，并返回该 namespace 的新脱敏视图；过期写入使用 `settings-conflict`，其他 provider 拒绝使用 `settings-rejected`。
 
-`authorization.describe()` 列出每个已注册的登录流与其被宿主跟踪的尝试，页面轮询一份快照即可同时得到可登录项与尝试进度。`authorization.begin({ key, method? })` 以宿主持有的交互启动一次尝试并立即应答——尝试会等一个人几分钟，因此没有任何请求保持挂起；`authorization.respond({ key, promptId, value | declined })` 回答待答提问，`authorization.cancel({ key })` 撤回尝试。通知按保留上限累积，同一时刻只有一个待答提问，密钥回答只朝这个方向传输。尝试状态属于宿主：重新加载的页面通过 `describe` 重新加入同一尝试；已有尝试运行时再次 begin 报 `conflict`。
+`authorization.describe()` 列出每个已注册的登录流与其被宿主跟踪的尝试，页面轮询一份快照即可同时得到可登录项与尝试进度。登录流没有被跟踪的尝试时，已有且已配置的凭据会被投影为 `authorized`；当前被跟踪的尝试优先。`authorization.begin({ key, method? })` 以宿主持有的交互启动一次尝试并立即应答——尝试会等一个人几分钟，因此没有任何请求保持挂起；`authorization.respond({ key, promptId, value | declined })` 回答待答提问，`authorization.cancel({ key })` 撤回尝试。通知按保留上限累积，同一时刻只有一个待答提问，密钥回答只朝这个方向传输。尝试状态属于宿主：重新加载的页面通过 `describe` 重新加入同一尝试；已有尝试运行时再次 begin 报 `conflict`。失败视图只说明控制器是否已收到通知或提问，或者凭据提交是否失败；外层消息会脱敏 token，嵌套传输错误只能附带有上限的白名单网络元数据。
 
 
 -----

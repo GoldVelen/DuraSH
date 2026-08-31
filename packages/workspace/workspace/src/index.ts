@@ -134,6 +134,7 @@ export class WorkspaceRegistry extends Service {
     }
 
     await this.indexLiveSessions()
+    await this.reconcileKnownWorkspaceSessions()
     this.validateStoredState(this.requireState())
     this.rebuildEntities()
     this.reportFilteredCandidates()
@@ -295,7 +296,7 @@ export class WorkspaceRegistry extends Service {
     const record: WorkspaceRecord = {
       path: canonical,
       title: workspaceName,
-      sessionIds: [],
+      sessionIds: this.historicalSessionIdsForPath(canonical),
       createdAt: now,
       updatedAt: now,
     }
@@ -505,6 +506,51 @@ export class WorkspaceRegistry extends Service {
       await this.setState({ initialized: false, workspaceIds, archivedSessionIds: state.archivedSessionIds })
     }
     await this.setState({ initialized: true, workspaceIds, archivedSessionIds: state.archivedSessionIds })
+  }
+
+  /**
+   * Backfill each known workspace with historical sessions whose canonical cwd
+   * already matches that workspace path. This repairs workspaces registered
+   * after older sessions existed and keeps session ownership unique.
+   */
+  private async reconcileKnownWorkspaceSessions(): Promise<void> {
+    const table = this.requireTable()
+    const accounted = new Map<SessionId, WorkspaceId>()
+    for (const [id, record] of table.entries()) {
+      for (const sessionId of record.sessionIds) accounted.set(sessionId, id)
+    }
+    for (const workspaceId of this.requireState().workspaceIds) {
+      const current = table.get(workspaceId)
+      if (current === undefined) continue
+      const historical = this.historicalSessionIdsForPath(current.path)
+        .filter((sessionId) => {
+          const owner = accounted.get(sessionId)
+          return owner === undefined || owner === workspaceId
+        })
+      const historicalSet = new Set(historical)
+      const sessionIds = [
+        ...historical,
+        ...current.sessionIds.filter(sessionId => !historicalSet.has(sessionId)),
+      ]
+      for (const sessionId of sessionIds) accounted.set(sessionId, workspaceId)
+      if (sameSessionIds(current.sessionIds, sessionIds)) continue
+      await table.update(workspaceId, record => ({
+        ...record,
+        sessionIds,
+        updatedAt: new Date().toISOString(),
+      }))
+    }
+  }
+
+  /**
+   * Historical session order for one canonical path: newest first, the same
+   * ordering the bootstrap uses for directory-owned session groups.
+   */
+  private historicalSessionIdsForPath(path: string): SessionId[] {
+    return [...this.headers.values()]
+      .filter(header => this.sessionPaths.get(header.id) === path)
+      .sort(compareHeaders)
+      .map(header => header.id)
   }
 
   private validateStoredState(state: WorkspaceDomainState): void {

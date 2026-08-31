@@ -12,6 +12,8 @@ The existing reliability work lived on an old DeepSeek Harness baseline and mixe
 
 Use DuraSH as a short independent product identity and keep the current official DeepSeek Harness release as the base. Product presentation is supplied by an `@durash` browser-brand plugin and an additive `durash` profile applied after the upstream base and Web bundles; the upstream official brand package remains unchanged.
 
+The source distribution treats DuraSH as its default product path. `pnpm run build` selects the DuraSH client identity, and `pnpm start` selects the matching `durash` runtime profile. `pnpm run build:local` retains the neutral upstream development client, while `pnpm run build:official` retains official release artifacts. Source launches reject a DuraSH runtime paired with a non-DuraSH build record and reject the upstream `web` runtime paired with DuraSH client artifacts.
+
 Record every source-level upstream in `UPSTREAM_SOURCES.json`. A scheduled workflow audits all recorded sources, prepares one automation-owned merge PR for the primary DSH upstream, and maintains one review issue for newer vendored public releases. Registry and Actions dependencies follow the [Dependabot update decision](../process/2026-07-27-dependabot-version-updates.md): daily checks with no intentional cooldown and opt-in auto-merge only after required compatibility checks are configured.
 
 Keep historical reliability behavior out of the implemented claim until it has been rebuilt over the current workflow seam. `INTEGRATION_STATUS.md` is the authority separating inherited, implemented, prepared, and not-migrated states.
@@ -24,4 +26,4 @@ Keep historical reliability behavior out of the implemented claim until it has b
 
 ## Consequences
 
-The repository has a small, visible downstream ownership surface, a DuraSH-specific build-and-composition check, and a repeatable path to the latest verified upstream. Public Actions and branch protection still require configuration after the GitHub repository is created. The brand/profile migration does not close the reliability-engine migration; that remains the next product milestone and cannot be advertised as complete.
+The repository has a small, visible downstream ownership surface, a DuraSH-default source entry, a DuraSH-specific build-and-composition check, and a repeatable path to the latest verified upstream. Upstream development and official artifact commands stay explicit instead of inheriting the product default. Public Actions and branch protection still require configuration after the GitHub repository is created. The brand/profile migration does not close the reliability-engine migration; that remains the next product milestone and cannot be advertised as complete.

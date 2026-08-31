@@ -151,7 +151,7 @@ interface ReliabilityLoopHandle {
 
 ## 边界与限制
 
-- 循环是程序化服务；尚无面向模型的工具或命令。
+- 循环运行时是程序化服务。`durash` profile 的 composer 开关、会话策略与 `dsh_reliability_handoff` 工具是面向模型的消费者。
 - 记录只持久化阶段转换。workflow 引擎没有日志，阶段中途崩溃会重跑该阶段一次；不投影成员级持久进度。
 - 只有一个实施者与一个审查者——没有协调阶段、三路审查或阶段内扇出，`blocked` 停机之外也没有 `needs_replan` 轮次词汇。
 - 只有持久 seam 故障（存储故障或不变量破坏）才会让 `result` reject；其余循环内部失败都以 `failed` 落入记录。

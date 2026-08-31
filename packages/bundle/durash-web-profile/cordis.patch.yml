@@ -3,15 +3,23 @@
 # client build; this product-owned row fills the same generic slots. The
 # reliability loop is the product-owned bounded implement/review engine whose
 # durable state rides the storage family the base bundle already mounts. The
-# web app ships the workflow engine row disabled; the durash product profile
-# re-enables the engine (not the model-facing workflow/ralph tools) because
-# the reliability loop drives its runs.
+# composer workflow switch, its Host policy, and the gated handoff tool are
+# the model-facing consumer of that loop. The web app ships the workflow
+# engine row disabled; the durash product profile re-enables the engine (not
+# the model-facing workflow/ralph tools) because the reliability loop drives
+# its runs.
 
 - insert:
     - id: ui-brand-durash
       name: '@durash/dsh-client-ui-brand'
     - id: reliability-loop
       name: '@durash/dsh-reliability-loop'
+    - id: reliability-policy
+      name: '@durash/dsh-reliability-policy'
+    - id: tool-reliability
+      name: '@durash/dsh-tool-reliability'
+    - id: ui-reliability
+      name: '@durash/dsh-client-ui-reliability'
 
 - id: workflow-worker-thread
   disabled: false

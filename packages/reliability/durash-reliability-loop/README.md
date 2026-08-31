@@ -112,7 +112,7 @@ No direct invalidation; the workflow engine and the subagent providers own any r
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **No model-facing entry** — the loop is a programmatic service only; a model-facing tool or command is deferred to the next slice.
+- **No model-facing entry in this package** — the composer switch, Session policy, and `dsh_reliability_handoff` tool live in sibling packages in this group.
 - **No member-level durable progress** — the record persists stage transitions, not per-child progress inside a stage run; the workflow engine journals nothing, so a crash mid-stage re-runs that stage.
 - **One implementer, one reviewer** — no coordination stage, three-way review, or per-stage fan-out; those pipeline shapes remain old-fork history on this baseline.
 - **Blocked is final** — a `blocked` loop needs a new loop; there is no durable `needs_replan` round vocabulary yet.
@@ -125,6 +125,6 @@ No direct invalidation; the workflow engine and the subagent providers own any r
 
 This Dev Note is working context for maintainers: open directions that are not decided. It is explicitly non-authoritative — shipped behavior, limits, and accepted rationale live in the sections above, the package code, and the linked Agent Notes.
 
-Deferred directions: the model-facing consumer and its UI presentation; member-level progress projection over `workflow/agent-*`; `needs_replan` round vocabulary on top of the blocked stage; and multi-attempt attempt slots if the single rework bound ever generalizes.
+Deferred directions: member-level progress projection over `workflow/agent-*`; applying stored thinking effort to stage children; `needs_replan` round vocabulary on top of the blocked stage; and multi-attempt attempt slots if the single rework bound ever generalizes.
 
 </details>

@@ -567,8 +567,14 @@
       "@deepseek-ai/dsh-workspace/invariant": ["./packages/workspace/workspace/src/invariant.ts"],
       "@durash/dsh-client-ui-brand": ["./packages/client/ui-brand-durash/src"],
       "@durash/dsh-client-ui-brand/invariant": ["./packages/client/ui-brand-durash/src/invariant.ts"],
+      "@durash/dsh-client-ui-reliability": ["./packages/client/ui-reliability/src"],
+      "@durash/dsh-client-ui-reliability/invariant": ["./packages/client/ui-reliability/src/invariant.ts"],
       "@durash/dsh-reliability-loop": ["./packages/reliability/durash-reliability-loop/src"],
       "@durash/dsh-reliability-loop/invariant": ["./packages/reliability/durash-reliability-loop/src/invariant.ts"],
+      "@durash/dsh-reliability-policy": ["./packages/reliability/durash-reliability-policy/src"],
+      "@durash/dsh-reliability-policy/invariant": ["./packages/reliability/durash-reliability-policy/src/invariant.ts"],
+      "@durash/dsh-tool-reliability": ["./packages/reliability/durash-tool-reliability/src"],
+      "@durash/dsh-tool-reliability/invariant": ["./packages/reliability/durash-tool-reliability/src/invariant.ts"],
       "@durash/dsh-web-profile": ["./packages/bundle/durash-web-profile/src"],
       "@durash/dsh-web-profile/invariant": ["./packages/bundle/durash-web-profile/src/invariant.ts"]
       // END generated package aliases

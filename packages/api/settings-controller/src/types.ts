@@ -62,7 +62,7 @@ export type CredentialError = {
 export interface AuthorizationErrorDetailsMap {
   /** The requested key or prompt does not name a flow or live attempt. */
   'not-found': { readonly key: string }
-  /** An attempt for the key is already running, or the prompt id is stale. */
+  /** An attempt for the key is already running. */
   conflict: { readonly key: string }
 }
 

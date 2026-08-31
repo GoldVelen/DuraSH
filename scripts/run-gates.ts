@@ -249,7 +249,7 @@ export function gatesForMode(selected: Mode): Gate[] {
         pnpmScript('duplication', 'duplication'),
         snapshotGate(),
         expectedOutputGate(),
-        pnpmScript('build', 'build'),
+        pnpmScript('build', 'build:local', { label: 'build' }),
         pnpmScript('build:web', 'build:web'),
         ...hygieneLeafGates({ artifactNeeds: ['build'] }),
         ...docSyncLeafGates({
@@ -329,7 +329,7 @@ function nodeCompatGates(): Gate[] {
   }
   return [
     ...typecheck,
-    pnpmScript('build', 'build', {
+    pnpmScript('build', 'build:official', {
       ...typecheck.length === 0 ? {} : { needs: ['typecheck'] },
     }),
     pnpmScript('build:web', 'build:web', {

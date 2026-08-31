@@ -26,11 +26,11 @@ DuraSH does not yet publish an npm release. From this checkout:
 
 ```sh
 pnpm install
-pnpm run build:durash
-pnpm dsh --profile durash
+pnpm run build
+pnpm start
 ```
 
-The Web UI starts at `http://127.0.0.1:3080` by default. The upstream `web`, SDK, and headless runtime profiles and the official client build remain intact; DuraSH is an additional profile rather than a rename of upstream internals.
+The default build and start commands select the DuraSH client and `durash` runtime profile together. The Web UI starts at `http://127.0.0.1:3080` by default. Use `pnpm run build:local` before `pnpm dsh web` for the upstream source-development client, or `pnpm run build:official` for official release artifacts; the SDK and headless runtime profiles remain intact.
 
 ## What is DuraSH-owned?
 

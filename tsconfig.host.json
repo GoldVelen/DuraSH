@@ -302,6 +302,8 @@
     { "path": "./packages/workflow/tool-workflow" },
     { "path": "./packages/workflow/tool-ralph" },
     { "path": "./packages/reliability/durash-reliability-loop" },
+    { "path": "./packages/reliability/durash-reliability-policy" },
+    { "path": "./packages/reliability/durash-tool-reliability" },
     { "path": "./packages/webhook/webhook" },
     { "path": "./packages/webhook/webhook-github" },
     { "path": "./packages/todo/tool-todo" },

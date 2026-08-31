@@ -151,7 +151,7 @@ Bounded handoffs answer the historical review-overflow failure: `maxHandoffChars
 
 ## Boundaries and limitations
 
-- The loop is a programmatic service; no model-facing tool or command exists yet.
+- The loop runtime is a programmatic service. The `durash` profile's composer switch, Session policy, and `dsh_reliability_handoff` tool are the model-facing consumer.
 - The record persists stage transitions only. The workflow engine journals nothing, so a crash mid-stage re-runs that stage once; member-level durable progress is not projected.
 - One implementer and one reviewer only — no coordination stage, three-way review, or per-stage fan-out, and no `needs_replan` round vocabulary beyond the `blocked` stop.
 - `result` rejects only on a durable-seam fault (storage failure or invariant breach); every loop-internal failure lands in the record as `failed`.

@@ -93,9 +93,9 @@ export type WorkspaceBrowserInjected = {
     connectionGeneration: ConnectionGenerationState
   }
   /**
-   * Start a New Session in a Workspace: reuse-or-create its blank session and
-   * open it; without an explicit workspace, inherit the current Session
-   * Workspace, then the recent Workspace, or clear into the New Session view.
+   * Create and open a New Session in a Workspace; without an explicit
+   * workspace, inherit the current Session Workspace, then the recent
+   * Workspace, or clear into the New Session view.
    */
   startSession: (workspaceId?: WorkspaceId) => void
   /** Open a real Session. */

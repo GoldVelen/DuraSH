@@ -14,7 +14,7 @@ TypeScript 源码启动器无需在每次调用前完成整个仓库的构建。
 
 根目录的 `dsh` 脚本只运行 `node --import tsx/esm apps/cli/src/bin.ts`。`pnpm run build` 仍是生成包与前端产物的独立操作。源码用户在首次进行类生产启动前运行构建，并在前端或 Client plugin 产物需要刷新时再次运行。
 
-Typert Host 产物缺失时，profile 启动会因不含构建指引的模块解析错误而失败。这些 Host 产物存在后，如果前端或 Client plugin 产物缺失，启动会失败，诊断信息会指示用户运行 `pnpm run build`。启动器不会验证产物是否为最新：已有的陈旧前端或 Client plugin 组合包仍会被接受，并可能继续运行旧版浏览器代码，直至下次构建。各包的 Node 半侧至少构建过一次后，`pnpm run dev:web` 只重建声明了 `dsh.client` 的包；它会保持 Client plugin 组合包为最新状态并启用其热重载路径，但不会重建前端 shell。
+Typert Host 产物缺失时，profile 启动会因不含构建指引的模块解析错误而失败。这些 Host 产物存在后，如果前端或 Client plugin 产物缺失，启动会失败，诊断信息会指示用户执行一次完整构建。在源码 checkout 中，启动器还会拒绝缺少 DuraSH 客户端构建记录的 `durash` 运行时，并在该记录选择 DuraSH 时拒绝上游 `web` 运行时。安装形式的 CLI 没有仓库构建记录，因此会跳过这项仅适用于源码的身份检查。启动器不会验证源码是否为最新：已有的陈旧前端或 Client plugin 组合包仍会被接受，并可能继续运行旧版浏览器代码，直至下次构建。各包的 Node 半侧至少构建过一次后，`pnpm run dev:web` 只重建声明了 `dsh.client` 的包；它会保持 Client plugin 组合包为最新状态并启用其热重载路径，但不会重建前端 shell。
 
 本决策仅规定构建调度。[tsx ESM 源码启动决策](../architecture/2026-07-29-dsh-source-launch-tsx-esm.zh.md)规定 TypeScript 转换与 workspace 解析，[源码运行决策](2026-08-10-source-run-without-managed-installer.zh.md)规定以仓库脚本作为受支持的检出入口，[个人配置决策](../feature/2026-07-20-dsh-cli-personal-config.zh.md)规定机器级配置层。
 
@@ -29,7 +29,7 @@ Typert Host 产物缺失时，profile 启动会因不含构建指引的模块解
 ## 影响
 
 - 重复的源码启动无需等待完整的仓库构建，构建输出也不会与 CLI 输出混在一起。
-- 源码用户负责产物新鲜度。产物缺失会阻止启动，但只有前端与 Client plugin 产物缺失的错误会指示用户运行 `pnpm run build`；已有的过期前端与 Client plugin 组合包可能静默提供旧版浏览器代码。
+- 源码用户负责产物新鲜度。产物缺失会阻止启动；DuraSH 与上游 Web 源码启动会拒绝记录中互相冲突的客户端身份；已有的过期前端与 Client plugin 组合包仍可能静默提供旧版浏览器代码。
 - TUI、Web 与无头模式选择、参数转发、环境继承，以及 tsx ESM 启动方式保持不变。
 - 根目录上手指南与 CLI 参考将构建和启动列为独立命令，并说明过期产物行为。
 
