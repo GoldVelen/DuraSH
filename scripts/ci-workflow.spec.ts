@@ -292,12 +292,11 @@ describe('CI workflow', () => {
     expect(serialGate).toBeDefined()
     expect(serialGate!.env).toMatchObject({ DSH_COVERAGE_TEST_TIMEOUT_MS: '90000' })
 
-    // Aggregate: Wine and the required split native jobs are needed;
-    // windows-coverage is temporarily non-blocking while Windows ACP
-    // half-close tests are stabilized; observational stays out too.
+    // Aggregate: Wine and every required split Windows job are needed;
+    // only the explicitly observational lane stays out.
     expect(aggregate.needs).toContain('windows')
     expect(aggregate.needs).toContain('windows-build')
-    expect(aggregate.needs).not.toContain('windows-coverage')
+    expect(aggregate.needs).toContain('windows-coverage')
     expect(aggregate.needs).toContain('windows-native-tests')
     expect(aggregate.needs).not.toContain('windows-observational')
     expect(aggregate.needs).not.toContain('serial-windows')

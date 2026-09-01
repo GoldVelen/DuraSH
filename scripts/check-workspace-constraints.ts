@@ -6,7 +6,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
@@ -416,7 +416,8 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     }
   }
 
-  return errors.map(error => `${relative(root, join(root, dir, 'package.json'))}: ${error}`)
+  const manifestPath = dir === '.' ? 'package.json' : `${dir}/package.json`
+  return errors.map(error => `${manifestPath}: ${error}`)
 }
 
 /**

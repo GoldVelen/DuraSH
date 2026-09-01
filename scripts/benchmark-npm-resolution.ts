@@ -12,6 +12,8 @@ const TARGET_PACKAGE = '@deepseek-ai/dsh'
 const DEFAULT_TIMEOUT_MS = 300_000
 const TERMINATION_GRACE_MS = 1_000
 const FORCED_EXIT_TIMEOUT_MS = 5_000
+const TEMPORARY_DIRECTORY_MAX_RETRIES = 10
+const TEMPORARY_DIRECTORY_RETRY_DELAY_MS = 100
 const WORKSPACE_MANIFEST_GLOBS = [
   'apps/*/package.json',
   'packages/*/*/package.json',
@@ -482,7 +484,12 @@ export async function resolveNpmPackageLock(
   } finally {
     server.closeAllConnections()
     await close(server)
-    rmSync(consumer, { recursive: true, force: true })
+    rmSync(consumer, {
+      recursive: true,
+      force: true,
+      maxRetries: TEMPORARY_DIRECTORY_MAX_RETRIES,
+      retryDelay: TEMPORARY_DIRECTORY_RETRY_DELAY_MS,
+    })
   }
 }
 
