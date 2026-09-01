@@ -37,6 +37,8 @@ Compose this plugin in the `durash` profile with `ctx.reliabilityPolicy` and `ct
 
 The tool requires the live root agent, a direct human user message on that Session, and enabled policy routes. Cancellation of the tool signal cancels the live loop. The compact result is the loop's terminal stage, a bounded summary, and the reviewer verdict when one exists.
 
+No runtime invariant companion is published because this tool owns no independent state or event stream; the policy and loop companions own the relationships it consumes.
+
 </details>
 
 -----

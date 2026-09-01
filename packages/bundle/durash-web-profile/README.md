@@ -37,6 +37,8 @@ Build the client with `pnpm run build:durash`, then start the source checkout wi
 
 `cordis.patch.yml` inserts the DuraSH brand row, the reliability-loop runtime, the per-session policy, the gated handoff tool, and the composer workflow switch. The product layer remains additive: replacing an upstream row is permitted only when no compatible extension point exists, and the exact exception must first be recorded in the repository's integration-status document.
 
+No runtime invariant companion is published because this package carries only a static patch list; each inserted package owns the mutable relationships it activates.
+
 </details>
 
 -----

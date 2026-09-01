@@ -69,7 +69,7 @@ function requireRootHandoff(ctx: Context, exec: ToolRunContext) {
       'RELIABILITY_TOOL_DRIVER_REQUIRED',
     )
   }
-  const human = agent.session.events.some(event =>
+  const human = agent.session.snapshotEvents().some(event =>
     event.type === 'user/message' && event.data.source.kind === 'user')
   if (!human) {
     throw new HarnessError(`${TOOL_NAME} requires a direct human turn on a top-level agent`, 'RELIABILITY_TOOL_HUMAN_REQUIRED')

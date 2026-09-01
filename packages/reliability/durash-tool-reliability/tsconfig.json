@@ -31,9 +31,6 @@
     },
     {
       "path": "../durash-reliability-policy"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }
