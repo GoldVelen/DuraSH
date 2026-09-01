@@ -8,7 +8,7 @@ import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
-import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
+import { getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
 import { createModels, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
 import { resolveProfiles } from '../src/config.ts'
@@ -799,6 +799,31 @@ describe('per-model reasoning efforts', () => {
   })
 })
 
+describe('installed xai catalog', () => {
+  /** The installed xAI model of this id, or throw. */
+  function xaiModel(id: string): Model<Api> {
+    const model = (getBuiltinModels('xai') as readonly Model<Api>[]).find(entry => entry.id === id)
+    if (model === undefined) throw new Error(`the installed catalog ships no xai model "${id}"`)
+    return model
+  }
+
+  it('offers xhigh on grok-4.6 through a blank xai profile', () => {
+    const catalog = xaiModel('grok-4.6')
+    expect(getSupportedThinkingLevels(catalog)).toEqual(['low', 'medium', 'high', 'xhigh'])
+
+    const [model] = resolveProfiles({ xai: {} }).get('xai')?.piProvider.getModels()
+      .filter(entry => entry.id === 'grok-4.6') ?? []
+    if (model === undefined) throw new Error('a blank xai profile dropped grok-4.6')
+    expect(getSupportedThinkingLevels(model)).toEqual(['low', 'medium', 'high', 'xhigh'])
+    expect(model.api).toBe('openai-responses')
+    expect(model.thinkingLevelMap?.xhigh).toBe('xhigh')
+  })
+
+  it('does not offer xhigh on grok-4.5', () => {
+    expect(getSupportedThinkingLevels(xaiModel('grok-4.5'))).toEqual(['low', 'medium', 'high'])
+  })
+})
+
 describe('modelOverrides', () => {
   const deepseekModel = (): Model<Api> => {
     const [model] = getBuiltinModels('deepseek')
@@ -877,6 +902,27 @@ describe('compat switches', () => {
     return new Map(models.map(model => [model.id, model]))
   }
 
+  /**
+   * One installed provider that still ships both Chat Completions and Responses
+   * models. The mixed-route tests need that split; they do not care which vendor
+   * currently supplies it.
+   */
+  function mixedCompletionsAndResponses(): {
+    provider: string
+    completions: Model<Api>
+    responses: Model<Api>
+  } {
+    for (const provider of getBuiltinProviders()) {
+      const catalog = getBuiltinModels(provider) as readonly Model<Api>[]
+      const completions = catalog.find(model => model.api === 'openai-completions')
+      const responses = catalog.find(model => model.api === 'openai-responses')
+      if (completions !== undefined && responses !== undefined) {
+        return { provider, completions, responses }
+      }
+    }
+    throw new Error('the installed catalog no longer ships a provider with both openai-completions and openai-responses models')
+  }
+
   it('applies route switches to every openai-completions model, entries winning per field', () => {
     const models = modelsOf({
       'acme-gateway': {
@@ -910,19 +956,16 @@ describe('compat switches', () => {
   })
 
   it('skips models of other protocols on a mixed route instead of failing them', () => {
-    // xai ships both completions and responses models, so a route-level switch
-    // must land on the former without invalidating the latter.
-    const catalog = getBuiltinModels('xai') as readonly Model<Api>[]
-    const completions = catalog.find(model => model.api === 'openai-completions')
-    const responses = catalog.find(model => model.api === 'openai-responses')
-    if (completions === undefined || responses === undefined) throw new Error('xai no longer ships a mixed catalog')
+    // A mixed catalog means a route-level completions-only switch must land on
+    // the completions model without invalidating the responses one.
+    const { provider, completions, responses } = mixedCompletionsAndResponses()
 
     const models = modelsOf({
-      xai: {
+      [provider]: {
         compat: { supportsReasoningEffort: false },
         models: [{ id: completions.id }, { id: responses.id }],
       },
-    }, 'xai')
+    }, provider)
 
     expect((models.get(completions.id)?.compat as OpenAICompletionsCompat).supportsReasoningEffort).toBe(false)
     expect(models.get(responses.id)?.compat).toEqual(responses.compat)
@@ -991,18 +1034,15 @@ describe('compat switches', () => {
   })
 
   it('lands each route switch only on the models whose protocol declares it', () => {
-    const catalog = getBuiltinModels('xai') as readonly Model<Api>[]
-    const completions = catalog.find(model => model.api === 'openai-completions')
-    const responses = catalog.find(model => model.api === 'openai-responses')
-    if (completions === undefined || responses === undefined) throw new Error('xai no longer ships a mixed catalog')
+    const { provider, completions, responses } = mixedCompletionsAndResponses()
 
     const models = modelsOf({
-      xai: {
+      [provider]: {
         // Both protocols take the first switch; only completions takes the second.
         compat: { supportsDeveloperRole: false, thinkingFormat: 'openai' },
         models: [{ id: completions.id }, { id: responses.id }],
       },
-    }, 'xai')
+    }, provider)
 
     const onCompletions = models.get(completions.id)?.compat as OpenAICompletionsCompat
     expect(onCompletions.supportsDeveloperRole).toBe(false)
@@ -1045,6 +1085,7 @@ describe('compat switches', () => {
             supportsFinishReason: false,
             thinkingFormat: 'baseten',
             chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
+            thinkingTokenBudgetField: 'thinking_budget',
             supportsThinkingTokenBudget: true,
           },
         }],
@@ -1055,6 +1096,7 @@ describe('compat switches', () => {
       supportsFinishReason: false,
       thinkingFormat: 'baseten',
       chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
+      thinkingTokenBudgetField: 'thinking_budget',
       supportsThinkingTokenBudget: true,
     })
   })
@@ -1184,7 +1226,11 @@ describe('compat switches', () => {
   })
 
   it('refuses compat keys pi-ai’s catalog owns, pointing at the catalog route', () => {
-    for (const compat of [{ openRouterRouting: {} }, { supportsAdditionalTools: true }]) {
+    for (const compat of [
+      { openRouterRouting: {} },
+      { supportsAdditionalTools: true },
+      { allowedFallbackModels: [] },
+    ]) {
       expect(() => resolveProfiles({
         'acme-gateway': {
           api: 'openai-completions',
