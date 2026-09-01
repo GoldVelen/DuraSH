@@ -1,12 +1,14 @@
 /** Recorded-session replay through the shipped headless `dsh` profile. */
 
 import { cp, copyFile, mkdir, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import yaml from 'js-yaml'
+import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import ts from 'typescript'
 import {
   captureExpectedWorkspaceSnapshot,
@@ -40,6 +42,7 @@ import {
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import { parseSessionLog } from '@deepseek-ai/dsh-llm-replay'
+import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const snapshotsRoot = fileURLToPath(new URL('./', import.meta.url))
@@ -84,6 +87,21 @@ interface SessionLog {
   readonly content: string
   readonly header: JsonObject
 }
+
+const PWSH_SNAPSHOT_DISABLED_TOOL_ROWS = [
+  'tool-fs',
+  'tool-fs-search',
+  'plan-mode',
+  'tool-subagent-control',
+  'tool-subagent-list-agents',
+  'tool-subagent',
+  'tool-subagent-fork',
+  'tool-workflow',
+  'tool-todo',
+  'tool-ralph',
+  'tool-str-replace-editor',
+  'tool-web',
+] as const
 
 function propertyName(node: ts.PropertyName): string | undefined {
   if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text
@@ -288,6 +306,18 @@ function finalTextFromSession(log: string): string {
   return (content as JsonObject[])
     .flatMap(block => block.type === 'text' && typeof block.text === 'string' ? [block.text] : [])
     .join('')
+}
+
+function patchRows(path: string): Map<string, { disabled?: unknown }> {
+  const parsed = yaml.load(readFileSync(path, 'utf8'), { schema: entryListSchema })
+  if (!Array.isArray(parsed)) throw new Error(`${path}: snapshot patch must parse to an entry array`)
+  return new Map(parsed
+    .filter((entry): entry is { id: string; disabled?: unknown } => (
+      typeof entry === 'object'
+      && entry !== null
+      && typeof (entry as { id?: unknown }).id === 'string'
+    ))
+    .map(entry => [entry.id, entry]))
 }
 
 function turnReasonFromSession(log: string): JsonObject | undefined {
@@ -551,6 +581,27 @@ describe('headless recorded-session snapshots', () => {
     }
   })
 
+  it.each([
+    ['pwsh-tool-turn', 'cordis.yml', ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
+    ['pwsh-tool-turn', 'cordis.snapshot.yml', ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
+    ['persistent-pwsh-tool-turn', 'cordis.yml', ['tool-pwsh-persistent', 'tool-result-pruner']],
+    ['persistent-pwsh-tool-turn', 'cordis.snapshot.yml', ['tool-pwsh-persistent', 'tool-result-pruner']],
+  ] as const)('isolates %s through %s without requiring PowerShell', (scenario, patch, expected) => {
+    const load = (file: string) => loadOverlayPatches('headless snapshot', join(repoRoot, file))
+    const rows = composeEntries([
+      load('packages/bundle/base/cordis.patch.yml'),
+      load('packages/bundle/headless/cordis.patch.yml'),
+      load('snapshots/session/text-turn/cordis.yml'),
+      load(`snapshots/session/${scenario}/${patch}`),
+      load('snapshots/session/text-turn/model.cordis.yml'),
+    ])
+    const activeToolRows = rows
+      .filter(row => row.disabled !== true && (String(row.id).startsWith('tool-') || row.id === 'plan-mode'))
+      .map(row => String(row.id))
+      .sort()
+    expect(activeToolRows).toEqual(expected)
+  })
+
   it('recognizes the supported OS-assigned listener forms', () => {
     expect(listenerPortViolations('accepted.mjs', [
       "server.listen(0, '127.0.0.1')",
@@ -638,6 +689,19 @@ describe('headless recorded-session snapshots', () => {
       'third',
       '',
     ].join('\n'))
+  })
+
+  it('keeps the pwsh snapshot compositions tool-narrow even without a local pwsh runtime', () => {
+    for (const scenarioName of ['pwsh-tool-turn', 'persistent-pwsh-tool-turn'] as const) {
+      const scenario = scenarioByName.get(scenarioName)
+      if (scenario === undefined) throw new Error(`missing scenario ${scenarioName}`)
+      for (const patchName of ['cordis.yml', 'cordis.snapshot.yml'] as const) {
+        const rows = patchRows(join(scenario.dir, patchName))
+        for (const id of PWSH_SNAPSHOT_DISABLED_TOOL_ROWS) {
+          expect(rows.get(id)?.disabled, `${scenarioName}/${patchName}: ${id}`).toBe(true)
+        }
+      }
+    }
   })
 
   for (const scenario of scenarios) {
