@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-01-grok-46-xhigh-from-installed-catalog.md
+2026-09-01-grok-46-xhigh-from-installed-catalog.md: e20d92ff5166c85b43a6c1a9cd84886c9c893b2f
+2026-09-01-grok-46-xhigh-from-installed-catalog.zh.md: 1a4512dc83aa8edc9901b9ee3ec362cf691e01e6

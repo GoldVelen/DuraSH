@@ -126,6 +126,19 @@ const MAX_TOKENS_FIELD_GATE: Record<PiAiMaxTokensField, true> = {
 /** The output-cap field spellings a profile may name. */
 export const MAX_TOKENS_FIELDS = Object.keys(MAX_TOKENS_FIELD_GATE) as readonly PiAiMaxTokensField[]
 
+/** The top-level reasoning-cap field spellings pi-ai accepts. */
+export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['thinkingTokenBudgetField']>
+
+/** Drift gate over {@link PiAiThinkingTokenBudgetField}; an upstream spelling added here fails compilation until named. */
+const THINKING_TOKEN_BUDGET_FIELD_GATE: Record<PiAiThinkingTokenBudgetField, true> = {
+  thinking_token_budget: true,
+  thinking_budget: true,
+  thinking_budget_tokens: true,
+}
+
+/** The top-level reasoning-cap field spellings a profile may name. */
+export const THINKING_TOKEN_BUDGET_FIELDS = Object.keys(THINKING_TOKEN_BUDGET_FIELD_GATE) as readonly PiAiThinkingTokenBudgetField[]
+
 /** The prompt-cache marker conventions pi-ai accepts. */
 export type PiAiCacheControlFormat = NonNullable<OpenAICompletionsCompat['cacheControlFormat']>
 
@@ -144,6 +157,7 @@ export type PiAiChatTemplateVar = Extract<ChatTemplateKwargValue, { $var: string
 const CHAT_TEMPLATE_VAR_GATE: Record<PiAiChatTemplateVar, true> = {
   'thinking.enabled': true,
   'thinking.effort': true,
+  'thinking.budget': true,
 }
 
 /** The request-state placeholders a profile may name. */
@@ -229,6 +243,7 @@ const COMPLETIONS_COMPAT_GATE = {
   thinkingFormat: 'offer',
   chatTemplateKwargs: 'offer',
   chatTemplateArgs: 'offer',
+  thinkingTokenBudgetField: 'offer',
   supportsThinkingTokenBudget: 'offer',
   supportsStrictMode: 'offer',
   cacheControlFormat: 'offer',
@@ -263,6 +278,7 @@ const ANTHROPIC_COMPAT_GATE = {
   forceAdaptiveThinking: 'offer',
   allowEmptySignature: 'offer',
   supportsStrictTools: 'offer',
+  allowedFallbackModels: 'withhold',
   sendSessionAffinityHeaders: 'withhold',
   supportsToolReferences: 'withhold',
 } as const satisfies Record<keyof AnthropicMessagesCompat, CompatDisposition>
@@ -378,7 +394,18 @@ export interface PiAiCompatProfile {
   chatTemplateKwargs?: NonNullable<OpenAICompletionsCompat['chatTemplateKwargs']>
   /** Arguments sent as `chat_template_args` under the `baseten` thinking format; `openai-completions`. */
   chatTemplateArgs?: NonNullable<OpenAICompletionsCompat['chatTemplateArgs']>
-  /** Whether the endpoint accepts `thinking_token_budget` to cap vLLM reasoning; `openai-completions`. */
+  /**
+   * Top-level request field that caps reasoning tokens from `thinkingBudgets`;
+   * `openai-completions`. `"thinking_token_budget"` is vLLM, `"thinking_budget"`
+   * is Qwen/DashScope/SGLang, `"thinking_budget_tokens"` is llama.cpp. The
+   * installed catalog does not set this, so a private gateway that shares
+   * `max_tokens` between reasoning and the answer must name it.
+   */
+  thinkingTokenBudgetField?: PiAiThinkingTokenBudgetField
+  /**
+   * Whether the endpoint accepts `thinking_token_budget` to cap vLLM reasoning;
+   * `openai-completions`. Alias of `thinkingTokenBudgetField: "thinking_token_budget"`.
+   */
   supportsThinkingTokenBudget?: boolean
   /**
    * Whether the endpoint accepts `strict` in tool definitions;

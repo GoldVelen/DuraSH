@@ -41,10 +41,18 @@ describe('reasoning schema boundary', () => {
       compat: {
         supportsFinishReason: false,
         thinkingFormat: 'baseten',
-        chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
+        chatTemplateArgs: {
+          enable_thinking: { $var: 'thinking.enabled' },
+          thinking_budget: { $var: 'thinking.budget' },
+        },
+        thinkingTokenBudgetField: 'thinking_budget',
         supportsThinkingTokenBudget: true,
       },
     })).not.toThrow()
+  })
+
+  it('rejects a thinking-token-budget field outside the offered set', () => {
+    expect(configWith({ compat: { thinkingTokenBudgetField: 'max_tokens' } })).toThrow(/expected/)
   })
 })
 
