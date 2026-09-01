@@ -13,24 +13,29 @@ import type {
   ReliabilityThinking,
 } from '@durash/dsh-reliability-policy/client'
 
+/** Host RPC methods used to read and replace one Session's reliability policy. */
 export interface ReliabilityPolicyRemote {
   policy: (request: { sessionId: SessionId }) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
   ensurePolicy: (request: { sessionId: SessionId }) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
   configure: (request: ReliabilityPolicyConfigureRequest) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
 }
 
+/** Loading phase for one Session policy in the browser controller. */
 export type ReliabilityLoadStatus = 'cold' | 'loading' | 'ready' | 'error' | 'configuring'
 
+/** Current request state, failure message, and last policy snapshot for one Session. */
 export interface ReliabilitySessionState {
   readonly status: ReliabilityLoadStatus
   readonly error: string | null
   readonly policy: ReliabilityPolicySnapshot
 }
 
+/** Immutable per-Session policy view published to renderer subscribers. */
 export interface ReliabilityControllerView {
   sessions: ReadonlyMap<SessionId, ReliabilitySessionState>
 }
 
+/** Success or caller-visible failure returned by a controller action. */
 export type ReliabilityActionResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
@@ -77,6 +82,11 @@ function failureMessage(result: ReliabilityActionResult, fallback: string): stri
   return result.ok ? fallback : result.error.message
 }
 
+/**
+ * Browser-local Session policy cache and request coordinator. Each operation
+ * shares one in-flight request per Session, and late results do not publish
+ * after disposal.
+ */
 export class ReliabilityPolicyController implements HostObservable<ReliabilityControllerView> {
   private view = INITIAL
   private readonly listeners = new Set<() => void>()
@@ -95,10 +105,20 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return () => { this.listeners.delete(listener) }
   }
 
+  /**
+   * Read the current state for one Session.
+   * @param sessionId - Session to inspect.
+   * @returns the cached state, or a cold state when the Session has not loaded.
+   */
   sessionState(sessionId: SessionId): ReliabilitySessionState {
     return this.view.sessions.get(sessionId) ?? coldState(sessionId)
   }
 
+  /**
+   * Load the Host policy unless a ready value or matching read is available.
+   * @param sessionId - Session whose policy to load.
+   * @returns the action result; concurrent loads for the Session share one promise.
+   */
   loadPolicy(sessionId: SessionId): Promise<ReliabilityActionResult> {
     if (this.disposed) return Promise.resolve(DISPOSED)
     const state = this.sessionState(sessionId)
@@ -111,6 +131,11 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return request.finally(() => { this.loadPromises.delete(sessionId) })
   }
 
+  /**
+   * Ask the Host to fill missing lane selections when cached policy is incomplete.
+   * @param sessionId - Session whose policy to ensure.
+   * @returns the action result; concurrent ensures for the Session share one promise.
+   */
   ensurePolicy(sessionId: SessionId): Promise<ReliabilityActionResult> {
     if (this.disposed) return Promise.resolve(DISPOSED)
     const state = this.sessionState(sessionId)
@@ -126,6 +151,11 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return request.finally(() => { this.ensurePromises.delete(sessionId) })
   }
 
+  /**
+   * Replace one Session policy after validating the fields required for enablement.
+   * @param request - complete policy replacement.
+   * @returns the action result; a concurrent replacement for the Session joins the in-flight action.
+   */
   configure(request: ReliabilityPolicyConfigureRequest): Promise<ReliabilityActionResult> {
     if (this.disposed) return Promise.resolve(DISPOSED)
     const current = this.configurePromises.get(request.sessionId)
@@ -137,6 +167,11 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return pending.finally(() => { this.configurePromises.delete(request.sessionId) })
   }
 
+  /**
+   * Read the thinking efforts for a model from the cached Session catalogs.
+   * @param selector - persisted model selector, or `null` for no selection.
+   * @returns the matching effort list, or an empty list when no cached model matches.
+   */
   thinkingLevels(selector: string | null): readonly ReliabilityThinking[] {
     if (selector === null) return []
     for (const state of this.view.sessions.values()) {
@@ -146,6 +181,7 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     return []
   }
 
+  /** Stop listener delivery and ignore late Remote results without cancelling their requests. */
   dispose(): void {
     this.disposed = true
     this.listeners.clear()

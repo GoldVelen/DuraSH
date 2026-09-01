@@ -49,7 +49,12 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = Object.freeze({
   zai: 'Z.AI',
 })
 
-/** Split a persisted `provider/model` selector on the first slash. */
+/**
+ * Split a persisted `provider/model` selector on the first slash.
+ * @param selector - selector with non-empty provider and model components.
+ * @returns the provider route and remaining model id.
+ * @throws {Error} when either component is empty or the slash is absent.
+ */
 export function parseLaneSelector(selector: string): ReliabilityLaneRoute {
   const slash = selector.indexOf('/')
   if (slash <= 0 || slash === selector.length - 1) {
