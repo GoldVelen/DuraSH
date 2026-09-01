@@ -1,14 +1,12 @@
 /** Recorded-session replay through the shipped headless `dsh` profile. */
 
 import { cp, copyFile, mkdir, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import yaml from 'js-yaml'
-import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import ts from 'typescript'
 import {
   captureExpectedWorkspaceSnapshot,
@@ -96,6 +94,7 @@ const PWSH_SNAPSHOT_DISABLED_TOOL_ROWS = [
   'tool-subagent-list-agents',
   'tool-subagent',
   'tool-subagent-fork',
+  'tool-subagent-report',
   'tool-workflow',
   'tool-todo',
   'tool-ralph',
@@ -306,18 +305,6 @@ function finalTextFromSession(log: string): string {
   return (content as JsonObject[])
     .flatMap(block => block.type === 'text' && typeof block.text === 'string' ? [block.text] : [])
     .join('')
-}
-
-function patchRows(path: string): Map<string, { disabled?: unknown }> {
-  const parsed = yaml.load(readFileSync(path, 'utf8'), { schema: entryListSchema })
-  if (!Array.isArray(parsed)) throw new Error(`${path}: snapshot patch must parse to an entry array`)
-  return new Map(parsed
-    .filter((entry): entry is { id: string; disabled?: unknown } => (
-      typeof entry === 'object'
-      && entry !== null
-      && typeof (entry as { id?: unknown }).id === 'string'
-    ))
-    .map(entry => [entry.id, entry]))
 }
 
 function turnReasonFromSession(log: string): JsonObject | undefined {
@@ -582,17 +569,21 @@ describe('headless recorded-session snapshots', () => {
   })
 
   it.each([
-    ['pwsh-tool-turn', 'cordis.yml', ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
-    ['pwsh-tool-turn', 'cordis.snapshot.yml', ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
-    ['persistent-pwsh-tool-turn', 'cordis.yml', ['tool-pwsh-persistent', 'tool-result-pruner']],
-    ['persistent-pwsh-tool-turn', 'cordis.snapshot.yml', ['tool-pwsh-persistent', 'tool-result-pruner']],
-  ] as const)('isolates %s through %s without requiring PowerShell', (scenario, patch, expected) => {
+    ['pwsh-tool-turn', 'cordis.yml', PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
+    ['pwsh-tool-turn', 'cordis.snapshot.yml', PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
+    ['persistent-pwsh-tool-turn', 'cordis.yml', [...PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, 'tool-jobs', 'tool-pwsh'], ['tool-pwsh-persistent', 'tool-result-pruner']],
+    ['persistent-pwsh-tool-turn', 'cordis.snapshot.yml', [...PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, 'tool-jobs', 'tool-pwsh'], ['tool-pwsh-persistent', 'tool-result-pruner']],
+  ] as const)('isolates %s through %s without requiring PowerShell', (scenario, patch, disabledRows, expected) => {
     const load = (file: string) => loadOverlayPatches('headless snapshot', join(repoRoot, file))
+    const scenarioPatch = load(`snapshots/session/${scenario}/${patch}`)
+    for (const id of disabledRows) {
+      expect(scenarioPatch.find(row => row.id === id)?.disabled, `${scenario}/${patch}: ${id}`).toBe(true)
+    }
     const rows = composeEntries([
       load('packages/bundle/base/cordis.patch.yml'),
       load('packages/bundle/headless/cordis.patch.yml'),
       load('snapshots/session/text-turn/cordis.yml'),
-      load(`snapshots/session/${scenario}/${patch}`),
+      scenarioPatch,
       load('snapshots/session/text-turn/model.cordis.yml'),
     ])
     const activeToolRows = rows
@@ -689,19 +680,6 @@ describe('headless recorded-session snapshots', () => {
       'third',
       '',
     ].join('\n'))
-  })
-
-  it('keeps the pwsh snapshot compositions tool-narrow even without a local pwsh runtime', () => {
-    for (const scenarioName of ['pwsh-tool-turn', 'persistent-pwsh-tool-turn'] as const) {
-      const scenario = scenarioByName.get(scenarioName)
-      if (scenario === undefined) throw new Error(`missing scenario ${scenarioName}`)
-      for (const patchName of ['cordis.yml', 'cordis.snapshot.yml'] as const) {
-        const rows = patchRows(join(scenario.dir, patchName))
-        for (const id of PWSH_SNAPSHOT_DISABLED_TOOL_ROWS) {
-          expect(rows.get(id)?.disabled, `${scenarioName}/${patchName}: ${id}`).toBe(true)
-        }
-      }
-    }
   })
 
   for (const scenario of scenarios) {
