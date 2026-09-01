@@ -20,7 +20,7 @@ DuraSH 自有的六个包——`@durash/dsh-web-profile`、`@durash/dsh-client-u
 
 继承的 Issue lifecycle 与 PR policy job 将 `deepseek-harness/deepseek-harness` 声明为唯一适用仓库。下游仓库会在 checkout、令牌创建或 policy 执行前跳过这些 job；它不会把自己无法管理的 Project 状态报告成 policy 通过。Python runtime workflow 在每个仓库中都保留完整的无密钥 installed-wheel 矩阵。real-API 预检与在线 smoke 步骤只适用于符合条件的 `deepseek-harness/deepseek-harness` CI；canonical 路径缺少外部密钥时仍会失败，而 fork、Dependabot 与下游运行不会请求该密钥。
 
-继承的 PR CI 只在 `deepseek-harness/deepseek-harness` 中选择上游企业 runner 或自托管故障转移池。下游仓库会在 `ubuntu-24.04` 与 `windows-2025` 上运行相同代码门禁，而且上游故障转移变量不会改变这些 job 的 runner。Cloudflare 预览 job 会在 checkout 或读取凭据前限定为仅 canonical 仓库运行，因为其 Pages 项目与 Access 凭据都属于上游仓库。
+继承的 PR CI 只在 `deepseek-harness/deepseek-harness` 中选择上游企业 runner 或自托管故障转移池。下游仓库会在标准 `ubuntu-24.04` 与 `windows-2025` runner 上运行相同代码门禁；其外层门禁调度器、覆盖率分区、Vitest 进程、快照、代码检查器与包检查使用下游 worker 预算，而不沿用 canonical 仓库的 16 核配置。上游故障转移变量既不会改变这些 job 的 runner，也不会重新放大其并发。Cloudflare 预览 job 会在 checkout 或读取凭据前限定为仅 canonical 仓库运行，因为其 Pages 项目与 Access 凭据都属于上游仓库。
 
 历史可靠性行为只有在当前 workflow 接口上重建后，才能进入“已实现”声明。`INTEGRATION_STATUS.md` 是区分继承、已实现、已准备与未迁移状态的权威来源。
 

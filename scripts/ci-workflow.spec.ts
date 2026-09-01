@@ -78,6 +78,35 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} must have a portable downstream fallback`).toContain("|| 'windows-2025'")
     }
 
+    // A portable label is not enough: the inherited worker counts were sized
+    // for 16-core private pools. Every nested pool that can multiply work on a
+    // standard downstream runner must carry the same repository split.
+    const downstreamBudgets = [
+      ['node-24', 'DSH_GATE_CONCURRENCY', "'4'"],
+      ['node-24-coverage', 'DSH_COVERAGE_MAX_WORKERS', "'3'"],
+      ['node-24-coverage', 'DSH_COVERAGE_PARTITIONS', "'2'"],
+      ['node-24-coverage', 'DSH_GATE_CONCURRENCY', "'2'"],
+      ['node-24-consumers', 'DSH_GATE_CONCURRENCY', "'2'"],
+      ['node-24-consumers', 'DSH_OXLINT_THREADS', "'2'"],
+      ['node-24-consumers', 'DSH_PUBLINT_CONCURRENCY', "'2'"],
+      ['node-24-consumers', 'DSH_WEB_SNAPSHOT_WORKERS', "'2'"],
+      ['node-24-consumers', 'DSH_SNAPSHOT_MAX_CONCURRENCY', "'2'"],
+      ['node-24-consumers', 'VITEST_MAX_WORKERS', "'2'"],
+      ['windows-coverage', 'DSH_COVERAGE_MAX_WORKERS', "'3'"],
+      ['windows-coverage', 'DSH_COVERAGE_PARTITIONS', "'2'"],
+      ['windows-coverage', 'DSH_GATE_CONCURRENCY', "'2'"],
+      ['windows-observational', 'DSH_GATE_CONCURRENCY', "'2'"],
+      ['windows-observational', 'DSH_PUBLINT_CONCURRENCY', "'2'"],
+    ] as const
+    for (const [jobName, name, downstreamValue] of downstreamBudgets) {
+      const env = workflowJobEnvironment(workflow, jobName)
+      const value = env[name]
+      expect(typeof value, `${jobName}.${name} must be a repository-aware expression`).toBe('string')
+      expect(value as string).toContain('github.repository')
+      expect(value as string).toContain(canonicalRepository)
+      expect(value as string).toContain(downstreamValue)
+    }
+
     const aggregate = workflowJob(workflow, 'all-checks-passed')
     expect(aggregate.if).toBe("always() && github.event_name == 'pull_request'")
     expect(aggregate['runs-on']).toContain(canonicalPredicate)
@@ -188,9 +217,11 @@ describe('CI workflow', () => {
       expect(install!.run).not.toContain('$cloneFlag')
     }
 
-    // windows-coverage uses the lower 4-partition profile.
+    // windows-coverage keeps four canonical partitions and lowers a standard
+    // downstream runner to two.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '4' })
+    expect(workflowJobEnvironment(workflow, 'windows-coverage').DSH_COVERAGE_PARTITIONS)
+      .toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' && '4' || '2' }}")
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -888,6 +919,12 @@ function workflowJob(workflow: Record<string, unknown>, job: string): Record<str
     throw new TypeError(`workflow must define the ${job} job`)
   }
   return workflow.jobs[job]
+}
+
+function workflowJobEnvironment(workflow: Record<string, unknown>, job: string): Record<string, unknown> {
+  const env = workflowJob(workflow, job).env
+  if (!isRecord(env)) throw new TypeError(`workflow job ${job} must define env`)
+  return env
 }
 
 function collectStrings(value: unknown): string[] {
