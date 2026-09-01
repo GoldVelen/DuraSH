@@ -24,6 +24,7 @@ import { z } from 'zod'
 import type {
   AuthorizationAttemptView, AuthorizationDescribeValue, AuthorizationPromptView,
 } from './types.ts'
+import { parseRemoteRequest } from './remote-request.ts'
 
 const credentialKeySchema = z.string().regex(
   /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/,
@@ -43,19 +44,6 @@ const respondRequestSchema = z.object({
   { message: 'exactly one of value or declined is required' },
 )
 const cancelRequestSchema = z.object({ key: credentialKeySchema })
-
-/** Parse the domain constraints that are more specific than generated TypeScript codecs. */
-function parseRequest<T>(method: string, schema: z.ZodType<T>, value: unknown): T {
-  const parsed = schema.safeParse(value)
-  if (!parsed.success) {
-    throw new RemoteError(
-      'gateway/bad-request',
-      `invalid payload for ${method}`,
-      { issues: parsed.error.issues },
-    )
-  }
-  return parsed.data
-}
 
 /** Notices retained per attempt; older entries fall off as the flow reports more. */
 const MAX_NOTICES = 50
@@ -256,7 +244,7 @@ export class AuthorizationController extends TypertRemoteService {
    * reported `NOT_COMMITTED`.
    */
   private beginAttempt(request: { key: string; method?: string }): { started: true } {
-    const parsed = parseRequest('authorization.begin', beginRequestSchema, request)
+    const parsed = parseRemoteRequest('authorization.begin', beginRequestSchema, request)
     let branded
     try {
       branded = parseCredentialKey(parsed.key)
@@ -323,7 +311,7 @@ export class AuthorizationController extends TypertRemoteService {
 
   /** Deliver one answer (or decline) to the pending prompt of a running attempt. */
   private answerPrompt(request: { key: string; promptId: string; value?: string; declined?: true }): void {
-    const parsed = parseRequest('authorization.respond', respondRequestSchema, request)
+    const parsed = parseRemoteRequest('authorization.respond', respondRequestSchema, request)
     const record = this.runningFor(parsed.key)
     if (record.pending === undefined || record.pending.id !== parsed.promptId) {
       throw new RemoteError(
@@ -350,7 +338,7 @@ export class AuthorizationController extends TypertRemoteService {
 
   /** Withdraw the running attempt for a parsed key. */
   private withdraw(request: { key: string }): void {
-    const parsed = parseRequest('authorization.cancel', cancelRequestSchema, request)
+    const parsed = parseRemoteRequest('authorization.cancel', cancelRequestSchema, request)
     let branded
     try {
       branded = parseCredentialKey(parsed.key)

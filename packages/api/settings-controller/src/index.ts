@@ -26,6 +26,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
 import { AuthorizationController } from './authorization.ts'
 import { CredentialsController } from './credentials.ts'
+import { parseRemoteRequest } from './remote-request.ts'
 import type { AgentPresetDirectoryOpenValue, SettingsDocumentOpenValue } from './types.ts'
 
 export { AuthorizationController } from './authorization.ts'
@@ -266,12 +267,9 @@ export class SettingsController extends TypertRemoteService {
     input: Record<string, JsonValue> | SettingsPathOpView[],
     expectedRevision: number | undefined,
   ): Promise<SettingsNamespaceView> {
-    const parsed = settingsNamespaceRequestSchema.safeParse({ ns })
-    if (!parsed.success) {
-      throw new RemoteError('gateway/bad-request', `invalid payload for settings.${mode}`, { issues: parsed.error.issues })
-    }
+    const parsed = parseRemoteRequest(`settings.${mode}`, settingsNamespaceRequestSchema, { ns })
     const settings = this.provider()
-    const namespace = parsed.data.ns
+    const namespace = parsed.ns
     try {
       if (mode === 'update') await settings.update(namespace, input, expectedRevision)
       else if (mode === 'replace') await settings.replace(namespace, input, expectedRevision)

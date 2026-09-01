@@ -11,6 +11,7 @@ import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { CredentialInfo } from '@deepseek-ai/dsh-credentials/types'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
+import { parseRemoteRequest } from './remote-request.ts'
 
 /**
  * Fan-out bound on one remote `describe` batch. A settings page asks about the
@@ -25,15 +26,6 @@ const describeRequestSchema = z.object({
 })
 const setRequestSchema = z.object({ ref: credentialRefSchema, value: z.string().min(1) })
 const unsetRequestSchema = z.object({ ref: credentialRefSchema })
-
-/** Parse the domain constraints that are more specific than generated TypeScript codecs. */
-function parseRequest<T>(method: string, schema: z.ZodType<T>, value: unknown): T {
-  const parsed = schema.safeParse(value)
-  if (!parsed.success) {
-    throw new RemoteError('gateway/bad-request', `invalid payload for ${method}`, { issues: parsed.error.issues })
-  }
-  return parsed.data
-}
 
 /**
  * Copy exactly the fields {@link CredentialInfo} declares. The Gateway returns
@@ -81,7 +73,7 @@ export class CredentialsController extends TypertRemoteService {
    */
   @Remote
   async describe(refs: string[]): Promise<Record<string, CredentialInfo>> {
-    const request = parseRequest('credentials.describe', describeRequestSchema, { refs })
+    const request = parseRemoteRequest('credentials.describe', describeRequestSchema, { refs })
     const branded = request.refs.map(ref => [ref, credentialRef(ref)] as const)
     const credentials = this.provider()
     const entries = await Promise.all(branded.map(async ([ref, key]) =>
@@ -98,7 +90,7 @@ export class CredentialsController extends TypertRemoteService {
    */
   @Remote
   async set(ref: string, value: string): Promise<void> {
-    const request = parseRequest('credentials.set', setRequestSchema, { ref, value })
+    const request = parseRemoteRequest('credentials.set', setRequestSchema, { ref, value })
     const branded = credentialRef(request.ref)
     const credentials = this.provider()
     await this.write(request.ref, () => credentials.set(branded, request.value))
@@ -111,7 +103,7 @@ export class CredentialsController extends TypertRemoteService {
    */
   @Remote
   async unset(ref: string): Promise<void> {
-    const request = parseRequest('credentials.unset', unsetRequestSchema, { ref })
+    const request = parseRemoteRequest('credentials.unset', unsetRequestSchema, { ref })
     const branded = credentialRef(request.ref)
     const credentials = this.provider()
     await this.write(request.ref, () => credentials.unset(branded))
