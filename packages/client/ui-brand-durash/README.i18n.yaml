@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-brand-durash/README.md
-README.md: fa19df0f24af44a235c8ccec1cc5d15d66ada880
-README.zh.md: b0c6716c03b2b5817f5aec4d97e6d9cae595d7d7
+README.md: 6b0e2d357e3879ad7cb221015ac37772ae43ce83
+README.zh.md: f92314e11d246f86e912be0f46102e072e2dd45d

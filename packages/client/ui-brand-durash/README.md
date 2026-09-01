@@ -45,6 +45,8 @@ The SVG mark uses only geometric paths, so it stays independent from installed o
 
 Nested `ctx.slots.inject()` calls wait for all three declarations before registering the occupant set. Removing any declaration withdraws the complete set, and redeclaration restores it without leaving a mixed brand during HMR. The browser half lives in [`src/client/index.ts`](src/client/index.ts); the node half is an inert Loader seat. Browser title, favicon, manifest, and repository wordmark assets remain distribution-level concerns outside this package.
 
+No runtime invariant companion is published because the package retains no mutable state; slot disposal and redeclaration are covered by the browser composition test.
+
 </details>
 
 -----

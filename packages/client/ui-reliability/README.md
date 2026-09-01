@@ -35,7 +35,9 @@ Mount this plugin with the conversation input-left list and the reliability-poli
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-A process-wide controller caches per-Session snapshots. The dock loads on mount, ensures the catalog when the panel opens, and refuses to enable an incomplete selection. The panel is body-portaled and anchored above the composer through the shared positioning primitives; effort uses the shared portaled `Menu`, and the model directory has its own body portal so the panel's scroll region cannot clip either choice surface. Model listing is grouped by provider; a Cursor channel switch appears only when a `cursor` provider is in the catalog.
+A process-wide controller caches per-Session snapshots. The dock loads on mount, ensures the catalog when the panel opens, and refuses to enable an incomplete selection. The panel is body-portaled and anchored above the composer through the shared positioning primitives; effort uses the shared portaled `Menu`, and the model directory has its own body portal so the panel's scroll region cannot clip either choice surface. The panel and model picker use the shared prominent elevation stroke, neutral control outlines use the shared 0.5px hairline, and the status pill keeps circular corners. Model listing is grouped by provider; a Cursor channel switch appears only when a `cursor` provider is in the catalog.
+
+No runtime invariant companion is published because the Host policy service owns the authoritative state; this browser projection has no independent durable event stream or second state source.
 
 </details>
 

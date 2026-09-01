@@ -37,7 +37,7 @@ describe('generated tsconfig package aliases', () => {
     expect(aliases.find(alias => alias.specifier === '@durash/dsh-client-ui-brand')).toEqual({
       specifier: '@durash/dsh-client-ui-brand',
       source: './packages/client/ui-brand-durash/src',
-      hasInvariant: true,
+      hasInvariant: false,
     })
   })
 

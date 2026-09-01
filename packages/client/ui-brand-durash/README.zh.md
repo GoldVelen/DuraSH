@@ -45,6 +45,8 @@ SVG 标志只使用几何路径，因此不依赖已安装或远程托管的字�
 
 嵌套的 `ctx.slots.inject()` 调用会等待三个槽位声明全部就绪，再注册整组填充。任一声明消失时都会撤回完整集合，重新声明后再恢复，因此 HMR 期间不会留下混合品牌。浏览器半部位于 [`src/client/index.ts`](src/client/index.ts)；node 半部是一个惰性的 Loader 座位。浏览器标题、favicon、manifest 与仓库字标素材仍是本包之外的发行版级职责。
 
+本包不发布运行时 invariant companion，因为它不保留可变状态；浏览器组合测试覆盖 slot dispose 与重新声明。
+
 </details>
 
 -----

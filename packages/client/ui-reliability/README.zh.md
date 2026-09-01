@@ -35,7 +35,9 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-进程级控制器缓存每个会话的快照。芯片在挂载时加载，打开面板时 ensure 目录，并拒绝启用不完整的选择。面板通过 body portal 挂载，并借助共享定位 primitive 锚定在 composer 上方；思考强度使用共享的 portaled `Menu`，模型目录拥有自己的 body portal，因此面板滚动区不会裁剪任一选择界面。模型按提供方分组；只有目录里存在 `cursor` 提供方时才出现 Cursor 通道切换。
+进程级控制器缓存每个会话的快照。芯片在挂载时加载，打开面板时 ensure 目录，并拒绝启用不完整的选择。面板通过 body portal 挂载，并借助共享定位 primitive 锚定在 composer 上方；思考强度使用共享的 portaled `Menu`，模型目录拥有自己的 body portal，因此面板滚动区不会裁剪任一选择界面。面板和模型选择器使用共享的突出层级描边，中性控件轮廓使用共享的 0.5px 发丝线，状态圆点保持圆形圆角。模型按提供方分组；只有目录里存在 `cursor` 提供方时才出现 Cursor 通道切换。
+
+本包不发布运行时 invariant companion，因为 Host 策略服务拥有权威状态；该浏览器投影没有独立的持久事件流或第二状态源。
 
 </details>
 
