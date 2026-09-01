@@ -27,10 +27,17 @@ import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import WebSocket from 'ws'
+import { readVerifiedClientBuildEnvironment } from './client-build-record.ts'
 import { REPO_ROOT, connectFreshWorkspace, newEnglishPage, probeFreePort, requireDist, saveFailureShot } from './support.ts'
 
 const WEB_SURFACE_PROMPT = fileURLToPath(new URL('./expected/web-runtime-context/web-surface-prompt.expected.md', import.meta.url))
 const authenticatedCookies = new Map<string, Promise<{ origin: string; cookie: string }>>()
+
+/** Select the source runtime profile matching the complete client build under test. */
+function builtWebProfileArgs(): string[] {
+  const buildProfile = readVerifiedClientBuildEnvironment(REPO_ROOT).DSH_CLIENT_BUILD_PROFILE
+  return ['--profile', buildProfile === 'durash' ? 'durash' : 'web']
+}
 
 /** Exchange a printed process token once for Node-side HTTP/WebSocket probes. */
 function authenticatedWeb(launchUrl: string): Promise<{ origin: string; cookie: string }> {
@@ -301,7 +308,7 @@ describe('dsh web keyless CLI smoke', () => {
     const tsxLoader = pathToFileURL(createRequire(join(REPO_ROOT, 'package.json')).resolve('tsx')).href
     const child = spawn(
       process.execPath,
-      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), 'web', '--no-open', '--port', '0'],
+      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), ...builtWebProfileArgs(), '--no-open', '--port', '0'],
       {
         cwd: sessionsDir,
         env: {
@@ -424,7 +431,7 @@ describe('dsh web keyless CLI smoke', () => {
     const tsxLoader = pathToFileURL(createRequire(join(REPO_ROOT, 'package.json')).resolve('tsx')).href
     const child = spawn(
       process.execPath,
-      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), 'web', '--no-open', '--port', '0'],
+      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), ...builtWebProfileArgs(), '--no-open', '--port', '0'],
       {
         cwd: workspace,
         env: {
@@ -539,7 +546,7 @@ describe('dsh web keyless CLI smoke', () => {
     const tsxLoader = pathToFileURL(createRequire(join(REPO_ROOT, 'package.json')).resolve('tsx')).href
     const child = spawn(
       process.execPath,
-      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), 'web', '--no-open', '--port', '0'],
+      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), ...builtWebProfileArgs(), '--no-open', '--port', '0'],
       {
         cwd: workspace,
         env: {
@@ -624,7 +631,7 @@ describe('dsh web keyless CLI smoke', () => {
     const tsxLoader = pathToFileURL(createRequire(join(REPO_ROOT, 'package.json')).resolve('tsx')).href
     const child = spawn(
       process.execPath,
-      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), 'web', '--no-open', '--port', '0'],
+      ['--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), ...builtWebProfileArgs(), '--no-open', '--port', '0'],
       {
         cwd: workspace,
         env: {
@@ -689,7 +696,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
     child = spawn(
       process.execPath,
       [
-        '--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), 'web',
+        '--import', tsxLoader, join(REPO_ROOT, 'apps/cli/src/bin.ts'), ...builtWebProfileArgs(),
         // Launcher flags come first: the first token the launcher does not own
         // starts the web app's own arguments.
         // Pin the in-browser picker: the shipped `-auto` row would resolve to

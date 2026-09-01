@@ -180,6 +180,10 @@ jobs:
           || 'ubuntu-24.04' }}
     name: node 24 / snapshots and artifacts
     env:
+      # Built Web snapshots must exercise the repository's shipped client:
+      # canonical CI owns the official app, while downstream DuraSH owns its
+      # product overlay.
+      DSH_BUILD_CLIENT_PROFILE: ${{ github.repository == 'deepseek-harness/deepseek-harness' && 'official' || 'durash' }}
       # The canonical pool is a 16-core runner. Downstream repositories use a
       # 4-core standard runner, so both the outer aggregate and every nested
       # worker pool must use the downstream budget.
@@ -191,9 +195,9 @@ jobs:
       # Vitest otherwise sees all four downstream CPUs inside each concurrently
       # scheduled gate and can multiply the outer aggregate again.
       VITEST_MAX_WORKERS: ${{ github.repository != 'deepseek-harness/deepseek-harness' && '2' || '' }}
-      # A failing gate aborts its running siblings: a failing build stops the
-      # independent Node compatibility smoke, and a failing reader (e.g.
-      # publint) stops the remaining artifact consumers.
+      # A failing gate aborts its running siblings. Node compatibility settles
+      # before the repository build so their artifact writers cannot race; a
+      # failing reader (e.g. publint) stops the remaining consumers.
       DSH_GATE_FAIL_FAST: '1'
       # Failover halves canonical snapshot concurrency for the shared 64-core
       # VM; downstream standard runners keep two replay workers.

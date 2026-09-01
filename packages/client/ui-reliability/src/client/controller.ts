@@ -78,10 +78,6 @@ function transportFailure(error: unknown, fallback: string): ReliabilityActionFa
   }
 }
 
-function failureMessage(result: ReliabilityActionResult, fallback: string): string {
-  return result.ok ? fallback : result.error.message
-}
-
 /**
  * Browser-local Session policy cache and request coordinator. Each operation
  * shares one in-flight request per Session, and late results do not publish
@@ -191,26 +187,24 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
   }
 
   private async readPolicy(sessionId: SessionId, method: 'policy' | 'ensurePolicy'): Promise<ReliabilityActionResult> {
-    let result: ReliabilityActionResult
-    let snapshot: ReliabilityPolicySnapshot | undefined
+    let failure: ReliabilityActionFailure
     try {
       const carried = await this.remote[method]({ sessionId })
-      if (!carried.ok) result = { ok: false, error: carried.error }
+      if (!carried.ok) failure = { ok: false, error: carried.error }
       else if (carried.value.sessionId !== sessionId) {
-        result = { ok: false, error: { code: 'reliability_policy_session_mismatch', message: 'Host returned a workflow policy for another session' } }
+        failure = { ok: false, error: { code: 'reliability_policy_session_mismatch', message: 'Host returned a workflow policy for another session' } }
       } else {
-        snapshot = carried.value
-        result = OK
+        if (!this.disposed) this.publishSnapshot(sessionId, carried.value)
+        return OK
       }
     } catch (error) {
-      result = transportFailure(error, 'Workflow policy read failed')
+      failure = transportFailure(error, 'Workflow policy read failed')
     }
     if (!this.disposed) {
       const current = this.sessionState(sessionId)
-      if (result.ok && snapshot !== undefined) this.publishSnapshot(sessionId, snapshot)
-      else this.publishSession(sessionId, { ...current, status: 'error', error: failureMessage(result, 'Host returned no workflow policy') })
+      this.publishSession(sessionId, { ...current, status: 'error', error: failure.error.message })
     }
-    return result
+    return failure
   }
 
   private async writePolicy(request: ReliabilityPolicyConfigureRequest): Promise<ReliabilityActionResult> {
@@ -220,32 +214,28 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
         ok: false,
         error: { code: 'reliability_policy_incomplete', message: 'Select both models and efforts before enabling the workflow' },
       }
-      if (!this.disposed) {
-        const current = this.sessionState(request.sessionId)
-        this.publishSession(request.sessionId, { ...current, status: 'error', error: incomplete.error.message })
-      }
+      const current = this.sessionState(request.sessionId)
+      this.publishSession(request.sessionId, { ...current, status: 'error', error: incomplete.error.message })
       return incomplete
     }
-    let result: ReliabilityActionResult
-    let snapshot: ReliabilityPolicySnapshot | undefined
+    let failure: ReliabilityActionFailure
     try {
       const carried = await this.remote.configure(request)
-      if (!carried.ok) result = { ok: false, error: carried.error }
+      if (!carried.ok) failure = { ok: false, error: carried.error }
       else if (carried.value.sessionId !== request.sessionId) {
-        result = { ok: false, error: { code: 'reliability_policy_session_mismatch', message: 'Host returned a workflow policy for another session' } }
+        failure = { ok: false, error: { code: 'reliability_policy_session_mismatch', message: 'Host returned a workflow policy for another session' } }
       } else {
-        snapshot = carried.value
-        result = OK
+        if (!this.disposed) this.publishSnapshot(request.sessionId, carried.value)
+        return OK
       }
     } catch (error) {
-      result = transportFailure(error, 'Workflow policy update failed')
+      failure = transportFailure(error, 'Workflow policy update failed')
     }
     if (!this.disposed) {
       const current = this.sessionState(request.sessionId)
-      if (result.ok && snapshot !== undefined) this.publishSnapshot(request.sessionId, snapshot)
-      else this.publishSession(request.sessionId, { ...current, status: 'error', error: failureMessage(result, 'Host returned no workflow policy') })
+      this.publishSession(request.sessionId, { ...current, status: 'error', error: failure.error.message })
     }
-    return result
+    return failure
   }
 
   private publishSnapshot(sessionId: SessionId, snapshot: ReliabilityPolicySnapshot): void {

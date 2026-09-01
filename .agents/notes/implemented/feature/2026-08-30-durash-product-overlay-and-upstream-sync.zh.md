@@ -22,6 +22,8 @@ DuraSH 自有的六个包——`@durash/dsh-web-profile`、`@durash/dsh-client-u
 
 继承的 PR CI 只在 `deepseek-harness/deepseek-harness` 中选择上游企业 runner 或自托管故障转移池。下游仓库会在标准 `ubuntu-24.04` 与 `windows-2025` runner 上运行相同代码门禁；其外层门禁调度器、覆盖率分区、Vitest 进程、快照、代码检查器与包检查使用下游 worker 预算，而不沿用 canonical 仓库的 16 核配置。上游故障转移变量既不会改变这些 job 的 runner，也不会重新放大其并发。Cloudflare 预览 job 会在 checkout 或读取凭据前限定为仅 canonical 仓库运行，因为其 Pages 项目与 Access 凭据都属于上游仓库。
 
+消费者门禁还会选择仓库自有的客户端构建 profile：`deepseek-harness/deepseek-harness` 使用 `official`，下游使用 `durash`。Node 兼容性检查会先于该仓库构建完成，因为两者都会替换共享客户端产物。随后，构建后的 Web、HMR、CLI、PWA 与组合浏览器验收读取同一份已验证构建记录，因此运行时组合与产品身份不会静默分离。录制的 PowerShell 工具回合夹具会保留与其他已交付 profile 快照相同的权限、沙箱、审批及模型可见运行时上下文事件，因此回放能够发现静默漏掉这些段落的 profile。
+
 历史可靠性行为只有在当前 workflow 接口上重建后，才能进入“已实现”声明。`INTEGRATION_STATUS.md` 是区分继承、已实现、已准备与未迁移状态的权威来源。
 
 ## 考虑过的替代方案
@@ -35,4 +37,4 @@ DuraSH 自有的六个包——`@durash/dsh-web-profile`、`@durash/dsh-client-u
 
 ## 后果
 
-仓库具有较小、清晰的下游所有权表面、默认使用 DuraSH 的源码入口、DuraSH 专属构建与组合检查，以及重复追踪最新已验证上游的路径。源码启动保留私有 `durash` 产品组合，安装后的 `@deepseek-ai/dsh` 则只暴露其包已经进入公开发布 family 的 profile。自动化合并只组合可确定的配对记录，不会让语义冲突变为通过。组织自有的 Issue 与预览部署检查在 DuraSH 中会明确显示为不适用。下游代码门禁使用可用的标准 GitHub runner，Python 产物则在不假设上游提供商凭据的情况下保留跨平台 installed-wheel 证明，而符合条件的 canonical 路径仍会拒绝缺失的外部密钥。上游开发与官方产物命令保持显式，不继承产品默认值。GitHub 公共仓库创建后，仍需配置 Actions 与分支保护。品牌/profile 迁移不等于可靠性引擎迁移完成；后者仍是下一产品里程碑，不能提前对外宣传为已完成。
+仓库具有较小、清晰的下游所有权表面、默认使用 DuraSH 的源码入口、DuraSH 专属构建与组合检查，以及重复追踪最新已验证上游的路径。源码启动保留私有 `durash` 产品组合，安装后的 `@deepseek-ai/dsh` 则只暴露其包已经进入公开发布 family 的 profile。浏览器 profile 真正执行时会拒绝与记录中客户端身份冲突的产物，而 profile 帮助不会启动该客户端，因此仍然可用。自动化合并只组合可确定的配对记录，不会让语义冲突变为通过。组织自有的 Issue 与预览部署检查在 DuraSH 中会明确显示为不适用。下游代码门禁使用可用的标准 GitHub runner，Python 产物则在不假设上游提供商凭据的情况下保留跨平台 installed-wheel 证明，而符合条件的 canonical 路径仍会拒绝缺失的外部密钥。HMR 验收会恢复它修改过的全部客户端产物与构建记录，因此重复运行消费者门禁时仍会从同一组已验证产物开始。上游开发与官方产物命令保持显式，不继承产品默认值。GitHub 公共仓库创建后，仍需配置 Actions 与分支保护。品牌/profile 迁移不等于可靠性引擎迁移完成；后者仍是下一产品里程碑，不能提前对外宣传为已完成。

@@ -64,6 +64,14 @@ function Host({ open, side = 'bottom' }: { open: boolean; side?: 'top' | 'bottom
   )
 }
 
+/** Mount the hook without either target to cover an open portal's pre-ref commit. */
+function MissingTargets() {
+  const anchorRef = useRef<HTMLElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
+  useAnchoredPosition({ open: true, anchorRef, panelRef, gap: 4, margin: 12 })
+  return null
+}
+
 describe('useAnchoredPosition', () => {
   it('observes the panel and anchor while open and disconnects when it closes', () => {
     const made = stubResizeObserver()
@@ -96,6 +104,17 @@ describe('useAnchoredPosition', () => {
     vi.stubGlobal('ResizeObserver', undefined)
 
     expect(() => render(<Host open />)).not.toThrow()
+  })
+
+  it('does not observe targets before their refs are attached', () => {
+    const made = stubResizeObserver()
+    const ui = render(<MissingTargets />)
+
+    expect(made).toHaveLength(1)
+    expect(made[0]?.observed).toEqual([])
+
+    ui.unmount()
+    expect(made[0]?.disconnected).toBe(true)
   })
 
   it('attaches no listeners while the element is closed', () => {

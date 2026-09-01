@@ -31,12 +31,12 @@ import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 
 import type {
-  AuthorizationEntry, AuthorizationMethod, AuthorizationNotice, AuthorizationOutcome, AuthorizationPrompt,
+  AuthorizationEntry, AuthorizationMethods, AuthorizationNotice, AuthorizationOutcome, AuthorizationPrompt,
   AuthorizationSettlement,
 } from './types.ts'
 
 export type {
-  AuthorizationEntry, AuthorizationMethod, AuthorizationNotice, AuthorizationOutcome, AuthorizationPrompt,
+  AuthorizationEntry, AuthorizationMethod, AuthorizationMethods, AuthorizationNotice, AuthorizationOutcome, AuthorizationPrompt,
   AuthorizationPromptOption, AuthorizationSettlement, AuthorizationStatus,
 } from './types.ts'
 
@@ -126,7 +126,7 @@ export interface AuthorizationFlow {
    * first. Typed non-empty because a flow with nothing to run is a flow that
    * cannot be begun, and the type says so at the one place flows are written.
    */
-  readonly methods: readonly [AuthorizationMethod, ...AuthorizationMethod[]]
+  readonly methods: AuthorizationMethods
   /**
    * Run one attempt to obtain and commit the credential.
    * @param session - the chosen method, the cancellation signal, and the interaction callbacks.

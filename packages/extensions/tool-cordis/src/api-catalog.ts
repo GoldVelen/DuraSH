@@ -3668,11 +3668,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AuthorizationEntry',
-    declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
+    declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: AuthorizationMethods;\n    inFlight: boolean;\n}',
   },
   {
     name: 'AuthorizationFlow',
-    declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: readonly [\n        AuthorizationMethod,\n        ...AuthorizationMethod[]\n    ];\n    run(session: AuthorizationSession): Promise<void>;\n}',
+    declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: AuthorizationMethods;\n    run(session: AuthorizationSession): Promise<void>;\n}',
   },
   {
     name: 'AuthorizationFlowView',
@@ -3685,6 +3685,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AuthorizationMethod',
     declaration: 'export interface AuthorizationMethod {\n    id: string;\n    label: string;\n}',
+  },
+  {
+    name: 'AuthorizationMethods',
+    declaration: 'export type AuthorizationMethods = readonly [\n    AuthorizationMethod,\n    ...AuthorizationMethod[]\n];',
   },
   {
     name: 'AuthorizationNotice',

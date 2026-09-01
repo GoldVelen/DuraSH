@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-browser-sign-in-surface.md
-2026-08-31-browser-sign-in-surface.md: 4fe90c5754e41487967f169e489e952cf0079e22
-2026-08-31-browser-sign-in-surface.zh.md: 3807903ddc8f5af87f6ad7b3eb48e6440d06fe40
+2026-08-31-browser-sign-in-surface.md: ff90080bce94206c56b42fbf67e6f1f68206242a
+2026-08-31-browser-sign-in-surface.zh.md: 0dc1038b4cab12c4a43e690a991daaefcba7adaf

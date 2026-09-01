@@ -496,7 +496,7 @@ describe('WorkspaceRegistry create and lookup', () => {
     const reregistered = await result.registry.create(dir)
     expect(reregistered.id).not.toBe(workspace.id)
     expect(reregistered.path).toBe(dir)
-    expect(reregistered.sessionIds).toEqual([])
+    expect(reregistered.sessionIds).toEqual(['kept-session'])
   })
 
   it('rolls registry order and cache back when record deletion fails', async () => {
@@ -728,7 +728,7 @@ describe('Workspace session ordering', () => {
 })
 
 describe('header-validated membership projection', () => {
-  it('requires both candidate id and matching canonical cwd without re-reading on list()', async () => {
+  it('backfills matching canonical cwd and prunes stale candidates without re-reading on list()', async () => {
     const owned = await makeDir('owned')
     const elsewhere = await makeDir('projection-elsewhere')
     const id = WorkspaceId('00000000-0000-4000-8000-000000000001')
@@ -745,14 +745,14 @@ describe('header-validated membership projection', () => {
       ],
     })
     const workspace = result.registry.list()[0]!
-    expect(workspace.sessionIds).toEqual(['good'])
-    expect(result.registry.list()[0]!.sessionIds).toEqual(['good'])
+    expect(workspace.sessionIds).toEqual(['cwd-only', 'good'])
+    expect(result.registry.list()[0]!.sessionIds).toEqual(['cwd-only', 'good'])
     expect(result.list).toHaveBeenCalledTimes(1)
-    expect(storedRecord(pool, id).sessionIds).toEqual(['good', 'mismatch', 'missing'])
+    expect(storedRecord(pool, id).sessionIds).toEqual(['cwd-only', 'good', 'mismatch', 'missing'])
 
     await workspace.setTitle('pruned')
-    expect(storedRecord(pool, id).sessionIds).toEqual(['good'])
-    expect(workspace.sessionIds).not.toContain('cwd-only')
+    expect(storedRecord(pool, id).sessionIds).toEqual(['cwd-only', 'good'])
+    expect(workspace.sessionIds).toContain('cwd-only')
   })
 
   it('rejects duplicate candidate ownership, duplicate paths, and initialized order drift', async () => {

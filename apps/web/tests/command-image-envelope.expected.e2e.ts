@@ -7,26 +7,11 @@
 // consumes the images — serialized through the real draft-image chain into
 // the commands/execute payload — and clears the composer on success, including
 // when the image is the whole `/plan` task.
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, waitFor } from '@testing-library/react'
 import { expect, it } from 'vitest'
-import { installAssembledBootEnv, mountAssembledApp } from './assembled-boot.ts'
+import { installAssembledBootEnv, mountAssembledApp, startFixtureComposer } from './assembled-boot.ts'
 
 installAssembledBootEnv()
-
-/** Open a fresh fixture session and return its composer surface. */
-async function freshComposer(): Promise<HTMLElement> {
-  const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
-  const start = tree.querySelector<HTMLButtonElement>('button[aria-label="New session in fixture"]')
-  if (start === null) throw new Error('fixture Workspace new-session action missing')
-  fireEvent.click(start)
-  return await waitFor(() => {
-    const surface = document.querySelector<HTMLElement>(
-      '[data-composer-input][data-placeholder="Describe what you want to build... / commands, @ files or sessions"]',
-    )
-    if (surface === null) throw new Error('composer surface missing')
-    return surface
-  }, { timeout: 10_000 })
-}
 
 /** Type through the clipboard: jsdom carries no editable beforeinput; the
  * paste command inserts at the caret, committing a microtask later. */
@@ -55,7 +40,7 @@ async function pasteImage(textarea: HTMLElement, name: string): Promise<void> {
 
 it('refuses an image-carrying submit to a non-declaring command and keeps draft and images', async () => {
   mountAssembledApp()
-  const textarea = await freshComposer()
+  const textarea = await startFixtureComposer()
   await pasteImage(textarea, 'ref.png')
 
   // /echo is a leadingInput fixture command without `input.images`.
@@ -81,7 +66,7 @@ it('refuses an image-carrying submit to a non-declaring command and keeps draft 
 
 it('consumes images through a declaring command and clears the composer on success', async () => {
   mountAssembledApp()
-  const textarea = await freshComposer()
+  const textarea = await startFixtureComposer()
   await pasteImage(textarea, 'goal-ref.png')
 
   // /goal declares `input.images` in the fixture catalog; the claim submit
@@ -97,7 +82,7 @@ it('consumes images through a declaring command and clears the composer on succe
 
 it('submits a bare /plan with an image as an image-only plan request', async () => {
   mountAssembledApp()
-  const textarea = await freshComposer()
+  const textarea = await startFixtureComposer()
   await pasteImage(textarea, 'plan-task.png')
 
   // Trailing separator: a bare '/plan' leaves the caret on the token, where

@@ -14,6 +14,7 @@
     "apps/web/tests/streaming-fence-highlight.e2e.ts",
     "apps/web/tests/declared-reasoning.e2e.ts",
     "apps/web/tests/support.ts",
+    "apps/web/tests/client-build-record.ts",
     "apps/web/tests/scaffold-hermetic.e2e.ts",
     "apps/web/tests/startup-rpc-budget.e2e.ts",
     "apps/web/tests/minimal-preset.snapshot.ts",

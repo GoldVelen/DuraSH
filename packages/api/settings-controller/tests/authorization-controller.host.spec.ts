@@ -268,6 +268,34 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     await awaitSettled(controller, 'authorized')
   })
 
+  it('keeps a successor prompt visible when the prior prompt withdraws', async () => {
+    const gate = new Gate()
+    const first = new AbortController()
+    const controller = await boot({
+      prompt: async (session) => {
+        const withdrawn = session.prompt({
+          kind: 'text', message: 'First question', signal: first.signal,
+        }).catch(() => 'withdrawn')
+        const answer = session.prompt({ kind: 'text', message: 'Second question' })
+        first.abort()
+        await withdrawn
+        return answer
+      },
+      gate,
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    const attempt = (await controller.describe()).attempts[0]
+    expect(attempt?.pendingPrompt?.message).toBe('Second question')
+    await controller.respond({
+      key: KEY_WIRE,
+      promptId: attempt?.pendingPrompt?.id ?? '',
+      value: 'second answer',
+    })
+    gate.open()
+    await awaitSettled(controller, 'authorized')
+  })
+
   it('settles a declined prompt as cancelled', async () => {
     const gate = new Gate()
     const controller = await boot({
@@ -401,6 +429,36 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     expect(settled?.message).not.toContain('should-not-appear')
   })
 
+  it('omits invalid numeric metadata and stops at the cause-depth bound', async () => {
+    const controller = await boot({
+      prompt: () => {
+        let cause: Error = Object.assign(new Error('deepest'), { port: -1 })
+        for (let depth = 0; depth < 10; depth += 1) {
+          cause = new Error(`layer ${String(depth)}`, { cause })
+        }
+        Object.assign(cause, { port: -1 })
+        return Promise.reject(cause)
+      },
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'failed')
+    expect((await controller.describe()).attempts[0]?.message).not.toContain('port=')
+  })
+
+  it('renders a non-Error provider rejection without assuming an Error payload', async () => {
+    const controller = await boot({
+      prompt: async () => {
+        const failure: unknown = 'provider string failure'
+        throw failure
+      },
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'failed')
+    expect((await controller.describe()).attempts[0]?.message).toContain('provider string failure')
+  })
+
   it('redacts outer-message bearer tokens and OAuth query parameters from a failed attempt message', async () => {
     const controller = await boot({
       notify: (session) => { session.notify({ message: 'Open the page', url: 'https://example.test/login' }) },
@@ -475,6 +533,23 @@ describe('the authorization Remote namespace a sign-in surface calls', () => {
     expect(message).not.toContain('hidden-1')
     expect(message).not.toContain('hidden-5')
     expect(message.split('; ')).toHaveLength(4)
+  })
+
+  it('retains only the newest fifty notices from a chatty flow', async () => {
+    const controller = await boot({
+      notify: (session) => {
+        for (let index = 1; index <= 51; index += 1) {
+          session.notify({ message: `notice-${String(index)}` })
+        }
+      },
+    })
+
+    await controller.begin({ key: KEY_WIRE })
+    await awaitSettled(controller, 'authorized')
+    const notices = (await controller.describe()).attempts[0]?.notices ?? []
+    expect(notices).toHaveLength(50)
+    expect(notices[0]?.message).toBe('notice-2')
+    expect(notices.at(-1)?.message).toBe('notice-51')
   })
 
   it('rejects a respond payload naming neither value nor decline, as bad-request', async () => {

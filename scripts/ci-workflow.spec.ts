@@ -107,6 +107,9 @@ describe('CI workflow', () => {
       expect(value as string).toContain(downstreamValue)
     }
 
+    expect(workflowJobEnvironment(workflow, 'node-24-consumers').DSH_BUILD_CLIENT_PROFILE)
+      .toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' && 'official' || 'durash' }}")
+
     const aggregate = workflowJob(workflow, 'all-checks-passed')
     expect(aggregate.if).toBe("always() && github.event_name == 'pull_request'")
     expect(aggregate['runs-on']).toContain(canonicalPredicate)

@@ -1,5 +1,5 @@
 /** Optional `remote.authorization` binding: empty until the namespace is provided. */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { AuthorizationDescribeValue } from '@deepseek-ai/dsh-api-remotes/client'
 import { createSignInAuthorizationHandle } from '../src/client/sign-in-bind.ts'
@@ -63,5 +63,53 @@ describe('the Models sign-in authorization bind', () => {
     await expect(handle.wire.describe()).resolves.toEqual({
       ok: true, value: { flows: [], attempts: [] },
     })
+  })
+
+  it('keeps absent actions as no-ops and forwards begin/respond/cancel after binding', async () => {
+    const ctx = new Context()
+    const handle = createSignInAuthorizationHandle()
+    handle.attach(ctx)
+
+    await expect(handle.wire.begin({ key: 'llm-pi-ai/openai-codex' })).resolves.toEqual({
+      ok: true, value: { started: true },
+    })
+    await expect(handle.wire.respond({
+      key: 'llm-pi-ai/openai-codex',
+      promptId: 'prompt-1',
+      value: '123456',
+    })).resolves.toEqual({ ok: true, value: undefined })
+    await expect(handle.wire.cancel({ key: 'llm-pi-ai/openai-codex' })).resolves.toEqual({
+      ok: true, value: undefined,
+    })
+
+    const begin = vi.fn(async () => ({ ok: true as const, value: { started: true as const } }))
+    const respond = vi.fn(async () => ({ ok: true as const, value: undefined }))
+    const cancel = vi.fn(async () => ({ ok: true as const, value: undefined }))
+    await ctx.plugin({
+      apply: (child: Context) => {
+        child.provide('remote.authorization', {
+          ...fakeAuthorization(),
+          begin,
+          respond,
+          cancel,
+        })
+      },
+    })
+
+    await handle.wire.begin({ key: 'llm-pi-ai/openai-codex', method: 'oauth' })
+    await handle.wire.respond({
+      key: 'llm-pi-ai/openai-codex',
+      promptId: 'prompt-2',
+      declined: true,
+    })
+    await handle.wire.cancel({ key: 'llm-pi-ai/openai-codex' })
+
+    expect(begin).toHaveBeenCalledWith({ key: 'llm-pi-ai/openai-codex', method: 'oauth' })
+    expect(respond).toHaveBeenCalledWith({
+      key: 'llm-pi-ai/openai-codex',
+      promptId: 'prompt-2',
+      declined: true,
+    })
+    expect(cancel).toHaveBeenCalledWith({ key: 'llm-pi-ai/openai-codex' })
   })
 })

@@ -520,8 +520,7 @@ export class WorkspaceRegistry extends Service {
       for (const sessionId of record.sessionIds) accounted.set(sessionId, id)
     }
     for (const workspaceId of this.requireState().workspaceIds) {
-      const current = table.get(workspaceId)
-      if (current === undefined) continue
+      const current = table.get(workspaceId) as WorkspaceRecord
       const historical = this.historicalSessionIdsForPath(current.path)
         .filter((sessionId) => {
           const owner = accounted.get(sessionId)

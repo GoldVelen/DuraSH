@@ -95,11 +95,11 @@ async function waitForOutput(operation: TerminalSendOperation, expected: string,
   expect(output).toContain(expected)
 }
 
-// A send the test interrupts settles when bash returns to its prompt, so the
-// kernel may publish the foreground handoff on either side of the silence
-// bound. `handoffGraceMs` widens the window that wins the exact attribution but
-// cannot remove the race on a loaded host, so these settles assert that the
-// session became usable again, not which readiness tier observed it.
+// A completed command may expose the controlled prompt or exact provider state
+// on either side of the silence bound. `handoffGraceMs` widens that evidence
+// window but cannot remove the race on a loaded host, so these settles assert
+// that the session became usable again, not which documented readiness tier
+// observed it.
 function expectReadyForNextSend(waitReason: string): void {
   expect(['stdin_read', 'inferred_idle']).toContain(waitReason)
 }
@@ -334,7 +334,7 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
         text: '$env:KEEP = "ok"; Set-Location /',
         submit: true,
       })
-      expect((await first.done).waitReason).toBe('stdin_read')
+      expectReadyForNextSend((await first.done).waitReason)
       const second = ctx.terminals.startSend(agent, created.sessionId, {
         text: 'Write-Output "keep=$env:KEEP secret=$env:DSH_TEST_SECRET"',
         submit: true,

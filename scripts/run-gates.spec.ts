@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi, type MockInstance } from 'vitest'
+import { officialClientBuildEnvironment } from './client-build-environment.ts'
 import {
   cliGateOptions,
+  collectDescendants,
   defaultConcurrency,
   formatGateResultReason,
   gatesForMode,
@@ -490,6 +493,9 @@ describe('Node compatibility graph', () => {
         'scripts/vitest-environment.compat.spec.ts',
       ],
     })
+    expect(subject.find(item => item.id === 'build:web')?.env).toEqual(
+      officialClientBuildEnvironment(resolve(import.meta.dirname, '..')),
+    )
   })
 })
 
@@ -509,8 +515,8 @@ describe('Node 24 lane ownership', () => {
       source: 'ci-consumers gate count',
     })
     expect(subject.map(item => item.id)).toEqual([
-      'build',
       'node-compat',
+      'build',
       'publint',
       'built-package-invariants',
       'lint-and-duplication',
@@ -521,6 +527,7 @@ describe('Node 24 lane ownership', () => {
       'node-next-types',
       'built-bin-smoke',
     ])
+    expect(subject.find(item => item.id === 'build')?.needs).toEqual(['node-compat'])
     expect(subject.find(item => item.id === 'publint')?.needs).toEqual(['build'])
     expect(subject.find(item => item.id === 'build')?.env).toEqual({
       DSH_BUILD_CLIENT_PROFILE: 'official',
@@ -556,6 +563,7 @@ describe('Node 24 lane ownership', () => {
       displayCommand: 'DSH_SNAPSHOT=replay pnpm run test:web:built',
       env: { DSH_SNAPSHOT: 'replay' },
       after: [
+        'node-compat',
         'publint',
         'lint-and-duplication',
         'snapshot',
@@ -564,6 +572,18 @@ describe('Node 24 lane ownership', () => {
         'node-next-types',
         'built-bin-smoke',
       ],
+    })
+  })
+
+  it('builds the client profile selected by the owning repository without changing compatibility smoke', () => {
+    const subject = withEnv('DSH_BUILD_CLIENT_PROFILE', 'durash', () =>
+      withPnpmEntrypoint(() => gatesForMode('ci-consumers')))
+
+    expect(subject.find(item => item.id === 'build')?.env).toEqual({
+      DSH_BUILD_CLIENT_PROFILE: 'durash',
+    })
+    expect(subject.find(item => item.id === 'node-compat')?.env).toEqual({
+      DSH_BUILD_CLIENT_PROFILE: 'official',
     })
   })
 })
@@ -889,6 +909,16 @@ describe('process-table parsing', () => {
 
   it('drops blank and malformed lines', () => {
     expect(parsePidPpidLines('  123   1\n\ncommand not found\n999 abc\n')).toEqual([[123, 1]])
+  })
+
+  it('walks descendants once even when the table repeats or loops a pid', () => {
+    expect(collectDescendants(100, [
+      [201, 100],
+      [201, 100],
+      [302, 201],
+      [302, 302],
+      [403, 302],
+    ])).toEqual([201, 302, 403])
   })
 })
 

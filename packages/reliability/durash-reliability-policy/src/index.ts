@@ -240,16 +240,12 @@ export class ReliabilityPolicyService extends TypertRemoteService {
   private withDefaults(row: ReliabilityPolicyRow, models: readonly ReliabilityModelOption[]): ReliabilityPolicyRow {
     const first = models[0]
     if (first === undefined) return row
-    const preferredImplement = first.thinkingLevels.includes('high') ? 'high' : (first.thinkingLevels[0] ?? null)
-    const preferredReview = first.thinkingLevels.includes('xhigh')
-      ? 'xhigh'
-      : (first.thinkingLevels.includes('high') ? 'high' : (first.thinkingLevels[0] ?? null))
     return {
       ...row,
       implementationModel: row.implementationModel ?? first.selector,
-      implementationThinking: row.implementationThinking ?? preferredImplement,
+      implementationThinking: row.implementationThinking ?? 'high',
       reviewModel: row.reviewModel ?? first.selector,
-      reviewThinking: row.reviewThinking ?? preferredReview,
+      reviewThinking: row.reviewThinking ?? 'xhigh',
     }
   }
 
@@ -298,7 +294,7 @@ export class ReliabilityPolicyService extends TypertRemoteService {
 
   private queue<T>(sessionId: SessionId, work: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(sessionId) ?? Promise.resolve()
-    const current = previous.catch(() => undefined).then(work)
+    const current = previous.then(work)
     this.tails.set(sessionId, current.then(() => undefined, () => undefined))
     return current
   }

@@ -10,7 +10,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { CLIENT_BUILD_PROFILE_SELECTOR } from './client-build-environment.ts'
+import { CLIENT_BUILD_PROFILE_SELECTOR, officialClientBuildEnvironment } from './client-build-environment.ts'
 import { COVERAGE_EXEMPT_ENV, coverageExemptHeavySuites } from './coverage-exempt.ts'
 import {
   COVERAGE_PARTITIONS_ENV,
@@ -95,6 +95,7 @@ type GateExecutor = (gate: Gate, signal?: AbortSignal) => Promise<GateResult>
 type ResultObserver = (result: GateResult) => void
 
 const root = resolve(import.meta.dirname, '..')
+const officialClientEnvironment = officialClientBuildEnvironment(root)
 if (import.meta.main) {
   process.exitCode = await main(process.argv.slice(2))
 }
@@ -204,11 +205,14 @@ function pnpmScript(id: string, script: string, options: Partial<Gate> = {}): Ga
   }
 }
 
-/** Build official client artifacts inside a CI aggregate without changing sibling gate environments. */
+/** Build the selected client artifacts inside a CI aggregate without changing sibling gate environments. */
 function ciBuildGate(id = 'build', options: Partial<Gate> = {}): Gate {
+  const clientProfile = options.env?.[CLIENT_BUILD_PROFILE_SELECTOR]
+    ?? process.env[CLIENT_BUILD_PROFILE_SELECTOR]
+    ?? 'official'
   return pnpmScript(id, 'build', {
     ...options,
-    env: { ...options.env, [CLIENT_BUILD_PROFILE_SELECTOR]: 'official' },
+    env: { ...options.env, [CLIENT_BUILD_PROFILE_SELECTOR]: clientProfile },
   })
 }
 
@@ -352,6 +356,7 @@ function nodeCompatGates(): Gate[] {
     pnpmScript('build:web', 'build:web', {
       label: 'Web frontend build',
       needs: ['build'],
+      env: officialClientEnvironment,
     }),
     ...nodeCompatSmokeGates({ cliSmoke: true }),
   ]
@@ -440,10 +445,15 @@ function ciArtifactGates(): Gate[] {
 function ciConsumerGates(): Gate[] {
   const builtTree = ['build']
   const validatedBuild = ['built-package-invariants']
+  // Node 22 compatibility owns an official build. Let it settle before the
+  // repository-selected build writes the artifact set consumed below; the two
+  // builds both replace lib/ and apps/web/dist/ and must never run together.
   // The HMR web test starts `dev:web`, which rewrites the shared `lib/` and
-  // `apps/web/dist/` trees. Let every build-artifact reader settle before that
-  // writer starts; `after` preserves the web diagnostic even if a reader fails.
+  // `apps/web/dist/` trees. Let every sibling artifact reader and the nested
+  // node-compat rebuild settle before that writer starts; `after` preserves the
+  // web diagnostic even if another gate fails first.
   const buildArtifactReaders = [
+    'node-compat',
     'publint',
     'lint-and-duplication',
     'snapshot',
@@ -453,11 +463,11 @@ function ciConsumerGates(): Gate[] {
     'built-bin-smoke',
   ]
   return [
-    ciBuildGate(),
     pnpmScript('node-compat', 'check:node-compat', {
       label: 'Node compatibility',
       env: { [CLIENT_BUILD_PROFILE_SELECTOR]: 'official' },
     }),
+    ciBuildGate('build', { needs: ['node-compat'] }),
     pnpmScript('publint', 'publint', { needs: builtTree }),
     builtPackageInvariantsGate(builtTree),
     pnpmScript('lint-and-duplication', 'check:ci:lint:contracts-ready', {
@@ -1491,8 +1501,14 @@ export function taskkillArgs(rootPid: number, descendants: number[]): string[][]
   return [rootPid, ...descendants].map(pid => ['/PID', String(pid), '/T', '/F'])
 }
 
-/** Breadth-first walk of the pid/ppid rows starting at `root`. */
-function collectDescendants(root: number, rows: Array<[number, number]>): number[] {
+/**
+ * Walk each unique descendant in breadth-first order without trusting process
+ * table rows to be unique or acyclic.
+ * @param root - root pid whose descendants should be returned.
+ * @param rows - observed pid/parent-pid relationships.
+ * @returns each reachable descendant pid once, excluding the root.
+ */
+export function collectDescendants(root: number, rows: Array<[number, number]>): number[] {
   const byParent = new Map<number, number[]>()
   for (const [pid, ppid] of rows) {
     const children = byParent.get(ppid) ?? []
@@ -1500,12 +1516,16 @@ function collectDescendants(root: number, rows: Array<[number, number]>): number
     byParent.set(ppid, children)
   }
   const result: number[] = []
-  const queue = byParent.get(root) ?? []
+  const queue = [...(byParent.get(root) ?? [])]
+  const seen = new Set<number>([root])
   for (let index = 0; index < queue.length; index += 1) {
     const pid = queue[index]
-    if (pid === undefined) continue
+    if (pid === undefined || seen.has(pid)) continue
+    seen.add(pid)
     result.push(pid)
-    queue.push(...(byParent.get(pid) ?? []))
+    for (const child of byParent.get(pid) ?? []) {
+      if (!seen.has(child)) queue.push(child)
+    }
   }
   return result
 }

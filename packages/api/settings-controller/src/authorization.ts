@@ -34,6 +34,10 @@ const beginRequestSchema = z.object({
   key: credentialKeySchema,
   method: z.string().min(1).optional(),
 })
+type ParsedRespondRequest = { key: string; promptId: string } & (
+  | { value: string; declined?: undefined }
+  | { value?: undefined; declined: true }
+)
 const respondRequestSchema = z.object({
   key: credentialKeySchema,
   promptId: z.string().min(1),
@@ -42,7 +46,7 @@ const respondRequestSchema = z.object({
 }).refine(
   request => (request.value === undefined) !== (request.declined === undefined),
   { message: 'exactly one of value or declined is required' },
-)
+) as z.ZodType<ParsedRespondRequest>
 const cancelRequestSchema = z.object({ key: credentialKeySchema })
 
 /** Notices retained per attempt; older entries fall off as the flow reports more. */
@@ -245,18 +249,9 @@ export class AuthorizationController extends TypertRemoteService {
    */
   private beginAttempt(request: { key: string; method?: string }): { started: true } {
     const parsed = parseRemoteRequest('authorization.begin', beginRequestSchema, request)
-    let branded
-    try {
-      branded = parseCredentialKey(parsed.key)
-    } catch (error) {
-      throw new RemoteError(
-        'gateway/bad-request',
-        error instanceof Error ? error.message : String(error),
-        {},
-      )
-    }
+    const branded = parseCredentialKey(parsed.key)
     const entry = this.flowFor(branded)
-    const method = parsed.method ?? entry.methods[0]?.id ?? ''
+    const method = parsed.method ?? entry.methods[0].id
     if (!entry.methods.some(candidate => candidate.id === method)) {
       throw new RemoteError(
         'gateway/bad-request',
@@ -322,7 +317,7 @@ export class AuthorizationController extends TypertRemoteService {
     }
     const pending = record.pending
     if (parsed.declined === true) pending.fail(new AuthorizationDeclinedError())
-    else pending.settle(parsed.value ?? '')
+    else pending.settle(parsed.value)
   }
 
   /**
@@ -339,16 +334,7 @@ export class AuthorizationController extends TypertRemoteService {
   /** Withdraw the running attempt for a parsed key. */
   private withdraw(request: { key: string }): void {
     const parsed = parseRemoteRequest('authorization.cancel', cancelRequestSchema, request)
-    let branded
-    try {
-      branded = parseCredentialKey(parsed.key)
-    } catch (error) {
-      throw new RemoteError(
-        'gateway/bad-request',
-        error instanceof Error ? error.message : String(error),
-        {},
-      )
-    }
+    const branded = parseCredentialKey(parsed.key)
     this.service().cancel(branded)
   }
 
@@ -410,13 +396,10 @@ export class AuthorizationController extends TypertRemoteService {
       record.controllerObservedInteraction = true
       this.promptSeq += 1
       const id = `prompt-${String(this.promptSeq)}`
-      let settled = false
       const onPromptWithdrawn = (): void => {
         finish(() => { reject(new AuthorizationError('the flow withdrew this prompt', 'PROMPT_WITHDRAWN')) })
       }
       const finish = (settle: () => void): void => {
-        if (settled) return
-        settled = true
         prompt.signal?.removeEventListener('abort', onPromptWithdrawn)
         // Only a prompt's own finish vacates its seat; a successor prompt owns
         // the slot by the time an older finish runs.
