@@ -20,6 +20,8 @@ DuraSH 自有的六个包——`@durash/dsh-web-profile`、`@durash/dsh-client-u
 
 继承的 Issue lifecycle 与 PR policy job 将 `deepseek-harness/deepseek-harness` 声明为唯一适用仓库。下游仓库会在 checkout、令牌创建或 policy 执行前跳过这些 job；它不会把自己无法管理的 Project 状态报告成 policy 通过。Python runtime workflow 在每个仓库中都保留完整的无密钥 installed-wheel 矩阵。real-API 预检与在线 smoke 步骤只适用于符合条件的 `deepseek-harness/deepseek-harness` CI；canonical 路径缺少外部密钥时仍会失败，而 fork、Dependabot 与下游运行不会请求该密钥。
 
+继承的 PR CI 只在 `deepseek-harness/deepseek-harness` 中选择上游企业 runner 或自托管故障转移池。下游仓库会在 `ubuntu-24.04` 与 `windows-2025` 上运行相同代码门禁，而且上游故障转移变量不会改变这些 job 的 runner。Cloudflare 预览 job 会在 checkout 或读取凭据前限定为仅 canonical 仓库运行，因为其 Pages 项目与 Access 凭据都属于上游仓库。
+
 历史可靠性行为只有在当前 workflow 接口上重建后，才能进入“已实现”声明。`INTEGRATION_STATUS.md` 是区分继承、已实现、已准备与未迁移状态的权威来源。
 
 ## 考虑过的替代方案
@@ -29,7 +31,8 @@ DuraSH 自有的六个包——`@durash/dsh-web-profile`、`@durash/dsh-client-u
 - 盲目合并每个检测到的更新：拒绝，因为没有兼容性证据的新鲜度会把上游故障直接转移给用户。
 - 发布私有 `@durash` 包，或通过 optional、development-only 包元数据把 `durash` 保留为安装版模板：拒绝，因为前者会扩大公开发布面，后者则在隐藏打包失败的同时留下无法工作的安装版命令。
 - 在下游仓库中通用化上游 Issue Project policy，或要求下游 Python 矩阵提供其 real-API 凭据：拒绝，因为相关 App 凭据、Project 字段、生命周期操作身份与提供商账户都属于上游仓库，而下游仓库负责无密钥产物兼容性。
+- 在下游 CI 中保留上游企业 runner 标签，或把上游 Cloudflare 部署搬到标准 runner：拒绝，因为前者会在没有合格 runner 时让 job 永久排队，后者会在缺少下游凭据时访问上游自有部署。
 
 ## 后果
 
-仓库具有较小、清晰的下游所有权表面、默认使用 DuraSH 的源码入口、DuraSH 专属构建与组合检查，以及重复追踪最新已验证上游的路径。源码启动保留私有 `durash` 产品组合，安装后的 `@deepseek-ai/dsh` 则只暴露其包已经进入公开发布 family 的 profile。自动化合并只组合可确定的配对记录，不会让语义冲突变为通过。组织自有的 Issue 检查在 DuraSH 中会明确显示为不适用。下游 Python 产物在不假设上游提供商凭据的情况下保留跨平台 installed-wheel 证明，而符合条件的 canonical 路径仍会拒绝缺失的外部密钥。上游开发与官方产物命令保持显式，不继承产品默认值。GitHub 公共仓库创建后，仍需配置 Actions 与分支保护。品牌/profile 迁移不等于可靠性引擎迁移完成；后者仍是下一产品里程碑，不能提前对外宣传为已完成。
+仓库具有较小、清晰的下游所有权表面、默认使用 DuraSH 的源码入口、DuraSH 专属构建与组合检查，以及重复追踪最新已验证上游的路径。源码启动保留私有 `durash` 产品组合，安装后的 `@deepseek-ai/dsh` 则只暴露其包已经进入公开发布 family 的 profile。自动化合并只组合可确定的配对记录，不会让语义冲突变为通过。组织自有的 Issue 与预览部署检查在 DuraSH 中会明确显示为不适用。下游代码门禁使用可用的标准 GitHub runner，Python 产物则在不假设上游提供商凭据的情况下保留跨平台 installed-wheel 证明，而符合条件的 canonical 路径仍会拒绝缺失的外部密钥。上游开发与官方产物命令保持显式，不继承产品默认值。GitHub 公共仓库创建后，仍需配置 Actions 与分支保护。品牌/profile 迁移不等于可靠性引擎迁移完成；后者仍是下一产品里程碑，不能提前对外宣传为已完成。

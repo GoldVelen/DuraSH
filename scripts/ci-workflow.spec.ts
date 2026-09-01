@@ -55,6 +55,46 @@ describe('CI workflow', () => {
     }
   })
 
+  it('keeps private runner selection canonical and gives downstream PRs standard hosted runners', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const canonicalRepository = 'deepseek-harness/deepseek-harness'
+    const canonicalPredicate = `github.repository == '${canonicalRepository}'`
+    const linuxJobs = ['node-24', 'node-24-coverage', 'node-24-consumers']
+    const windowsJobs = ['windows-build', 'windows-coverage', 'windows-native-tests', 'windows-observational']
+
+    for (const jobName of linuxJobs) {
+      const job = workflowJob(workflow, jobName)
+      expect(job.if, `${jobName} must remain a downstream PR check`).toBe("github.event_name == 'pull_request'")
+      expect(job['runs-on'], `${jobName} must reserve the private pool for the canonical repository`).toContain(canonicalPredicate)
+      expect(job['runs-on']).toContain('dsh-ubuntu-24-04-16core')
+      expect(job['runs-on'], `${jobName} must have a portable downstream fallback`).toContain("|| 'ubuntu-24.04'")
+    }
+
+    for (const jobName of windowsJobs) {
+      const job = workflowJob(workflow, jobName)
+      expect(job.if, `${jobName} must remain a downstream PR check`).toBe("github.event_name == 'pull_request'")
+      expect(job['runs-on'], `${jobName} must reserve the private pool for the canonical repository`).toContain(canonicalPredicate)
+      expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on'], `${jobName} must have a portable downstream fallback`).toContain("|| 'windows-2025'")
+    }
+
+    const aggregate = workflowJob(workflow, 'all-checks-passed')
+    expect(aggregate.if).toBe("always() && github.event_name == 'pull_request'")
+    expect(aggregate['runs-on']).toContain(canonicalPredicate)
+    expect(aggregate['runs-on']).toContain("|| 'ubuntu-24.04'")
+
+    // Every failover-dependent cache, Playwright, concurrency, and runner
+    // expression must name the canonical repository. This keeps an accidental
+    // same-named variable in a downstream repository on the hosted path.
+    const failoverExpressions = collectStrings(workflow)
+      .filter(value => value.includes('DSH_CI_FAILOVER_'))
+    expect(failoverExpressions.length).toBeGreaterThan(0)
+    for (const expression of failoverExpressions) {
+      expect(expression).toContain('github.repository')
+      expect(expression).toContain(canonicalRepository)
+    }
+  })
+
   it('keeps required Wine and split native Windows jobs with failover, plus a master-only standby', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const masterWorkflow = loadWorkflow('.github/workflows/ci-master.yml')
@@ -798,6 +838,20 @@ describe('Documentation site publication', () => {
   })
 })
 
+describe('Cloudflare preview workflow', () => {
+  it('skips the upstream-owned deployment in downstream repositories', () => {
+    const workflow = loadWorkflow('.github/workflows/build-preview-cloudflare.yml')
+    const preview = workflowJob(workflow, 'preview')
+    if (!isRecord(workflow.env)) {
+      throw new TypeError('Cloudflare preview workflow must define its deployment environment')
+    }
+
+    expect(preview.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
+    expect(preview['runs-on']).toBe('dsh-ubuntu-24-04-16core')
+    expect(workflow.env.CF_PROJECT).toBe('dsh-build-preview')
+  })
+})
+
 describe('Git hooks', () => {
   it('leaves frozen Agent Note sidecars to the archive verifier', () => {
     const lefthook = loadWorkflow('lefthook.yml')
@@ -834,6 +888,13 @@ function workflowJob(workflow: Record<string, unknown>, job: string): Record<str
     throw new TypeError(`workflow must define the ${job} job`)
   }
   return workflow.jobs[job]
+}
+
+function collectStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(collectStrings)
+  if (isRecord(value)) return Object.values(value).flatMap(collectStrings)
+  return []
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
