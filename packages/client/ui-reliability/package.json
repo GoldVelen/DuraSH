@@ -1,7 +1,7 @@
 {
   "name": "@durash/dsh-client-ui-reliability",
   "description": "Composer workflow switch: per-session reliability-loop enablement and implementation/review model selection",
-  "version": "0.1.2-alpha.1",
+  "version": "0.1.2-alpha.3",
   "private": true,
   "repository": {
     "type": "git",

@@ -47,8 +47,46 @@ describe('release families', () => {
 
     expect(members.some(member => member.directory.startsWith('packages/experimental/'))).toBe(false)
     expect(members.map(member => member.name)).not.toContain('@deepseek-ai/dsh-experimental-agent-team')
-    expect(members.map(member => member.name)).not.toContain('@durash/dsh-web-profile')
-    expect(members.map(member => member.name)).not.toContain('@durash/dsh-client-ui-brand')
+    expect(members.map(member => member.name).filter(name => name.startsWith('@durash/'))).toEqual([])
+  })
+
+  it.each(['dependencies', 'optionalDependencies', 'peerDependencies'] as const)(
+    'rejects a published %s edge to a private workspace package',
+    (section) => {
+      const root = mkdtempSync(join(tmpdir(), 'dsh-release-private-edge-'))
+      roots.push(root)
+      write(join(root, 'apps/cli/package.json'), JSON.stringify({
+        name: '@deepseek-ai/dsh',
+        version: '0.0.1',
+        [section]: { '@durash/private-overlay': 'workspace:^' },
+      }))
+      write(join(root, 'packages/bundle/private-overlay/package.json'), JSON.stringify({
+        name: '@durash/private-overlay',
+        version: '0.0.1',
+        private: true,
+      }))
+
+      expect(() => releaseFamily('dsh').members(root)).toThrow(
+        `@deepseek-ai/dsh: ${section}.@durash/private-overlay names a private workspace package omitted from npm tarballs`,
+      )
+    },
+  )
+
+  it('allows a published package to use a private workspace package only for development', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-release-private-dev-edge-'))
+    roots.push(root)
+    write(join(root, 'apps/cli/package.json'), JSON.stringify({
+      name: '@deepseek-ai/dsh',
+      version: '0.0.1',
+      devDependencies: { '@durash/private-overlay': 'workspace:^' },
+    }))
+    write(join(root, 'packages/bundle/private-overlay/package.json'), JSON.stringify({
+      name: '@durash/private-overlay',
+      version: '0.0.1',
+      private: true,
+    }))
+
+    expect(releaseFamily('dsh').members(root).map(entry => entry.name)).toEqual(['@deepseek-ai/dsh'])
   })
 
   it('bumps private dsh packages without adding release tags', () => {

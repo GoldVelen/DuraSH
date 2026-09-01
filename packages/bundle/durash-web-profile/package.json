@@ -1,7 +1,7 @@
 {
   "name": "@durash/dsh-web-profile",
   "description": "DuraSH product overlay for the upstream DeepSeek Harness Web profile",
-  "version": "0.1.2-alpha.1",
+  "version": "0.1.2-alpha.3",
   "private": true,
   "repository": {
     "type": "git",

@@ -45,7 +45,7 @@ const ctx = await boot('dsh', resolveConfigPath(argv[2], process.env.DSH_SNAPSHO
 <a id="profiles"></a>
 ### Profile
 
-profile 是同一套 dsh 安装提供不同应用界面的方式：`web`、`durash`、`headless`、`acp`、`sdk` 与 `sdk-minimal` 从同一 launcher 启动不同组合。profile 位于 `$DSH_HOME/profiles/<name>`，由可安装 bundle、自身 `cordis.patch.yml` 与 `patchReload: live | startup` 组成；自定义 profile 省略 reload 策略时保留历史 `live` 默认值。随产品交付的 `web` 与 `durash` 模板实时重载，其他随附模板只在启动时应用 patch。`durash` 在上游 Web 栈后加入产品自有 overlay，`sdk-minimal` 只列出自身的独立 bundle，其余模板保留 base 加模式 bundle 的栈。`dsh plugin` 创建自定义 profile；缺失 bundle 或未声明 patch 的 bundle 会让启动明确失败。
+profile 是同一套 dsh 安装通过同一个 launcher 提供不同应用界面的方式。公开 dsh 包会自动初始化 `web`、`headless`、`acp`、`sdk` 与 `sdk-minimal`；DuraSH 源码 checkout 会把另一份源码自有的 `durash` 模板交给同一个 loader。profile 位于 `$DSH_HOME/profiles/<name>`，由可安装 bundle、自身 `cordis.patch.yml` 与 `patchReload: live | startup` 组成；自定义 profile 省略 reload 策略时保留历史 `live` 默认值。公开的 `web` 模板与仅限源码的 `durash` 模板实时重载，其他公开模板只在启动时应用 patch。`durash` 在上游 Web 栈后加入私有产品 overlay，`sdk-minimal` 只列出自身的独立 bundle，其余模板保留 base 加模式 bundle 的栈。`dsh plugin` 创建自定义 profile；缺失 bundle 或未声明 patch 的 bundle 会让启动明确失败。
 
 你的机器本地偏好同样位于 harness home 中：
 

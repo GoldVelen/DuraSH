@@ -719,18 +719,13 @@ describe('Issue management workflows', () => {
 })
 
 describe('npm release workflows', () => {
-  it('keeps upstream dsh release jobs canonical-only and publication dispatch-only', () => {
-    const release = loadWorkflow('.github/workflows/release.yml')
-    const releasePack = workflowJob(release, 'pack')
-    if (!isRecord(release.jobs)) throw new TypeError('release.yml must define jobs')
-    expect(releasePack.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
-
-    // The vendored framework pack remains a PR check: that publish sequence is
-    // self-contained and the downstream sync still wants its rehearsal.
-    for (const file of ['release-vendor.yml']) {
+  it('keeps publication dispatch-only and pack in the PR workflow', () => {
+    // pack stays in the PR/master release workflows so a PR proves the set packs.
+    for (const file of ['release.yml', 'release-vendor.yml']) {
       const workflow = loadWorkflow(`.github/workflows/${file}`)
       if (!isRecord(workflow.jobs)) throw new TypeError(`${file} must define jobs`)
-      expect(Object.keys(workflow.jobs).sort()).toEqual(['pack'])
+      expect(Object.keys(workflow.jobs).sort()).toEqual(file === 'release.yml' ? ['dependencies', 'pack'] : ['pack'])
+      expect(workflowJob(workflow, 'pack').if).toBeUndefined()
     }
 
     // publication is workflow_dispatch-only (never a PR check) and keeps the
@@ -743,12 +738,8 @@ describe('npm release workflows', () => {
       if (!isRecord(publish)) throw new TypeError(`${file} must define a publish job`)
       expect(publish.environment).toBe('npm-publish')
       expect(publish.concurrency).toMatchObject({ group: 'Release-publish' })
-      if (file === 'release-publish.yml') {
-        const pack = workflow.jobs.pack
-        if (!isRecord(pack)) throw new TypeError('release-publish.yml must define a pack job')
-        expect(pack.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
-        expect(publish.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
-      }
+      expect(workflowJob(workflow, 'pack').if).toBeUndefined()
+      expect(publish.if).toBeUndefined()
     }
   })
 

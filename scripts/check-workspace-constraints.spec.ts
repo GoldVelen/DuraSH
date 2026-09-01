@@ -15,21 +15,55 @@ const experimental: WorkspaceManifest = {
 }
 
 describe('DuraSH source-only package constraints', () => {
-  const sourcePackage: WorkspaceManifest = {
-    dir: 'packages/bundle/durash-web-profile',
+  const sourcePackages = ([
+    ['packages/bundle/durash-web-profile', '@durash/dsh-web-profile'],
+    ['packages/client/ui-brand-durash', '@durash/dsh-client-ui-brand'],
+    ['packages/client/ui-reliability', '@durash/dsh-client-ui-reliability'],
+    ['packages/reliability/durash-reliability-loop', '@durash/dsh-reliability-loop'],
+    ['packages/reliability/durash-reliability-policy', '@durash/dsh-reliability-policy'],
+    ['packages/reliability/durash-tool-reliability', '@durash/dsh-tool-reliability'],
+  ] as const).map(([dir, name]): WorkspaceManifest => ({
+    dir,
     manifest: {
-      name: '@durash/dsh-web-profile',
+      name,
       private: true,
       repository: {
         type: 'git',
         url: 'git+https://github.com/GoldVelen/DuraSH.git',
-        directory: 'packages/bundle/durash-web-profile',
+        directory: dir,
       },
     },
-  }
+  }))
+
+  it('recognizes the complete private DuraSH package set', () => {
+    const classificationErrors = sourcePackages
+      .flatMap(checkWorkspaceManifest)
+      .filter(error => error.includes('source-only DuraSH') || error.includes('release member'))
+    expect(classificationErrors).toEqual([])
+  })
+
+  it('does not extend source-only treatment to an unlisted DuraSH package', () => {
+    const errors = checkWorkspaceManifest({
+      dir: 'packages/reliability/durash-other',
+      manifest: {
+        name: '@durash/dsh-other',
+        private: true,
+        repository: {
+          type: 'git',
+          url: 'git+https://github.com/GoldVelen/DuraSH.git',
+          directory: 'packages/reliability/durash-other',
+        },
+      },
+    }).filter(error => error.includes('source-only DuraSH') || error.includes('release member'))
+
+    expect(errors).toEqual([
+      'packages/reliability/durash-other/package.json: @durash/dsh-other: release member must not set "private": true',
+      'packages/reliability/durash-other/package.json: @durash/dsh-other: release member must set publishConfig.access to "public"',
+    ])
+  })
 
   it('requires the npm publication guard', () => {
-    expect(checkWorkspaceManifest(sourcePackage).filter(error => error.includes('source-only DuraSH'))).toEqual([])
+    const sourcePackage = sourcePackages[0]!
     expect(checkWorkspaceManifest({
       ...sourcePackage,
       manifest: { ...sourcePackage.manifest, private: false, publishConfig: { access: 'public' } },

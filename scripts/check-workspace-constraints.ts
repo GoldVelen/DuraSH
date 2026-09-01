@@ -56,7 +56,7 @@ const durashPackagePrefix = '@durash/'
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** Downstream packages intentionally distributed only as part of the source checkout. */
 const durashSourceOnlyPackageDirectory = new RegExp(
-  '^packages/(?:bundle/durash-web-profile|client/ui-brand-durash|reliability/durash-reliability-loop)$',
+  '^packages/(?:bundle/durash-web-profile|client/(?:ui-brand-durash|ui-reliability)|reliability/(?:durash-reliability-loop|durash-reliability-policy|durash-tool-reliability))$',
 )
 /** npm namespace reserved for private experimental packages. */
 const experimentalPackageNamePrefix = '@deepseek-ai/dsh-experimental-'

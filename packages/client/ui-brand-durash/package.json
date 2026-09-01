@@ -1,7 +1,7 @@
 {
   "name": "@durash/dsh-client-ui-brand",
   "description": "DuraSH brand occupants for the Web client's sidebar and conversation hero slots",
-  "version": "0.1.2-alpha.1",
+  "version": "0.1.2-alpha.3",
   "private": true,
   "repository": {
     "type": "git",

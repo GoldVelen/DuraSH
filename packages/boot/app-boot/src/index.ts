@@ -50,6 +50,8 @@ export {
   type ProfileModuleFallbackOptions,
   type ProfilePatchReload,
   type ProfileTemplate,
+  type ProfileTemplateMap,
+  type LoadProfileOptions,
 } from './profile.ts'
 
 /**

@@ -68,11 +68,6 @@ jobs:
 
   pack:
     name: Pack npm tarballs
-    # The official @deepseek-ai/dsh npm release sequence belongs to the
-    # canonical upstream repository. Downstream forks keep dependency-layout
-    # checks but do not claim pack-and-install publishability for a different
-    # product surface.
-    if: ${{ github.repository == 'deepseek-harness/deepseek-harness' }}
     runs-on: ubuntu-24.04
     steps:
       # Complete history: the release scripts read tags.

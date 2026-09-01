@@ -324,9 +324,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
-      '@durash/dsh-web-profile':
-        specifier: workspace:^
-        version: link:../../packages/bundle/durash-web-profile
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -454,6 +451,9 @@ importers:
       '@deepseek-ai/dsh-user-approval':
         specifier: workspace:^
         version: link:../../packages/interaction/user-approval
+      '@durash/dsh-web-profile':
+        specifier: workspace:^
+        version: link:../../packages/bundle/durash-web-profile
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
