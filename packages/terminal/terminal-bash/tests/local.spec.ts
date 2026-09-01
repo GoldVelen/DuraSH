@@ -317,16 +317,21 @@ const hasPwsh = spawnSync(
   { encoding: 'utf8' },
 ).status === 0
 
+// Hosted coverage shares a small runner with another partition. Keep the
+// silence fallback behind slow pwsh command execution instead of letting the
+// test's accelerated timing settle an empty operation before pwsh responds.
+const PWSH_REAL_TIMING = {
+  idleSilenceMs: 5_000,
+  handoffGraceMs: 300,
+  timeoutMs: 8_000,
+} as const
+
 describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
   it('bootstraps a persistent pwsh, persists state, and scrubs secrets', async () => {
     const previous = process.env.DSH_TEST_SECRET
     process.env.DSH_TEST_SECRET = 'must-not-leak'
     try {
-      const { ctx, root, agent } = await harness('danger-full-access', {
-        idleSilenceMs: 300,
-        handoffGraceMs: 300,
-        timeoutMs: 8_000,
-      }, 'pwsh')
+      const { ctx, root, agent } = await harness('danger-full-access', PWSH_REAL_TIMING, 'pwsh')
       const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
       expect(created.motd).toContain('dsh> ')
 
@@ -354,11 +359,7 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
   }, 30_000)
 
   it('pins UTF-8 output encoding so non-ASCII output survives the byte decode', async () => {
-    const { ctx, root, agent } = await harness('danger-full-access', {
-      idleSilenceMs: 300,
-      handoffGraceMs: 300,
-      timeoutMs: 8_000,
-    }, 'pwsh')
+    const { ctx, root, agent } = await harness('danger-full-access', PWSH_REAL_TIMING, 'pwsh')
     const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
     // The bootstrap itself must have pinned both encodings: the session byte
     // decode is UTF-8, so an un-pinned console writing its host code page

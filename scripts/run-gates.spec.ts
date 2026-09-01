@@ -480,7 +480,7 @@ describe('Typert contract preparation', () => {
 })
 
 describe('Node compatibility graph', () => {
-  it('runs the jsdom environment smoke on every advertised Node line', () => {
+  it('runs the common smoke and reserves the official Web build for Node 22', () => {
     const subject = withPnpmEntrypoint(() => gatesForMode('node-compat'))
 
     expect(subject.find(item => item.id === 'vitest-jsdom-smoke')).toMatchObject({
@@ -493,9 +493,12 @@ describe('Node compatibility graph', () => {
         'scripts/vitest-environment.compat.spec.ts',
       ],
     })
-    expect(subject.find(item => item.id === 'build:web')?.env).toEqual(
-      officialClientBuildEnvironment(resolve(import.meta.dirname, '..')),
-    )
+    const webBuild = subject.find(item => item.id === 'build:web')
+    if (process.versions.node.startsWith('22.')) {
+      expect(webBuild?.env).toEqual(officialClientBuildEnvironment(resolve(import.meta.dirname, '..')))
+    } else {
+      expect(webBuild).toBeUndefined()
+    }
   })
 })
 
