@@ -131,7 +131,7 @@ jobs:
 
           if ! git merge-base --is-ancestor "$upstream_sha" "$base_ref"; then
             set +e
-            git merge --no-ff --no-commit "$upstream_sha"
+            git -c 'merge.dsh-translation-pairing.driver=scripts/merge-translation-pairing-driver.sh %O %A %B %P' merge --no-ff --no-commit "$upstream_sha"
             merge_status=$?
             set -e
             if [ "$merge_status" -ne 0 ]; then

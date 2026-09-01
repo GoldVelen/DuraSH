@@ -14,7 +14,7 @@ Status: implemented
 
 源码发行版以 DuraSH 作为默认产品路径。`pnpm run build` 选择 DuraSH 客户端身份，`pnpm start` 选择匹配的 `durash` 运行 profile。`pnpm run build:local` 保留中性的上游开发客户端，`pnpm run build:official` 保留官方发布产物。源码启动会拒绝 DuraSH 运行时与非 DuraSH 构建记录的组合，也会拒绝上游 `web` 运行时与 DuraSH 客户端产物的组合。
 
-在 `UPSTREAM_SOURCES.json` 中记录每个源码级上游。定时 workflow 审计全部记录的来源，为 DSH 主上游准备唯一一个自动化专属 merge PR，并为更新的 vendored 公共发行版维持唯一一个 review Issue。registry 与 Actions 依赖遵循 [Dependabot 更新决策](../process/2026-07-27-dependabot-version-updates.zh.md)：每日检查、不设置人为冷却期，而且只有配置 required compatibility checks 后才允许显式启用自动合并。
+在 `UPSTREAM_SOURCES.json` 中记录每个源码级上游。定时 workflow 审计全部记录的来源，为 DSH 主上游准备唯一一个自动化专属 merge PR，并为更新的 vendored 公共发行版维持唯一一个 review Issue。主上游合并会在临时 checkout 中显式启用仓库的双语配对驱动，使已确认的伴随记录可以合并，同时所有者文件冲突仍会阻止运行。registry 与 Actions 依赖遵循 [Dependabot 更新决策](../process/2026-07-27-dependabot-version-updates.zh.md)：每日检查、不设置人为冷却期，而且只有配置 required compatibility checks 后才允许显式启用自动合并。
 
 历史可靠性行为只有在当前 workflow 接口上重建后，才能进入“已实现”声明。`INTEGRATION_STATUS.md` 是区分继承、已实现、已准备与未迁移状态的权威来源。
 
@@ -26,4 +26,4 @@ Status: implemented
 
 ## 后果
 
-仓库具有较小、清晰的下游所有权表面、默认使用 DuraSH 的源码入口、DuraSH 专属构建与组合检查，以及重复追踪最新已验证上游的路径。上游开发与官方产物命令保持显式，不继承产品默认值。GitHub 公共仓库创建后，仍需配置 Actions 与分支保护。品牌/profile 迁移不等于可靠性引擎迁移完成；后者仍是下一产品里程碑，不能提前对外宣传为已完成。
+仓库具有较小、清晰的下游所有权表面、默认使用 DuraSH 的源码入口、DuraSH 专属构建与组合检查，以及重复追踪最新已验证上游的路径。自动化合并只组合可确定的配对记录，不会让语义冲突变为通过。上游开发与官方产物命令保持显式，不继承产品默认值。GitHub 公共仓库创建后，仍需配置 Actions 与分支保护。品牌/profile 迁移不等于可靠性引擎迁移完成；后者仍是下一产品里程碑，不能提前对外宣传为已完成。
