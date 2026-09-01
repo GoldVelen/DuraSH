@@ -18,6 +18,9 @@ env:
 jobs:
   pack:
     name: Pack npm tarballs
+    # Manual publication remains canonical-repository-only: downstream forks do
+    # not publish the upstream npm sequence.
+    if: ${{ github.repository == 'deepseek-harness/deepseek-harness' }}
     runs-on: ubuntu-24.04
     steps:
       # Complete history: the release scripts read tags.
@@ -92,6 +95,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: pack
+    if: ${{ github.repository == 'deepseek-harness/deepseek-harness' }}
     runs-on: ubuntu-24.04
     # Required reviewers and the allowed tags live on the environment; this is
     # the only job in the sequence that can write to the registry.

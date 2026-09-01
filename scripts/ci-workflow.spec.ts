@@ -587,6 +587,7 @@ describe('Python release workflows', () => {
     expect(JSON.stringify(macosCheck)).toContain('$EXE-spawn-helper')
     expect(JSON.stringify(installedKeylessPosix)).toContain('--scenario all')
     expect(JSON.stringify(installedKeylessPosix)).toContain('env -u PYTHONPATH')
+    expect(installedKeylessPosix).toMatchObject({ if: "runner.os != 'Windows'" })
     expect(JSON.stringify(installedKeylessWindows)).toContain('--scenario all --installed-wheel')
     expect(installedKeylessWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(cleanVenvWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
@@ -594,10 +595,23 @@ describe('Python release workflows', () => {
     expect(realApiPreflightPosix).toMatchObject({
       env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
     })
-    expect(String(realApiPreflightPosix.if)).toContain('inputs.ci')
-    expect(String(realApiPreflightPosix.if)).toContain('head.repo.fork')
-    expect(String(realApiPreflightPosix.if)).toContain('dependabot[bot]')
+    for (const step of [
+      realApiPreflightPosix,
+      realApiPreflightWindows,
+      installedRealApiPosix,
+      installedRealApiWindows,
+    ]) {
+      const condition = String(step.if)
+      expect(condition).toContain('inputs.ci')
+      expect(condition).toContain("github.repository == 'deepseek-harness/deepseek-harness'")
+      expect(condition).toContain('head.repo.fork')
+      expect(condition).toContain('dependabot[bot]')
+    }
+    expect(String(realApiPreflightPosix.run)).toContain('DEEPSEEK_API_KEY_EXTERNAL is empty')
+    expect(String(realApiPreflightPosix.run)).toContain('exit 1')
     expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
+    expect(String(realApiPreflightWindows.run)).toContain('DEEPSEEK_API_KEY_EXTERNAL is empty')
+    expect(String(realApiPreflightWindows.run)).toContain('throw')
     expect(installedRealApiPosix).toMatchObject({
       env: {
         DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
@@ -649,20 +663,39 @@ describe('Python release workflows', () => {
   })
 })
 
-describe('Issue lifecycle workflow', () => {
-  it('runs the lifecycle job on every PR/review event but gates token and board steps', () => {
+describe('Issue management workflows', () => {
+  it('limits organization policy to the canonical repository and gates lifecycle writes', () => {
     const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
     const policy = loadWorkflow('.github/workflows/issue-policy.yml')
     const lifecycleJob = workflowJob(lifecycle, 'lifecycle')
-    if (!Array.isArray(lifecycleJob.steps)) throw new TypeError('Issue lifecycle job must define steps')
+    const policyJob = workflowJob(policy, 'policy')
+    if (!Array.isArray(lifecycleJob.steps) || !Array.isArray(policyJob.steps)) {
+      throw new TypeError('Issue management jobs must define steps')
+    }
+    const policyConfig: unknown = JSON.parse(
+      readFileSync(resolve(root, '.github/issue-management/config.json'), 'utf8'),
+    )
+    if (!isRecord(policyConfig)
+      || typeof policyConfig.organization !== 'string'
+      || typeof policyConfig.repository !== 'string') {
+      throw new TypeError('Issue management config must define its repository identity')
+    }
 
-    // The job has no job-level `if`, so it is listed on every pull_request /
-    // pull_request_review event and reports success instead of a gray skip. The
-    // write-capable steps are gated at step level so approved/commented reviews
-    // never mint a Project/Issue App token nor touch the board.
+    // These jobs own the upstream organization's App, Project, and Issue
+    // metadata. An inherited downstream copy must be a visible skip before it
+    // checks out policy or accesses credentials and APIs.
+    const configuredRepository = `${policyConfig.organization}/${policyConfig.repository}`
+    expect(configuredRepository).toBe('deepseek-harness/deepseek-harness')
+    const canonicalGuard = "${{ github.repository == '" + configuredRepository + "' }}"
+    expect(lifecycleJob.if).toBe(canonicalGuard)
+    expect(policyJob.if).toBe(canonicalGuard)
+
+    // In the canonical repository, the lifecycle job is listed on every
+    // pull_request / pull_request_review event. The write-capable steps are
+    // gated so approved/commented reviews never mint a Project/Issue App token
+    // nor touch the board.
     expect(lifecycle.on).toHaveProperty('pull_request')
     expect(lifecycle.on).toHaveProperty('pull_request_review')
-    expect(lifecycleJob.if).toBeUndefined()
     // Keep the subscription-type gates: issue-lifecycle does not re-subscribe
     // ready_for_review (issue-policy owns that) and only reacts to submitted
     // review events.
@@ -686,12 +719,18 @@ describe('Issue lifecycle workflow', () => {
 })
 
 describe('npm release workflows', () => {
-  it('keeps publication dispatch-only and pack in the PR workflow', () => {
-    // pack stays in the PR/master release workflows so a PR proves the set packs.
-    for (const file of ['release.yml', 'release-vendor.yml']) {
+  it('keeps upstream dsh release jobs canonical-only and publication dispatch-only', () => {
+    const release = loadWorkflow('.github/workflows/release.yml')
+    const releasePack = workflowJob(release, 'pack')
+    if (!isRecord(release.jobs)) throw new TypeError('release.yml must define jobs')
+    expect(releasePack.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
+
+    // The vendored framework pack remains a PR check: that publish sequence is
+    // self-contained and the downstream sync still wants its rehearsal.
+    for (const file of ['release-vendor.yml']) {
       const workflow = loadWorkflow(`.github/workflows/${file}`)
       if (!isRecord(workflow.jobs)) throw new TypeError(`${file} must define jobs`)
-      expect(Object.keys(workflow.jobs).sort()).toEqual(file === 'release.yml' ? ['dependencies', 'pack'] : ['pack'])
+      expect(Object.keys(workflow.jobs).sort()).toEqual(['pack'])
     }
 
     // publication is workflow_dispatch-only (never a PR check) and keeps the
@@ -704,6 +743,12 @@ describe('npm release workflows', () => {
       if (!isRecord(publish)) throw new TypeError(`${file} must define a publish job`)
       expect(publish.environment).toBe('npm-publish')
       expect(publish.concurrency).toMatchObject({ group: 'Release-publish' })
+      if (file === 'release-publish.yml') {
+        const pack = workflow.jobs.pack
+        if (!isRecord(pack)) throw new TypeError('release-publish.yml must define a pack job')
+        expect(pack.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
+        expect(publish.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
+      }
     }
   })
 
