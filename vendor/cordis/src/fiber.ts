@@ -206,6 +206,7 @@ export class Fiber {
   protected context: Context
 
   private _error: any
+  private _retryConfigOnRefresh = false
   private _runner: EffectRunner<string>
   private _store: Dict<Impl> = Object.create(null)
 
@@ -625,6 +626,14 @@ export class Fiber {
   private _setEpoch(epoch: string) {
     const oldEpoch = this._runner.epoch
     if (epoch === oldEpoch) return
+    if (this._error) {
+      // Plugin callback failures recover only through update(). A config
+      // expression may depend on an injected provider, so a new injection
+      // epoch gets one fresh resolution attempt.
+      if (!this._retryConfigOnRefresh) return
+      this._error = undefined
+      this._retryConfigOnRefresh = false
+    }
     this._runner.epoch = epoch
     if (this.inertia) return
     this._updateState(() => {
@@ -646,20 +655,25 @@ export class Fiber {
   private async _reload() {
     this.store = { ...this._store }
     const oldEpoch = this._runner.epoch
+    let resolvingConfig = false
     try {
       await Promise.resolve()
       // A disposer queued before this checkpoint may already have invalidated
       // the load. Do not run plugin code for a stale epoch; the state update
       // below will drain any effects collected while the fiber was PENDING.
       if (this._runner.epoch === oldEpoch) {
+        resolvingConfig = true
         this.config = this._resolveConfig(this._config)
+        resolvingConfig = false
         await this._execute(this._runner)
         this._error = undefined
+        this._retryConfigOnRefresh = false
       }
     } catch (reason) {
       // impl guarantees that the error is non-null (?)
       this.ctx.logger.error(reason)
       this._error = reason
+      this._retryConfigOnRefresh = resolvingConfig
       this._runner.epoch = INACTIVE
     }
     this._updateState(() => {
@@ -716,10 +730,11 @@ export class Fiber {
    * @throws {CordisError} `INACTIVE_EFFECT` when the fiber is already disposed.
    */
   async restart() {
-    this.assertActive()
-    this._setEpoch(INACTIVE)
-    this._refresh()
-    await this.await()
+    const fiber = this.ctx.fiber
+    fiber.assertActive()
+    fiber._setEpoch(INACTIVE)
+    fiber._refresh()
+    await fiber.await()
   }
 
   /**
@@ -734,21 +749,24 @@ export class Fiber {
    * @throws when validation, an update listener, or the restarted plugin fails.
    */
   update(config: any, noSave = false) {
-    this.assertActive()
-    this._config = config
-    if (this.state !== FiberState.ACTIVE) {
+    const fiber = this.ctx.fiber
+    fiber.assertActive()
+    fiber._config = config
+    if (fiber.state !== FiberState.ACTIVE) {
       // Config resolution may access injected services, so defer it until the
       // fiber can activate.
-      this._error = undefined
-      this._setEpoch(INACTIVE)
-      this._refresh()
+      fiber._error = undefined
+      fiber._retryConfigOnRefresh = false
+      fiber._setEpoch(INACTIVE)
+      fiber._refresh()
       return
     }
-    config = this._resolveConfig(config)
-    return this.context.waterfall(this, 'internal/update', config, noSave, () => {
-      this.config = config
-      this._error = undefined
-      return this.restart()
+    config = fiber._resolveConfig(config)
+    return fiber.context.waterfall(fiber, 'internal/update', config, noSave, () => {
+      fiber.config = config
+      fiber._error = undefined
+      fiber._retryConfigOnRefresh = false
+      return fiber.restart()
     })
   }
 }

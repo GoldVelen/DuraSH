@@ -19,6 +19,8 @@
  */
 parallel<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): Promise<void>
 parallel<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): Promise<void>
+parallel<K extends symbol>(name: K, ...args: any[]): Promise<void>
+parallel<K extends symbol>(thisArg: any, name: K, ...args: any[]): Promise<void>
 ```
 
 分发一个事件，并发运行所有监听器。
@@ -28,7 +30,7 @@ parallel<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K,
 
 **返回值**：一个 Promise，在所有监听器均已完成后兑现。
 
-[源码](../../vendor/cordis/src/events.ts#L44)
+[源码](../../vendor/cordis/src/events.ts#L52)
 
 ### ctx.emit(name, ...args)
 
@@ -41,6 +43,8 @@ parallel<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K,
  */
 emit<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): void
 emit<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): void
+emit<K extends symbol>(name: K, ...args: any[]): void
+emit<K extends symbol>(thisArg: any, name: K, ...args: any[]): void
 ```
 
 同步分发一个事件，忽略监听器的返回值。
@@ -48,7 +52,7 @@ emit<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...
 - `name`：事件名称。
 - `args`：传递给每个监听器的参数。
 
-[源码](../../vendor/cordis/src/events.ts#L53)
+[源码](../../vendor/cordis/src/events.ts#L65)
 
 ### ctx.serial(name, ...args)
 
@@ -62,6 +66,8 @@ emit<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...
  */
 serial<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): Promisify<ReturnType<Events[K]>>
 serial<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): Promisify<ReturnType<Events[K]>>
+serial<K extends symbol, A extends any[]>(name: K, ...args: A): DynamicSymbolSerialReturn<K, A>
+serial<K extends symbol>(thisArg: any, name: K, ...args: any[]): Promise<any>
 ```
 
 分发一个事件，依次等待各监听器，直到其中一个提前终止分发。
@@ -71,7 +77,7 @@ serial<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, .
 
 **返回值**：第一个提前终止值（非 null、非 false 且非 undefined）；如果没有，则不返回此类值。
 
-[源码](../../vendor/cordis/src/events.ts#L63)
+[源码](../../vendor/cordis/src/events.ts#L79)
 
 ### ctx.bail(name, ...args)
 
@@ -85,6 +91,8 @@ serial<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, .
  */
 bail<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
 bail<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
+bail<K extends symbol, A extends any[]>(name: K, ...args: A): DynamicSymbolReturn<K, A>
+bail<K extends symbol>(thisArg: any, name: K, ...args: any[]): any
 ```
 
 分发一个事件，依次调用各监听器，直到其中一个提前终止分发。
@@ -94,7 +102,7 @@ bail<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...
 
 **返回值**：第一个提前终止值（非 null、非 false 且非 undefined）；如果没有，则不返回此类值。
 
-[源码](../../vendor/cordis/src/events.ts#L73)
+[源码](../../vendor/cordis/src/events.ts#L93)
 
 ### ctx.waterfall(name, ...args)
 
@@ -111,6 +119,8 @@ bail<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...
  */
 waterfall<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
 waterfall<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
+waterfall<K extends symbol, A extends any[]>(name: K, ...args: A): DynamicSymbolReturn<K, A>
+waterfall<K extends symbol>(thisArg: any, name: K, ...args: any[]): any
 ```
 
 分发一个事件，其最后一个参数是续接执行的 `next` 回调。
@@ -122,7 +132,7 @@ waterfall<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K
 
 **返回值**：最外层监听器的返回值。
 
-[源码](../../vendor/cordis/src/events.ts#L86)
+[源码](../../vendor/cordis/src/events.ts#L110)
 
 ### ctx.on(name, listener, options?)
 
@@ -136,6 +146,7 @@ waterfall<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K
  * @returns a disposer removing the listener; `true` if it was still registered.
  */
 on<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | EventOptions): () => boolean
+on<K extends symbol>(name: K, listener: (...args: any[]) => any, options?: boolean | EventOptions): () => boolean
 ```
 
 注册一个归当前 fiber 所有的事件监听器。
@@ -146,7 +157,7 @@ on<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | Eve
 
 **返回值**：一个用于移除监听器的资源释放函数；如果调用该函数时监听器仍处于注册状态，则返回 `true`。
 
-[源码](../../vendor/cordis/src/events.ts#L97)
+[源码](../../vendor/cordis/src/events.ts#L125)
 
 ### ctx.once(name, listener, options?)
 
@@ -160,6 +171,7 @@ on<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | Eve
  * @returns a disposer removing the listener; `true` if it was still registered.
  */
 once<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | EventOptions): () => boolean
+once<K extends symbol>(name: K, listener: (...args: any[]) => any, options?: boolean | EventOptions): () => boolean
 ```
 
 与 `on()` 相同，但监听器在首次调用后会自行注销。
@@ -170,7 +182,7 @@ once<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | E
 
 **返回值**：一个用于移除监听器的资源释放函数；如果调用该函数时监听器仍处于注册状态，则返回 `true`。
 
-[源码](../../vendor/cordis/src/events.ts#L106)
+[源码](../../vendor/cordis/src/events.ts#L136)
 
 ## EventOptions
 
@@ -186,7 +198,7 @@ interface EventOptions {
 }
 ```
 
-[源码](../../vendor/cordis/src/events.ts#L112)
+[源码](../../vendor/cordis/src/events.ts#L144)
 
 ## DispatchMode
 
@@ -206,4 +218,4 @@ interface EventOptions {
 type DispatchMode = 'emit' | 'parallel' | 'serial' | 'bail' | 'waterfall'
 ```
 
-[源码](../../vendor/cordis/src/events.ts#L32)
+[源码](../../vendor/cordis/src/events.ts#L40)

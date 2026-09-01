@@ -19,7 +19,7 @@
 | 独立 DuraSH 品牌与 Web profile | 已实现 | 产品自有品牌包与增量 `durash` profile；上游官方品牌包保持不变 |
 | DuraSH 源码构建与浏览器实际组合 | 已实现 | `build:durash`、DuraSH 浏览器组合回归及其 PR workflow 会独立于官方客户端构建验证产品 profile |
 | workflow 脚本、资源上限、取消、成员生命周期事件 | 继承最新 DSH | `@deepseek-ai/dsh-workflow`、worker-thread engine、workflow tool 与 workflow-run UI |
-| 主上游与依赖漂移检测 | 已运行 | 定时 workflow 检测到本次上游发布、创建了冲突 Issue，并持续审计 vendored 与 registry 依赖 |
+| 主上游与依赖漂移检测 | 已运行 | 定时 workflow 检测到 vendored 发布、创建了由本次协调解决的兼容性 Issue，并持续审计 vendored 与 registry 依赖 |
 | 受 CI 门禁保护的上游自动合并 | 已运行，冲突需人工门禁 | 无冲突的上游变更会准备同步 PR；产品叠加层冲突会停止而不覆盖 DuraSH 行为，并要求执行本次基线采用的协调流程 |
 | 旧分叉中的独立持久化 Run store | 有界闭环已实现 | `@durash/dsh-reliability-loop` 在 `reliability-loop` storage domain 中为每个循环保留一条持久记录；旧分叉的通用 RunStore 控制面仍未对齐 |
 | 固定“实施 → 协调 → 三路审查 → 汇总”流水线 | 未迁移 | 最新 DSH 提供通用 workflow 接口，不提供这项产品策略；已发布的循环只有一个实施者加一个审查者 |
@@ -30,7 +30,7 @@
 
 ## 当前上游漂移
 
-2026-08-31 实时审计确认本次协调后主 DSH 分支已是最新，同时检测到四个更高版本的公共 vendored 包：Cordis `4.0.0-rc.9`、Cordis Loader `1.0.0-rc.6`、Cordis Include `1.0.5` 与 Cordis Timer `1.1.3`。最新官方 DSH 基线仍携带已记录的旧 snapshot 与本地修改。DuraSH 会暴露这项漂移，并要求先执行 vendored 兼容性 runbook 才能接受；检测到新版本不等于这些版本已经完成融合。
+2026-08-31 检测到的四个 vendored 包发布已在当前分支完成协调：Cordis `4.0.0-rc.9`、Cordis Loader `1.0.0-rc.6`、Cordis Include `1.0.5` 与 Cordis Timer `1.1.3` 都固定到上游提交 `ed8a7755c26a27a72064a21dea036ad1d1d6833c`。所有仍适用且已登记的本地修改都继续保留；唯一退休的是 Include 仅涉及类型的 `writeTask` 扩宽，因为上游已经持有同一项修正。没有新的实时审计时，本文件不宣称后续发布状态。
 
 ## 融合结论
 

@@ -60,7 +60,7 @@ export class Entry {
   public subgroup?: EntryGroup
   public subtree?: EntryTree
 
-  _initTask?: Promise<void>
+  _initTask?: Promise<void> | undefined
   _disposing = 0
 
   constructor(public loader: Loader) {

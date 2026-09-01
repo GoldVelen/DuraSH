@@ -19,7 +19,7 @@ This document separates current source truth from the older DSH fork's accepted 
 | Independent DuraSH brand and Web profile | Implemented | Product-owned brand package and additive `durash` profile; upstream official brand package is unchanged |
 | DuraSH source build and assembled browser composition | Implemented | `build:durash`, the DuraSH browser-composition regression, and its pull-request workflow verify the product profile independently of the official client build |
 | Workflow scripts, resource caps, cancellation, member lifecycle events | Inherited from latest DSH | `@deepseek-ai/dsh-workflow`, worker-thread engine, workflow tool, and workflow-run UI |
-| Primary-upstream and dependency drift detection | Operational | The scheduled workflow detected this upstream release, opened the conflict issue, and continues to audit vendored and registry dependencies |
+| Primary-upstream and dependency drift detection | Operational | The scheduled workflow detected the vendored releases, opened the compatibility issue resolved by this reconciliation, and continues to audit vendored and registry dependencies |
 | CI-gated automatic upstream merge | Operational with a manual conflict gate | Clean upstream changes prepare a synchronization PR; product-overlay conflicts stop without overwriting DuraSH behavior and require the reconciliation performed for this baseline |
 | Independent durable Run store from the older fork | Implemented for the bounded loop | `@durash/dsh-reliability-loop` keeps one durable record per loop in the `reliability-loop` storage domain; the old fork's general RunStore control plane remains unmatched |
 | Fixed implementation → coordinator → three reviews → aggregation pipeline | Not migrated | Latest DSH provides a general workflow seam, not this product policy; the shipped loop is one implementer plus one reviewer |
@@ -30,7 +30,7 @@ This document separates current source truth from the older DSH fork's accepted 
 
 ## Current upstream drift
 
-The live 2026-08-31 audit confirms that the primary DSH branch is current after this reconciliation. It also detects four newer public vendored-package releases: Cordis `4.0.0-rc.9`, Cordis Loader `1.0.0-rc.6`, Cordis Include `1.0.5`, and Cordis Timer `1.1.3`. The latest official DSH baseline still carries the recorded older snapshots plus local modifications. DuraSH reports this drift and requires the vendored compatibility runbook before accepting it; detection is not evidence that these releases are already integrated.
+The four vendored-package releases detected on 2026-08-31 are reconciled in this branch: Cordis `4.0.0-rc.9`, Cordis Loader `1.0.0-rc.6`, Cordis Include `1.0.5`, and Cordis Timer `1.1.3` all pin upstream commit `ed8a7755c26a27a72064a21dea036ad1d1d6833c`. Every applicable logged local modification remains; only Include's type-only `writeTask` widening is retired because upstream now owns the same correction. No later release state is claimed without a new live audit.
 
 ## Fusion assessment
 

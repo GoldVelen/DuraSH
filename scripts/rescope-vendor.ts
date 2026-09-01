@@ -157,8 +157,8 @@ const POSTCONDITIONS: readonly PostCondition[] = [
   { file: 'packages/boot/app-boot/tsdown.config.ts', text: '[\'@deepseek-ai/cordis-plugin-include\']', count: 1 },
   { file: 'tsconfig.base.json', text: '"@deepseek-ai/cordis-plugin-loader": ["./vendor/loader/src"]', count: 1 },
   // The vendored README owns this required entry; reject its deletion or duplication.
-  { file: 'vendor/README.md', text: '17. **`@deepseek-ai` rescope**', count: 1 },
-  { file: 'pnpm-workspace.yaml', text: 'cordis@4.0.0-rc.7', count: 0 },
+  { file: 'vendor/README.md', text: '16. **`@deepseek-ai` rescope**', count: 1 },
+  { file: 'pnpm-workspace.yaml', text: 'cordis@4.0.0-rc.9', count: 0 },
   // The preset ids in this table are product data, not package names.
   { file: 'packages/client/ui-agent-preset/tests/locales.client.spec.ts', text: '[\'cordis\', \'presetCordisName\'', count: 1 },
   // The preset id the shipped composition documents to its own model.
@@ -205,8 +205,8 @@ const EXACT_EDITS: readonly ExactEdit[] = [
     find: `minimumReleaseAgeExclude:
   # Cordis release candidates are source-vendored and pinned in vendor/README.md
   # during the same-day sync that updates package manifests and the lockfile.
-  - '@cordisjs/plugin-loader@1.0.0-rc.5'
-  - cordis@4.0.0-rc.7
+  - '@cordisjs/plugin-loader@1.0.0-rc.6'
+  - cordis@4.0.0-rc.9
 `,
     replace: 'minimumReleaseAgeExclude:\n',
     expect: 1,
@@ -410,7 +410,7 @@ const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
     find: `    // Peer ranges resolve to the tarballs; Cordis is pinned to their peer range. Do not omit optional
     // dependencies because the launcher selects its OS/CPU package through one.
     writeFileSync(join(consumerDir, 'package.json'), JSON.stringify({ name: 'dsh-packed-consumer', private: true, type: 'module' }))
-    const install = spawnSync('npm', ['install', '--no-audit', '--no-fund', ...tarballs, 'cordis@4.0.0-rc.7'], {`,
+    const install = spawnSync('npm', ['install', '--no-audit', '--no-fund', ...tarballs, 'cordis@4.0.0-rc.9'], {`,
     replace: `    // Peer ranges resolve to the tarballs, the framework peer included. Do not omit optional
     // dependencies because the launcher selects its OS/CPU package through one.
     writeFileSync(join(consumerDir, 'package.json'), JSON.stringify({ name: 'dsh-packed-consumer', private: true, type: 'module' }))

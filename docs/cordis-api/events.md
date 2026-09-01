@@ -17,6 +17,8 @@ The event-dispatch API mixed into every context. Harness event declarations and 
  */
 parallel<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): Promise<void>
 parallel<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): Promise<void>
+parallel<K extends symbol>(name: K, ...args: any[]): Promise<void>
+parallel<K extends symbol>(thisArg: any, name: K, ...args: any[]): Promise<void>
 ```
 
 Dispatch an event, running all listeners concurrently.
@@ -26,7 +28,7 @@ Dispatch an event, running all listeners concurrently.
 
 **Returns** a promise resolving once every listener has settled.
 
-[Source](../../vendor/cordis/src/events.ts#L44)
+[Source](../../vendor/cordis/src/events.ts#L52)
 
 ### ctx.emit(name, ...args)
 
@@ -39,6 +41,8 @@ Dispatch an event, running all listeners concurrently.
  */
 emit<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): void
 emit<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): void
+emit<K extends symbol>(name: K, ...args: any[]): void
+emit<K extends symbol>(thisArg: any, name: K, ...args: any[]): void
 ```
 
 Dispatch an event synchronously, ignoring listener return values.
@@ -46,7 +50,7 @@ Dispatch an event synchronously, ignoring listener return values.
 - `name` — the event name.
 - `args` — arguments passed to every listener.
 
-[Source](../../vendor/cordis/src/events.ts#L53)
+[Source](../../vendor/cordis/src/events.ts#L65)
 
 ### ctx.serial(name, ...args)
 
@@ -60,6 +64,8 @@ Dispatch an event synchronously, ignoring listener return values.
  */
 serial<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): Promisify<ReturnType<Events[K]>>
 serial<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): Promisify<ReturnType<Events[K]>>
+serial<K extends symbol, A extends any[]>(name: K, ...args: A): DynamicSymbolSerialReturn<K, A>
+serial<K extends symbol>(thisArg: any, name: K, ...args: any[]): Promise<any>
 ```
 
 Dispatch an event, awaiting listeners in order until one bails.
@@ -69,7 +75,7 @@ Dispatch an event, awaiting listeners in order until one bails.
 
 **Returns** the first bail value (non-null, non-false, non-undefined), if any.
 
-[Source](../../vendor/cordis/src/events.ts#L63)
+[Source](../../vendor/cordis/src/events.ts#L79)
 
 ### ctx.bail(name, ...args)
 
@@ -83,6 +89,8 @@ Dispatch an event, awaiting listeners in order until one bails.
  */
 bail<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
 bail<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
+bail<K extends symbol, A extends any[]>(name: K, ...args: A): DynamicSymbolReturn<K, A>
+bail<K extends symbol>(thisArg: any, name: K, ...args: any[]): any
 ```
 
 Dispatch an event, calling listeners in order until one bails.
@@ -92,7 +100,7 @@ Dispatch an event, calling listeners in order until one bails.
 
 **Returns** the first bail value (non-null, non-false, non-undefined), if any.
 
-[Source](../../vendor/cordis/src/events.ts#L73)
+[Source](../../vendor/cordis/src/events.ts#L93)
 
 ### ctx.waterfall(name, ...args)
 
@@ -109,6 +117,8 @@ Dispatch an event, calling listeners in order until one bails.
  */
 waterfall<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
 waterfall<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
+waterfall<K extends symbol, A extends any[]>(name: K, ...args: A): DynamicSymbolReturn<K, A>
+waterfall<K extends symbol>(thisArg: any, name: K, ...args: any[]): any
 ```
 
 Dispatch an event whose last argument is a `next` continuation.
@@ -120,7 +130,7 @@ Each listener wraps the rest of the chain: calling `next()` invokes the next lis
 
 **Returns** the outermost listener's return value.
 
-[Source](../../vendor/cordis/src/events.ts#L86)
+[Source](../../vendor/cordis/src/events.ts#L110)
 
 ### ctx.on(name, listener, options?)
 
@@ -134,6 +144,7 @@ Each listener wraps the rest of the chain: calling `next()` invokes the next lis
  * @returns a disposer removing the listener; `true` if it was still registered.
  */
 on<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | EventOptions): () => boolean
+on<K extends symbol>(name: K, listener: (...args: any[]) => any, options?: boolean | EventOptions): () => boolean
 ```
 
 Register an event listener owned by the current fiber.
@@ -144,7 +155,7 @@ Register an event listener owned by the current fiber.
 
 **Returns** a disposer removing the listener; `true` if it was still registered.
 
-[Source](../../vendor/cordis/src/events.ts#L97)
+[Source](../../vendor/cordis/src/events.ts#L125)
 
 ### ctx.once(name, listener, options?)
 
@@ -158,6 +169,7 @@ Register an event listener owned by the current fiber.
  * @returns a disposer removing the listener; `true` if it was still registered.
  */
 once<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | EventOptions): () => boolean
+once<K extends symbol>(name: K, listener: (...args: any[]) => any, options?: boolean | EventOptions): () => boolean
 ```
 
 Same as `on()`, but the listener disposes itself after its first call.
@@ -168,7 +180,7 @@ Same as `on()`, but the listener disposes itself after its first call.
 
 **Returns** a disposer removing the listener; `true` if it was still registered.
 
-[Source](../../vendor/cordis/src/events.ts#L106)
+[Source](../../vendor/cordis/src/events.ts#L136)
 
 ## EventOptions
 
@@ -184,7 +196,7 @@ interface EventOptions {
 }
 ```
 
-[Source](../../vendor/cordis/src/events.ts#L112)
+[Source](../../vendor/cordis/src/events.ts#L144)
 
 ## DispatchMode
 
@@ -204,4 +216,4 @@ Event dispatch strategy used by the event service.
 type DispatchMode = 'emit' | 'parallel' | 'serial' | 'bail' | 'waterfall'
 ```
 
-[Source](../../vendor/cordis/src/events.ts#L32)
+[Source](../../vendor/cordis/src/events.ts#L40)
