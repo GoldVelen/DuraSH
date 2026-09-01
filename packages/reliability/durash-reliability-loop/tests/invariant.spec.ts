@@ -38,6 +38,19 @@ describe('reliability loop change-event invariants', () => {
       domain: 'reliability_loop', table: 'loops', key: 'loop-1', operation: 'put', value: terminal,
     }) }).not.toThrow()
     expect(isTerminalStage(terminal.stage)).toBe(true)
+    for (const value of [
+      { ...validRecord, stage: 'reviewing', implement: { round: 1 } },
+      {
+        ...validRecord,
+        stage: 'rework-implementing',
+        implement: { round: 1 },
+        review: { round: 1, verdict: 'changes_requested' },
+      },
+    ]) {
+      expect(() => { ctx.emit('domain/changed', {
+        domain: 'reliability_loop', table: 'loops', key: 'loop-1', operation: 'put', value,
+      }) }).not.toThrow()
+    }
   })
 
   it('ignores other domains and rejects an unexpected table', async () => {
@@ -56,6 +69,19 @@ describe('reliability loop change-event invariants', () => {
       domain: 'reliability_loop', table: 'loops', key: 'loop-1', operation: 'put',
       value: { ...validRecord, stage: 'reviewing' },
     }) }).toThrow(invariantViolation)
+  })
+
+  it('rejects unknown stages, orphan reviews, and round-two work without rework', async () => {
+    const { ctx } = await setup()
+    for (const value of [
+      { ...validRecord, stage: 'unknown' },
+      { ...validRecord, stage: 'reviewing', review: { round: 1, verdict: 'approved' } },
+      { ...validRecord, stage: 'completed', implement: { round: 2 }, review: { round: 2, verdict: 'approved' } },
+    ]) {
+      expect(() => { ctx.emit('domain/changed', {
+        domain: 'reliability_loop', table: 'loops', key: 'loop-1', operation: 'put', value,
+      }) }).toThrow(invariantViolation)
+    }
   })
 
   it('assertReliabilityLoopRecord is exported for the driver and tests', () => {

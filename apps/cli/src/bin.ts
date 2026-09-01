@@ -26,7 +26,11 @@ const invocation = parseDshArgs(process.argv.slice(2), readVersion())
 
 switch (invocation.mode) {
   case 'profile': {
-    assertSourceBuildProfile(invocation.profile)
+    const helpOnly = invocation.args.length === 1
+      && (invocation.args[0] === '--help' || invocation.args[0] === '-h')
+    if (!helpOnly) {
+      assertSourceBuildProfile(invocation.profile)
+    }
     const { runProfile } = await import('./profile-boot.ts')
     await runProfile({
       environment: loadLayeredEnv('dsh'),

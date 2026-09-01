@@ -20,6 +20,8 @@ Dock 选择性恢复 3081 中经过验证的呈现方式，不恢复它的状态
 
 闭环记录现在持久化可选的通道 provider/model，以便恢复时仍用同一批子代理。思考强度记在策略行上，因为 worker-thread 的 `agent()` 仍推迟 `effort`。
 
+每个目录选项都公开同一份思考强度列表，因此缺失的实施强度默认用 `high`，缺失的审查强度默认用 `xhigh`。按会话串行的写入队列只保留已经收敛的尾项，因此一次被拒绝的策略操作不会污染下一次公开操作。
+
 这就是[第一个可靠性闭环切片](2026-08-30-durash-reliability-loop-first-slice.zh.md)推迟的面向模型消费者。它不是 Pi 执行器、Runs 控制台或三路审查流水线的移植。
 
 ## 考虑过的替代方案
@@ -38,4 +40,4 @@ Dock 选择性恢复 3081 中经过验证的呈现方式，不恢复它的状态
 
 ## 测试
 
-`packages/reliability/durash-reliability-policy/tests/policy.spec.ts` 覆盖默认关闭读取、ensure 默认值、必须两条通道都齐才能启用，以及保存的模型离开目录时关掉启用行。`packages/reliability/durash-tool-reliability/tests/tool-reliability.spec.ts` 覆盖门控指导、闭门失败的 execute，以及用会话通道启动闭环。`packages/client/ui-reliability/tests/` 覆盖控制器拒绝不完整启用、composer 芯片与槽位注册、body portal 所有权、外部点击与 Escape 关闭、共享思考强度菜单、模型目录 portal、选择，以及通过当前策略 API 保存。`packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx` 钉住共享的上方锚定坐标与尺寸变化观察。`apps/web/tests/durash-workflow-settings.e2e.ts` 在窄视口浏览器中启动构建后的 DuraSH profile，并打开位置更低的审查字段：面板、思考强度菜单与模型目录都使用 body portal 且保持在视口内，面板实际进入右侧贴边分支，两个选择界面也都符合共享的水平贴边计算。`packages/bundle/durash-web-profile/tests/profile.spec.ts` 断言 overlay 插入三行新产品 row。
+`packages/reliability/durash-reliability-policy/tests/policy.spec.ts` 覆盖默认关闭读取、ensure 默认值、必须两条通道都齐才能启用，以及保存的模型离开目录时关掉启用行。`packages/reliability/durash-tool-reliability/tests/tool-reliability.spec.ts` 覆盖门控指导、闭门失败的 execute，以及用会话通道启动闭环。`packages/client/ui-reliability/tests/` 覆盖控制器拒绝不完整启用、composer 芯片与槽位注册、body portal 所有权、外部点击与 Escape 关闭、共享思考强度菜单、模型目录 portal、选择，以及通过当前策略 API 保存。`packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx` 钉住共享的上方锚定坐标与尺寸变化观察。`apps/web/tests/durash-workflow-settings.e2e.ts` 在窄视口浏览器中启动构建后的 DuraSH profile，并打开位置更低的审查字段：面板、思考强度菜单与模型目录都使用 body portal 且保持在视口内，面板实际进入右侧贴边分支，两个选择界面也都符合共享的水平贴边计算。`packages/bundle/durash-web-profile/tests/profile.spec.ts` 断言 overlay 插入三行新产品 row。逐文件 V8 门禁只豁免纯组件 `WorkflowPolicyDock.tsx`，直到浏览器级覆盖能够归因其 portal 与几何分支；控制器、包接线和所有可靠性运行逻辑仍受 100% 门禁约束，被豁免的呈现行为由上述 jsdom 与构建后浏览器检查持有。

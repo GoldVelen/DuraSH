@@ -15,6 +15,9 @@ export interface AuthorizationMethod {
   label: string
 }
 
+/** The ordered, non-empty methods offered by one authorization flow. */
+export type AuthorizationMethods = readonly [AuthorizationMethod, ...AuthorizationMethod[]]
+
 /** A running flow's report to whoever is watching it. Never carries a secret. */
 export interface AuthorizationNotice {
   /** What is happening, or what the human must do next. */
@@ -84,8 +87,8 @@ export interface AuthorizationEntry {
   key: CredentialKey
   /** User-facing name of what is being authorized. */
   label: string
-  /** The methods this flow offers, most preferred first. */
-  methods: readonly AuthorizationMethod[]
+  /** The non-empty methods this flow offers, most preferred first. */
+  methods: AuthorizationMethods
   /** Whether an attempt for this key is running right now. */
   inFlight: boolean
 }

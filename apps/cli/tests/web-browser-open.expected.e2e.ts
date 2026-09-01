@@ -1,4 +1,4 @@
-/** Assembled keyless snapshot for the default `dsh web` browser handoff. */
+/** Assembled keyless snapshot for the repository-built browser profile handoff. */
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -6,8 +6,12 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it } from 'vitest'
+import { readClientBuildRecord } from '../../../scripts/client-build-environment.ts'
 
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url))
+const builtWebProfile = readClientBuildRecord(repoRoot).environment.DSH_CLIENT_BUILD_PROFILE === 'durash'
+  ? 'durash'
+  : 'web'
 const builtBin = join(repoRoot, 'apps/cli/lib/bin.js')
 const frontendIndex = join(repoRoot, 'apps/web/dist/index.html')
 const openerHook = new URL('./fixtures/web-browser-open/register.mjs', import.meta.url).href
@@ -37,14 +41,14 @@ function normalizeLocalUrl(url: string): string {
     .replace(/token=[^&]+/u, 'token={{token}}')
 }
 
-describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot', () => {
+describe.skipIf(!builtArtifactsExist)('built browser profile browser-open assembled snapshot', () => {
   it('hands the reachable page to the default browser after the shipped tree settles', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-web-browser-open-snapshot-'))
     tempRoots.push(root)
     const result = await execa(process.execPath, [
       '--import', openerHook,
       builtBin,
-      'web',
+      '--profile', builtWebProfile,
       '--port', '0',
     ], {
       cwd: root,
@@ -102,7 +106,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
     const result = await execa(process.execPath, [
       '--import', openerHook,
       builtBin,
-      'web',
+      '--profile', builtWebProfile,
       '--port', '0',
     ], {
       cwd: root,
@@ -150,7 +154,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
     const result = await execa(process.execPath, [
       '--import', openerHook,
       builtBin,
-      'web',
+      '--profile', builtWebProfile,
       '--port', '0',
     ], {
       cwd: root,
@@ -197,7 +201,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
     const result = await execa(process.execPath, [
       '--import', openerHook,
       builtBin,
-      'web',
+      '--profile', builtWebProfile,
       '--port', '0',
     ], {
       cwd: root,

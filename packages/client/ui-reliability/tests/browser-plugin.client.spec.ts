@@ -62,8 +62,20 @@ describe('ui-reliability browser apply', () => {
     expect(entry.component).toBe(WorkflowPolicyDock)
     const injected = (entry.inject as unknown as (id: SessionId) => WorkflowPolicyDockInjected)(SID)
     expect(injected.sessionId).toBe(SID)
+    expect(injected.readPolicy().status).toBe('cold')
     await expect(injected.loadPolicy()).resolves.toEqual({ ok: true })
     expect(b.reliabilityPolicy.policy).toHaveBeenCalledWith({ sessionId: SID })
+    await expect(injected.ensurePolicy()).resolves.toEqual({ ok: true })
+    expect(b.reliabilityPolicy.ensurePolicy).toHaveBeenCalledWith({ sessionId: SID })
+    await expect(injected.configure({
+      sessionId: SID,
+      enabled: false,
+      implementationModel: SNAPSHOT.implementationModel,
+      implementationThinking: SNAPSHOT.implementationThinking,
+      reviewModel: SNAPSHOT.reviewModel,
+      reviewThinking: SNAPSHOT.reviewThinking,
+    })).resolves.toEqual({ ok: true })
+    expect(b.reliabilityPolicy.configure).toHaveBeenCalled()
     await fiber.dispose()
     expect(b.slots.entries('conversation.input.left')).toHaveLength(0)
   })

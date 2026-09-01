@@ -10,7 +10,7 @@
 
 组合包名称先从 dsh 安装目录解析，再从 profile 目录解析。因此，内置组合包（`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-headless`、`@deepseek-ai/dsh-sdk-app`、`@deepseek-ai/dsh-sdk-minimal`、`@deepseek-ai/dsh-acp-app`）始终来自当前运行的 `dsh` 所属的安装；树外组合包则来自 profile 中由 pnpm 管理的 `node_modules`。patch 行中的裸插件 `name` 会从 profile 目录开始，按照 Node 的模块解析规则逐级向父目录查找，直至由 dsh 维护的安装后备目录 `$DSH_HOME/profiles/node_modules`。普通 Node 安装会为依赖闭包中的每个包放置并修复一个符号链接。pkg 可执行程序则放置真实 ESM 代理，镜像显式 exports 并重新导出虚拟包 URL，因为操作系统符号链接无法进入 pkg 的 `/snapshot` 文件系统。每次启动还会把仅由所选外部 bundle 携带的包经 dsh 自有目录链接到当前 profile 的 `node_modules`；已有 pnpm 条目优先，且每个 profile 独立拥有自己的链接。
 
-`web`、`durash`、`headless`、`sdk`、`sdk-minimal` 和 `acp` profile 首次使用时会从随附模板自动初始化（`web`：base + web-app，实时应用 patch；`durash`：base + web-app + DuraSH 产品叠加层，实时应用 patch；`headless`：base + headless，只在启动时应用 patch；`sdk`：base + sdk-app，只在启动时应用 patch；`sdk-minimal`：独立组合包，只在启动时应用 patch；`acp`：base + acp-app，只在启动时应用 patch）。其他缺失的 profile 会显式报错，并提示运行 `dsh plugin --profile <name> add <package>`。
+公开安装的 `@deepseek-ai/dsh` 会在首次使用时从随附模板自动初始化五个 profile（`web`：base + web-app，实时应用 patch；`headless`：base + headless，只在启动时应用 patch；`sdk`：base + sdk-app，只在启动时应用 patch；`sdk-minimal`：独立组合包，只在启动时应用 patch；`acp`：base + acp-app，只在启动时应用 patch）。DuraSH 源码 checkout 还会提供 `durash`：base + web-app + 私有 DuraSH 产品叠加层，实时应用 patch。其他缺失的 profile 会显式报错，并提示运行 `dsh plugin --profile <name> add <package>`。
 
 ### 应用参数
 
@@ -98,4 +98,4 @@ dsh web --help
 <a id="source-execution"></a>
 ## 源码执行
 
-在仓库根目录中，DuraSH 产品使用 `pnpm run build` 构建后再运行 `pnpm start`。构建默认选择 DuraSH 客户端，`start` 则选择匹配的 `durash` 运行 profile。源码树中的 `durash` 启动会拒绝缺失、本地或官方客户端身份；源码树中的 `web` 启动会拒绝 DuraSH 客户端产物，并指示用户运行 `pnpm run build:local`。底层 `package.json` `dsh` 脚本不会构建，而是通过 `node --import tsx/esm` 启动 `apps/cli/src/bin.ts`，并转发所有参数。Typert Host 产物缺失时，profile 启动会因不含构建指引的模块解析错误而失败。这些 Host 产物存在后，如果前端或 Client plugin 组合包缺失，启动会失败并给出构建指引。启动器会检查记录的身份，但不会检查源码新鲜度，因此已有的陈旧组合包可能继续运行旧版浏览器代码，直至重新构建。该进程会继承启动环境；当支持环境代理的 Node 版本必须遵循 `HTTP_PROXY` 和 `HTTPS_PROXY` 时，请设置 `NODE_USE_ENV_PROXY=1`。安装形式会直接启动构建后的 `apps/cli/lib/bin.js`，不会重新构建仓库，也不要求源码构建记录。
+在仓库根目录中，DuraSH 产品使用 `pnpm run build` 构建后再运行 `pnpm start`。构建默认选择 DuraSH 客户端，`start` 则选择匹配的 `durash` 运行 profile。源码树中的 `durash` 启动会拒绝缺失、本地或官方客户端身份；源码树中的 `web` 启动会拒绝 DuraSH 客户端产物，并指示用户运行 `pnpm run build:local`。底层 `package.json` `dsh` 脚本不会构建，而是通过 `node --import tsx/esm` 启动 `apps/cli/src/bin.ts`，并转发所有参数。Typert Host 产物缺失时，profile 启动会因不含构建指引的模块解析错误而失败。这些 Host 产物存在后，如果前端或 Client plugin 组合包缺失，启动会失败并给出构建指引。启动器会检查记录的身份，但不会检查源码新鲜度，因此已有的陈旧组合包可能继续运行旧版浏览器代码，直至重新构建。该进程会继承启动环境；当支持环境代理的 Node 版本必须遵循 `HTTP_PROXY` 和 `HTTPS_PROXY` 时，请设置 `NODE_USE_ENV_PROXY=1`。安装形式会直接启动构建后的 `apps/cli/lib/bin.js`，不会重新构建仓库，也不要求源码构建记录；它只暴露公开模板，不会自动初始化 `durash`。

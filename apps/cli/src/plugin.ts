@@ -16,7 +16,6 @@ import { join, resolve } from 'node:path'
 import {
   DEFAULT_PROFILE_BUNDLES,
   initProfile,
-  PROFILE_TEMPLATES,
   readProfileManifest,
   resolveBundleDir,
   resolveProfileDir,
@@ -24,6 +23,7 @@ import {
   type ProfileManifest,
 } from '@deepseek-ai/dsh-app-boot'
 import { INSTALL_ANCHOR } from './profile-boot.ts'
+import { installationProfileTemplates } from './source-build-profile.ts'
 
 const NAME = 'dsh'
 
@@ -120,7 +120,7 @@ function anchorPathSpec(argument: string, cwd: string): string {
 export function runPlugin(profile: string, args: readonly string[]): number {
   const dir = resolveProfileDir(profile)
   if (!existsSync(join(dir, 'package.json'))) {
-    const template = PROFILE_TEMPLATES[profile]
+    const template = installationProfileTemplates()[profile]
     initProfile(
       dir,
       template?.bundles ?? DEFAULT_PROFILE_BUNDLES,

@@ -99,6 +99,17 @@ describe('generated tsconfig package aliases', () => {
     expect(uncoveredPackages(names, mappedSpecifiers(config))).toEqual([])
   })
 
+  it('keeps DuraSH cross-face reliability types on the source plane', () => {
+    const config = readFileSync(resolve(root, 'tsconfig.base.json'), 'utf8')
+
+    expect(config).toContain(
+      '"@durash/dsh-reliability-policy/client": ["./packages/reliability/durash-reliability-policy/src/client.ts"]',
+    )
+    expect(config).toContain(
+      '"@durash/dsh-reliability-policy/types": ["./packages/reliability/durash-reliability-policy/src/types.ts"]',
+    )
+  })
+
   it('leaves no wildcard that probes every package group', () => {
     const config = readFileSync(resolve(root, 'tsconfig.base.json'), 'utf8')
     // These two listed one candidate per group, so resolving a package late in

@@ -34,9 +34,8 @@ function slotSignature(
   implement: { readonly round?: number } | undefined,
   review: { readonly round?: number; readonly verdict?: string } | undefined,
 ): string {
-  if (implement === undefined && review === undefined) return '-'
-  if (review === undefined) return implement === undefined ? '?' : `i${implement.round}+?:?`
-  if (implement === undefined) return '?'
+  if (implement === undefined) return review === undefined ? '-' : '?'
+  if (review === undefined) return `i${implement.round}+?:?`
   return `i${implement.round}+r${review.round}:${review.verdict === 'approved' ? 'ok' : 'cr'}`
 }
 

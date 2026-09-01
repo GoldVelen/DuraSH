@@ -139,7 +139,7 @@ interface HarnessOptions {
   failPutAt?: number
 }
 
-const roots: string[] = []
+const roots = new Set<string>()
 const contexts: Context[] = []
 
 /** Drop a context the test already disposed itself, so afterEach never double-disposes. */
@@ -150,7 +150,9 @@ function dropContext(ctx: Context): void {
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(async (ctx) => { await ctx.fiber.dispose() }))
-  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
+  const ownedRoots = [...roots]
+  roots.clear()
+  await Promise.all(ownedRoots.map(root => rm(root, { recursive: true, force: true })))
 })
 
 interface HarnessOptions {
@@ -171,7 +173,7 @@ async function harness(options: HarnessOptions = {}): Promise<{
   loopId: () => ReliabilityLoopId
 }> {
   const root = options.root ?? await mkdtemp(join(tmpdir(), 'durash-reliability-loop-'))
-  roots.push(root)
+  roots.add(root)
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(SubagentRuntime)
@@ -222,7 +224,7 @@ async function settleAndAwaitStage(
 /** Storage family only: an open reliability-loop domain table for driver-level unit tests. */
 async function bareDomain(): Promise<Domain<typeof reliabilityLoopDomainSpec>> {
   const root = await mkdtemp(join(tmpdir(), 'durash-reliability-loop-bare-'))
-  roots.push(root)
+  roots.add(root)
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(Storage)

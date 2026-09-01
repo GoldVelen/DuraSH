@@ -36,11 +36,14 @@ concurrency:
 jobs:
   lifecycle:
     name: Issue lifecycle
-    # Runs on every pull_request_review event so the check reports success rather
-    # than a gray "skipped" segment. The token-creating and board-mutating steps
-    # are gated at step level (a skipped step does not gray the job): only a
-    # changes_requested review drives the Project board; approved/commented
-    # reviews never mint a write-capable App token.
+    # This Project and its App credentials belong to the canonical repository.
+    # Downstream copies keep the workflow visibly not applicable instead of
+    # attempting to mutate an upstream organization Project.
+    if: ${{ github.repository == 'deepseek-harness/deepseek-harness' }}
+    # In the canonical repository, every pull_request_review event starts the
+    # job. The token-creating and board-mutating steps are gated at step level:
+    # only a changes_requested review drives the Project board, while
+    # approved/commented reviews never mint a write-capable App token.
     runs-on: ubuntu-latest
     steps:
       - name: Check out trusted policy

@@ -1,7 +1,8 @@
 /** Benchmark npm's dependency-tree resolution against an all-local registry. */
 
 import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { globSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -12,6 +13,8 @@ const TARGET_PACKAGE = '@deepseek-ai/dsh'
 const DEFAULT_TIMEOUT_MS = 300_000
 const TERMINATION_GRACE_MS = 1_000
 const FORCED_EXIT_TIMEOUT_MS = 5_000
+const TEMPORARY_DIRECTORY_MAX_RETRIES = 10
+const TEMPORARY_DIRECTORY_RETRY_DELAY_MS = 200
 const WORKSPACE_MANIFEST_GLOBS = [
   'apps/*/package.json',
   'packages/*/*/package.json',
@@ -482,7 +485,14 @@ export async function resolveNpmPackageLock(
   } finally {
     server.closeAllConnections()
     await close(server)
-    rmSync(consumer, { recursive: true, force: true })
+    // Async retries leave event-loop turns for Windows to finalize the npm
+    // child and registry handles before the next removal attempt.
+    await rm(consumer, {
+      recursive: true,
+      force: true,
+      maxRetries: TEMPORARY_DIRECTORY_MAX_RETRIES,
+      retryDelay: TEMPORARY_DIRECTORY_RETRY_DELAY_MS,
+    })
   }
 }
 

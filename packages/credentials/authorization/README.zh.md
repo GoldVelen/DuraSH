@@ -62,7 +62,7 @@ ctx.authorization.describe(key)   // the entry above, or undefined
 dispose()                         // unregister; withdraws any running attempt
 ```
 
-flow 声明它写入的凭据记录、面向用户的标签以及它提供的登录方法，最优先者在前。`run()` 通过 session 与人对话——单向 notice 与 flow 无法自行回答的问题——并且必须在返回前通过 `ctx.credentials` 提交记录：seam 会拒绝未提交就返回的 flow。`list()` 与 `describe()` 让界面展示可授权的内容以及是否有尝试在运行；`dispose()` 注销该 flow 并撤销仍在运行中的尝试。
+flow 声明它写入的凭据记录、面向用户的标签以及至少一种登录方法，最优先者在前。`run()` 通过 session 与人对话——单向 notice 与 flow 无法自行回答的问题——并且必须在返回前通过 `ctx.credentials` 提交记录：seam 会拒绝未提交就返回的 flow。`list()` 与 `describe()` 保留这个非空方法列表，因此界面可以默认采用首项、展示可授权的内容，并报告是否有尝试在运行；`dispose()` 注销该 flow 并撤销仍在运行中的尝试。
 
 ### 发起一次尝试
 

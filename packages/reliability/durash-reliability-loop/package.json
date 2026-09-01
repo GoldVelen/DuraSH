@@ -1,7 +1,7 @@
 {
   "name": "@durash/dsh-reliability-loop",
   "description": "DuraSH reliability loop (ctx.reliabilityLoopRuntime): one bounded implement-review-rework cycle with product-owned durable state, restart recovery, and cancellation quiescence over the workflow engine",
-  "version": "0.1.2-alpha.1",
+  "version": "0.1.2-alpha.3",
   "private": true,
   "repository": {
     "type": "git",

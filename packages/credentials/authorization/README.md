@@ -62,7 +62,7 @@ ctx.authorization.describe(key)   // the entry above, or undefined
 dispose()                         // unregister; withdraws any running attempt
 ```
 
-A flow declares the credential record it writes, a user-facing label, and the sign-in methods it offers, most preferred first. `run()` talks to the human through the session — one-way notices and questions the flow cannot answer for itself — and must commit the record through `ctx.credentials` before resolving: the seam refuses a flow that resolved without committing. `list()` and `describe()` let a surface show what can be authorized and whether an attempt is running; `dispose()` unregisters the flow and withdraws any attempt still running.
+A flow declares the credential record it writes, a user-facing label, and at least one sign-in method, most preferred first. `run()` talks to the human through the session — one-way notices and questions the flow cannot answer for itself — and must commit the record through `ctx.credentials` before resolving: the seam refuses a flow that resolved without committing. `list()` and `describe()` preserve that non-empty method list so a surface can default to its first entry, show what can be authorized, and report whether an attempt is running; `dispose()` unregisters the flow and withdraws any attempt still running.
 
 ### Running an attempt
 

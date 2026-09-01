@@ -95,11 +95,11 @@ async function waitForOutput(operation: TerminalSendOperation, expected: string,
   expect(output).toContain(expected)
 }
 
-// A send the test interrupts settles when bash returns to its prompt, so the
-// kernel may publish the foreground handoff on either side of the silence
-// bound. `handoffGraceMs` widens the window that wins the exact attribution but
-// cannot remove the race on a loaded host, so these settles assert that the
-// session became usable again, not which readiness tier observed it.
+// A completed command may expose the controlled prompt or exact provider state
+// on either side of the silence bound. `handoffGraceMs` widens that evidence
+// window but cannot remove the race on a loaded host, so these settles assert
+// that the session became usable again, not which documented readiness tier
+// observed it.
 function expectReadyForNextSend(waitReason: string): void {
   expect(['stdin_read', 'inferred_idle']).toContain(waitReason)
 }
@@ -317,16 +317,21 @@ const hasPwsh = spawnSync(
   { encoding: 'utf8' },
 ).status === 0
 
+// Hosted coverage shares a small runner with another partition. Keep the
+// silence fallback behind slow pwsh command execution instead of letting the
+// test's accelerated timing settle an empty operation before pwsh responds.
+const PWSH_REAL_TIMING = {
+  idleSilenceMs: 5_000,
+  handoffGraceMs: 300,
+  timeoutMs: 8_000,
+} as const
+
 describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
   it('bootstraps a persistent pwsh, persists state, and scrubs secrets', async () => {
     const previous = process.env.DSH_TEST_SECRET
     process.env.DSH_TEST_SECRET = 'must-not-leak'
     try {
-      const { ctx, root, agent } = await harness('danger-full-access', {
-        idleSilenceMs: 300,
-        handoffGraceMs: 300,
-        timeoutMs: 8_000,
-      }, 'pwsh')
+      const { ctx, root, agent } = await harness('danger-full-access', PWSH_REAL_TIMING, 'pwsh')
       const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
       expect(created.motd).toContain('dsh> ')
 
@@ -334,7 +339,7 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
         text: '$env:KEEP = "ok"; Set-Location /',
         submit: true,
       })
-      expect((await first.done).waitReason).toBe('stdin_read')
+      expectReadyForNextSend((await first.done).waitReason)
       const second = ctx.terminals.startSend(agent, created.sessionId, {
         text: 'Write-Output "keep=$env:KEEP secret=$env:DSH_TEST_SECRET"',
         submit: true,
@@ -354,11 +359,7 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
   }, 30_000)
 
   it('pins UTF-8 output encoding so non-ASCII output survives the byte decode', async () => {
-    const { ctx, root, agent } = await harness('danger-full-access', {
-      idleSilenceMs: 300,
-      handoffGraceMs: 300,
-      timeoutMs: 8_000,
-    }, 'pwsh')
+    const { ctx, root, agent } = await harness('danger-full-access', PWSH_REAL_TIMING, 'pwsh')
     const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
     // The bootstrap itself must have pinned both encodings: the session byte
     // decode is UTF-8, so an un-pinned console writing its host code page

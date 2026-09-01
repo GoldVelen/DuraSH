@@ -40,6 +40,7 @@ import {
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import { parseSessionLog } from '@deepseek-ai/dsh-llm-replay'
+import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const snapshotsRoot = fileURLToPath(new URL('./', import.meta.url))
@@ -84,6 +85,22 @@ interface SessionLog {
   readonly content: string
   readonly header: JsonObject
 }
+
+const PWSH_SNAPSHOT_DISABLED_TOOL_ROWS = [
+  'tool-fs',
+  'tool-fs-search',
+  'plan-mode',
+  'tool-subagent-control',
+  'tool-subagent-list-agents',
+  'tool-subagent',
+  'tool-subagent-fork',
+  'tool-subagent-report',
+  'tool-workflow',
+  'tool-todo',
+  'tool-ralph',
+  'tool-str-replace-editor',
+  'tool-web',
+] as const
 
 function propertyName(node: ts.PropertyName): string | undefined {
   if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text
@@ -549,6 +566,31 @@ describe('headless recorded-session snapshots', () => {
       expect(ownerOf(scenario), `${scenario.name}: composition owner`).toBeDefined()
       expect(pinOf(scenario), `${scenario.name}: header pin`).toBeDefined()
     }
+  })
+
+  it.each([
+    ['pwsh-tool-turn', 'cordis.yml', PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
+    ['pwsh-tool-turn', 'cordis.snapshot.yml', PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, ['tool-jobs', 'tool-pwsh', 'tool-result-pruner']],
+    ['persistent-pwsh-tool-turn', 'cordis.yml', [...PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, 'tool-jobs', 'tool-pwsh'], ['tool-pwsh-persistent', 'tool-result-pruner']],
+    ['persistent-pwsh-tool-turn', 'cordis.snapshot.yml', [...PWSH_SNAPSHOT_DISABLED_TOOL_ROWS, 'tool-jobs', 'tool-pwsh'], ['tool-pwsh-persistent', 'tool-result-pruner']],
+  ] as const)('isolates %s through %s without requiring PowerShell', (scenario, patch, disabledRows, expected) => {
+    const load = (file: string) => loadOverlayPatches('headless snapshot', join(repoRoot, file))
+    const scenarioPatch = load(`snapshots/session/${scenario}/${patch}`)
+    for (const id of disabledRows) {
+      expect(scenarioPatch.find(row => row.id === id)?.disabled, `${scenario}/${patch}: ${id}`).toBe(true)
+    }
+    const rows = composeEntries([
+      load('packages/bundle/base/cordis.patch.yml'),
+      load('packages/bundle/headless/cordis.patch.yml'),
+      load('snapshots/session/text-turn/cordis.yml'),
+      scenarioPatch,
+      load('snapshots/session/text-turn/model.cordis.yml'),
+    ])
+    const activeToolRows = rows
+      .filter(row => row.disabled !== true && (String(row.id).startsWith('tool-') || row.id === 'plan-mode'))
+      .map(row => String(row.id))
+      .sort()
+    expect(activeToolRows).toEqual(expected)
   })
 
   it('recognizes the supported OS-assigned listener forms', () => {

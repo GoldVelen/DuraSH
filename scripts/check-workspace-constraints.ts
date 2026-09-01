@@ -6,7 +6,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
@@ -56,7 +56,7 @@ const durashPackagePrefix = '@durash/'
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** Downstream packages intentionally distributed only as part of the source checkout. */
 const durashSourceOnlyPackageDirectory = new RegExp(
-  '^packages/(?:bundle/durash-web-profile|client/ui-brand-durash|reliability/durash-reliability-loop)$',
+  '^packages/(?:bundle/durash-web-profile|client/(?:ui-brand-durash|ui-reliability)|reliability/(?:durash-reliability-loop|durash-reliability-policy|durash-tool-reliability))$',
 )
 /** npm namespace reserved for private experimental packages. */
 const experimentalPackageNamePrefix = '@deepseek-ai/dsh-experimental-'
@@ -168,12 +168,6 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // sandbox-local resolves it through the package's ./runner export. tsdown
   // also shares its generated FFI code through a hashed runtime chunk.
   '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js'],
-  // SQLite loads its compression dictionary and every statement from immutable
-  // package resources at runtime.
-  '@deepseek-ai/dsh-session-persistence-sqlite': [
-    'resources/zstd-dictionary.bin',
-    'resources/sql/**/*.sql',
-  ],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
   // tsdown shares the repository/pack code between the lib entry and the bin
   // through a hashed chunk. The committed bin.js is the link target pnpm can
@@ -422,7 +416,8 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     }
   }
 
-  return errors.map(error => `${relative(root, join(root, dir, 'package.json'))}: ${error}`)
+  const manifestPath = dir === '.' ? 'package.json' : `${dir}/package.json`
+  return errors.map(error => `${manifestPath}: ${error}`)
 }
 
 /**

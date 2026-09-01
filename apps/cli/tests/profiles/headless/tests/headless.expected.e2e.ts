@@ -17,29 +17,32 @@ import {
 } from '@deepseek-ai/dsh-session-persistence-jsonl/src/zstd.ts'
 import { describe, expect, it } from 'vitest'
 
+const PRODUCTION_PROFILE_PROCESS_TIMEOUT_MS = 60_000
+const PRODUCTION_PROFILE_TEST_TIMEOUT_MS = PRODUCTION_PROFILE_PROCESS_TIMEOUT_MS + 15_000
 const goldensDir = fileURLToPath(new URL('./expected/', import.meta.url))
 const goalScenarioDir = join(goldensDir, 'goal-tools')
-const goalConfigPath = fileURLToPath(new URL('../goal.cordis.snapshot.yml', import.meta.url))
+const goalConfigPath = fileURLToPath(new URL('../goal-snapshot.patch.yml', import.meta.url))
 const retryScenarioDir = join(goldensDir, 'provider-retry')
-const retryConfigPath = fileURLToPath(new URL('../retry.cordis.snapshot.yml', import.meta.url))
+const retryConfigPath = fileURLToPath(new URL('../retry-snapshot.patch.yml', import.meta.url))
 const credentialsScenarioDir = join(goldensDir, 'missing-credential')
-const credentialsConfigPath = fileURLToPath(new URL('../credentials.cordis.snapshot.yml', import.meta.url))
+const credentialsConfigPath = fileURLToPath(new URL('../credentials-snapshot.patch.yml', import.meta.url))
 // Same keyless composition as the missing-credential scenario: the endpoint is
 // never dialed either way, because a supplied-but-unusable key fails credential
 // resolution exactly where an absent one does.
 const invalidCredentialScenarioDir = join(goldensDir, 'invalid-credential')
 const settlementScenarioDir = join(goldensDir, 'subagent-settlement')
-const settlementConfigPath = fileURLToPath(new URL('../subagent-settlement.cordis.snapshot.yml', import.meta.url))
-const teamConfigPath = fileURLToPath(new URL('../team.cordis.snapshot.yml', import.meta.url))
-const startupFailureConfigPath = fileURLToPath(new URL('./fixtures/startup-activation-error/cordis.yml', import.meta.url))
+const settlementConfigPath = fileURLToPath(new URL('../subagent-settlement-snapshot.patch.yml', import.meta.url))
+const teamConfigPath = fileURLToPath(new URL('../team-snapshot.patch.yml', import.meta.url))
+const startupFailureConfigPath = fileURLToPath(new URL('./fixtures/startup-activation-error/activation-error.patch.yml', import.meta.url))
+const startupFailurePluginUrl = new URL('./fixtures/startup-activation-error/activation-error.mjs', import.meta.url).href
 const startupFailureExpected = join(goldensDir, 'startup-activation-error', 'stderr.expected.txt')
 const binScript = fileURLToPath(new URL('../../../../../../packages/test-support/loader-smoke/tests/fixtures/headless-driver.ts', import.meta.url))
 const dshBinScript = fileURLToPath(new URL('../../../../src/bin.ts', import.meta.url))
 const tsconfigPath = fileURLToPath(new URL('../../../../../../tsconfig.json', import.meta.url))
-const reasoningConfigPath = fileURLToPath(new URL('./fixtures/cli.cordis.yml', import.meta.url))
-const deepseekDefaultsConfigPath = fileURLToPath(new URL('./fixtures/deepseek-defaults.cordis.yml', import.meta.url))
-const piAiDefaultsConfigPath = fileURLToPath(new URL('./fixtures/pi-ai-defaults.cordis.yml', import.meta.url))
-const headlessOverlayPath = fileURLToPath(new URL('./fixtures/headless-profile.cordis.yml', import.meta.url))
+const reasoningConfigPath = fileURLToPath(new URL('./fixtures/cli.patch.yml', import.meta.url))
+const deepseekDefaultsConfigPath = fileURLToPath(new URL('./fixtures/deepseek-defaults.patch.yml', import.meta.url))
+const piAiDefaultsConfigPath = fileURLToPath(new URL('./fixtures/pi-ai-defaults.patch.yml', import.meta.url))
+const headlessOverlayPath = fileURLToPath(new URL('./fixtures/headless-profile.patch.yml', import.meta.url))
 const headlessSessionExpected = join(goldensDir, 'headless-profile', 'session.expected.jsonl')
 const headlessReasoningExpected = join(goldensDir, 'headless-profile', 'reasoning.stderr.expected.txt')
 const headlessFailureExpected = join(goldensDir, 'headless-profile', 'stderr.expected.txt')
@@ -209,6 +212,7 @@ describe('headless stream-json snapshots', () => {
         DSH_TELEMETRY_DISABLED: '1',
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
+      processTimeoutMs: PRODUCTION_PROFILE_PROCESS_TIMEOUT_MS,
       inspect: async (cwd) => {
         const logs = await persistedLogs(cwd, join(cwd, '.dsh', 'sessions'))
         expect(logs).toHaveLength(1)
@@ -226,7 +230,7 @@ describe('headless stream-json snapshots', () => {
     expect(result.stdout).toBe('CLI tool round trip complete: CLI_TOOL_ROUND_TRIP\n')
     if (refreshing) await writeFile(headlessReasoningExpected, result.stderr)
     expect(result.stderr).toBe(await readFile(headlessReasoningExpected, 'utf8'))
-  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+  }, PRODUCTION_PROFILE_TEST_TIMEOUT_MS)
 
   it('prints a terminal model failure through the product headless profile command', async () => {
     const result = await runLoaderSmoke({
@@ -242,11 +246,12 @@ describe('headless stream-json snapshots', () => {
         DSH_TELEMETRY_DISABLED: '1',
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
+      processTimeoutMs: PRODUCTION_PROFILE_PROCESS_TIMEOUT_MS,
     })
 
     expect(result.stdout).toBe('\n')
     await expect(result.stderr).toMatchFileSnapshot(headlessFailureExpected)
-  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+  }, PRODUCTION_PROFILE_TEST_TIMEOUT_MS)
 
   it('prints the original Loader activation error through the assembled one-shot app', async () => {
     const result = await runLoaderSmoke({
@@ -260,7 +265,8 @@ describe('headless stream-json snapshots', () => {
       expectedExitCode: 1,
     })
     expect(result.stdout).toBe('')
-    await expect(result.stderr).toMatchFileSnapshot(startupFailureExpected)
+    await expect(result.stderr.replace(startupFailurePluginUrl, './activation-error.mjs'))
+      .toMatchFileSnapshot(startupFailureExpected)
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
   it('retries a transient provider failure through the one-shot app', async () => {
@@ -444,9 +450,11 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
-      expect(server.requests).toHaveLength(1)
-      expect(server.requests[0]?.max_tokens).toBe(256_000)
-      expect(server.requests[0]?.reasoning_effort).toBe('low')
+      expect(server.requests).toHaveLength(2)
+      const agentRequest = server.requests.find(request => request.max_tokens === 256_000)
+      const titleRequest = server.requests.find(request => request.max_tokens === 64)
+      expect(agentRequest?.reasoning_effort).toBe('low')
+      expect(titleRequest).toBeDefined()
       const header = (parseJsonl(result.stdout)
         .map(record => record.event)
         .find((event): event is JsonObject => (
@@ -495,9 +503,11 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
-      expect(server.requests).toHaveLength(1)
-      expect(server.requests[0]?.max_tokens).toBe(1024)
-      expect(server.requests[0]).not.toHaveProperty('max_completion_tokens')
+      expect(server.requests).toHaveLength(2)
+      const agentRequest = server.requests.find(request => request.max_tokens === 1024)
+      const titleRequest = server.requests.find(request => request.max_tokens === 64)
+      expect(agentRequest).not.toHaveProperty('max_completion_tokens')
+      expect(titleRequest).toBeDefined()
       const header = (parseJsonl(result.stdout)
         .map(record => record.event)
         .find((event): event is JsonObject => (

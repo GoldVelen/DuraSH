@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-30-durash-product-overlay-and-upstream-sync.md
-2026-08-30-durash-product-overlay-and-upstream-sync.md: 08a795b33f98f6e413f4fbf1fb4d74f8440385f5
-2026-08-30-durash-product-overlay-and-upstream-sync.zh.md: c17a0874029278e7600c916e0dc147c415532bfe
+2026-08-30-durash-product-overlay-and-upstream-sync.md: 611d37c44d82278e4d2625e91f4ec41cc6daea61
+2026-08-30-durash-product-overlay-and-upstream-sync.zh.md: d08d384e20ee9e263bd103112c62caa863cc6705

@@ -12,11 +12,9 @@ That producer inventory did not cover a third-party plugin that currently depend
 
 ## Decision
 
-The canonical `SessionEvent` envelope retains `ignorable?: true`, and every representation preserves it: seed validation, JSONL, SQLite, API transport, generated catalogs, and test fixtures. `PersistenceCoordinator` continues to refuse an unknown event unless its stored envelope explicitly carries `ignorable: true`; absent remains required-on-read.
+The canonical `SessionEvent` envelope retains `ignorable?: true`, and every representation preserves it: seed validation, JSONL, API transport, generated catalogs, and test fixtures. `PersistenceCoordinator` continues to refuse an unknown event unless its stored envelope explicitly carries `ignorable: true`; absent remains required-on-read.
 
 One narrow read-side exception preserves DuraSH sessions written before that marker was available. `INERT_LEGACY_EVENT_TYPES` admits only `runs/dispatched`, `workflow/start`, and `workflow/change`, the 0.1.1-era workflow run-state mirrors whose declarations fixed `modelVisible: false` before run durability moved to the storage `runs` unit. The coordinator retains these records in the loaded stream because sequence numbers must remain contiguous and the current build never re-emits them. Every other unmarked unknown event still refuses reconstruction.
-
-SQLite schema 20 stores packed physical rows with `ignorable=0`, scalar events marked `ignorable: true` with `ignorable=1`, and other scalar events with `NULL`. This keeps the logical marker and the packed-row discriminator in the same representation without confusing a scalar event whose name matches a physical chunk tag.
 
 The field is removable only after a replacement supports the current third-party plugin across event production, persistence, reload, and transport, with an explicit cutover for sessions already containing the marker. The [session log versioning decision](2026-08-10-session-log-version-mechanism.md) continues to own the default-required safety rule and format-version policy.
 
@@ -34,8 +32,6 @@ The field is removable only after a replacement supports the current third-party
 
 ## Consequences
 
-Third-party informational events can remain reloadable when their stored records carry the explicit marker, while unknown required events still fail loudly. The field remains part of the public event envelope, persistence schemas, transport types, generated references, and their tests until a replacement satisfies the cutover condition.
+Third-party informational events can remain reloadable when their stored records carry the explicit marker, while unknown required events still fail loudly. The field remains part of the public event envelope, JSONL representation, transport types, generated references, and their tests until a replacement satisfies the cutover condition.
 
 Existing DuraSH 0.1.1 sessions retain their original bytes and contiguous event sequence while the retired workflow mirrors remain inert. Extending the exception requires another named event class with equivalent evidence; it is not a general compatibility path.
-
-SQLite advances from schema 19 to schema 20 because restoring the durable column changes the pre-release physical database format. The provider continues to reject other schema versions rather than migrating them.

@@ -1,7 +1,7 @@
 {
   "name": "@durash/dsh-reliability-policy",
   "description": "Per-session reliability-loop policy (ctx.reliabilityPolicy): enablement, implementation/review model selection, and the catalog the composer switch reads",
-  "version": "0.1.2-alpha.1",
+  "version": "0.1.2-alpha.3",
   "private": true,
   "repository": {
     "type": "git",

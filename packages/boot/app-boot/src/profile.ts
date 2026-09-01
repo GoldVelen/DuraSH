@@ -71,6 +71,9 @@ export interface ProfileTemplate {
   patchReload: ProfilePatchReload
 }
 
+/** Profile templates supplied by one dsh installation. */
+export type ProfileTemplateMap = Readonly<Record<string, ProfileTemplate>>
+
 /**
  * The profile-launcher slice of the `dsh`-owned package.json section. A
  * manifest may declare both roles; other consumers own additional keys.
@@ -133,18 +136,14 @@ export function resolveProfileDir(name: string, home: string = resolveDshHome())
   return join(home, PROFILES_DIR, name)
 }
 
-/** The shipped profile templates auto-initialized on first use, by name. */
-export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
+/** The published dsh installation's profile templates, auto-initialized on first use. */
+export const PROFILE_TEMPLATES: ProfileTemplateMap = {
   acp: {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
     patchReload: 'startup',
   },
   web: {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
-    patchReload: 'live',
-  },
-  durash: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile'],
     patchReload: 'live',
   },
   headless: {
@@ -722,9 +721,14 @@ function sameBundles(left: readonly string[], right: readonly string[]): boolean
  * is written back during profile loading while every other manifest field is
  * preserved; any other bundle list is user-owned and remains untouched.
  */
-function normalizeShippedProfile(name: string, dir: string, manifest: ProfileManifest): ProfileManifest {
+function normalizeShippedProfile(
+  name: string,
+  dir: string,
+  manifest: ProfileManifest,
+  profileTemplates: ProfileTemplateMap,
+): ProfileManifest {
   const installationOwned = INSTALLATION_OWNED_PROFILE_TUPLES[name]
-  const template = PROFILE_TEMPLATES[name]
+  const template = profileTemplates[name]
   const bundles = manifest.dsh?.profile?.bundles
   if (template === undefined || bundles === undefined) return manifest
   const isRetiredTuple = installationOwned !== undefined && sameBundles(bundles, installationOwned)
@@ -792,6 +796,14 @@ export function resolveBundleDir(
   )
 }
 
+/** Options that select the profile layers read by {@link loadProfile}. */
+export interface LoadProfileOptions {
+  /** Skip the user `cordis.patch.yml` layer when false. */
+  userLayer?: boolean
+  /** Installation-owned templates; defaults to the published dsh templates. */
+  profileTemplates?: ProfileTemplateMap
+}
+
 /**
  * Load a profile: resolve every `dsh.profile.bundles` entry to its patch
  * layer and parse the profile's own patch file. A listed bundle without a
@@ -801,18 +813,20 @@ export function resolveBundleDir(
  * @param name - the profile name.
  * @param installAnchor - absolute path of the dsh app's package.json (first resolution anchor).
  * @param home - the Harness home; defaults to {@link resolveDshHome}.
- * @param options - `userLayer: false` skips reading `cordis.patch.yml`, so a
- * bundles-only consumer (`--dump-default-config`, a recovery diagnostic)
- * cannot fail on a broken user layer.
+ * @param options - Selects the user layer and installation-owned templates.
+ * `userLayer: false` lets a bundles-only consumer (`--dump-default-config`, a
+ * recovery diagnostic) avoid a broken `cordis.patch.yml`; omitted templates
+ * use the published dsh defaults.
  * @returns the loaded profile (empty `patches` when the user layer is skipped).
  */
 export function loadProfile(
   binName: string, name: string, installAnchor: string, home: string = resolveDshHome(),
-  options: { userLayer?: boolean } = {},
+  options: LoadProfileOptions = {},
 ): Profile {
+  const profileTemplates = options.profileTemplates ?? PROFILE_TEMPLATES
   const dir = resolveProfileDir(name, home)
   if (!existsSync(join(dir, 'package.json'))) {
-    const template = PROFILE_TEMPLATES[name]
+    const template = profileTemplates[name]
     if (template === undefined) {
       throw new Error(
         `${binName}: profile ${JSON.stringify(name)} does not exist; create it with 'dsh plugin --profile ${name} add <package>'`,
@@ -820,7 +834,7 @@ export function loadProfile(
     }
     initProfile(dir, template.bundles, template.patchReload)
   }
-  const manifest = normalizeShippedProfile(name, dir, readProfileManifest(binName, dir))
+  const manifest = normalizeShippedProfile(name, dir, readProfileManifest(binName, dir), profileTemplates)
   // A hand-written profile manifest may omit the dsh section entirely.
   const bundles = manifest.dsh?.profile?.bundles ?? []
   const rawPatchReload: unknown = manifest.dsh?.profile?.patchReload

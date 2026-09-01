@@ -1,7 +1,8 @@
 name: Build PR preview
 
-# Every push to a pull request publishes that pull request's preview to
-# Cloudflare Pages under its own branch alias, behind Cloudflare Access. The
+# In the canonical repository, every push to a pull request publishes that
+# pull request's preview to Cloudflare Pages under its own branch alias, behind
+# Cloudflare Access. Downstream copies skip the upstream-owned deployment. The
 # upload carries build products only: the workflow never grants the deployment
 # platform access to this repository's sources.
 
@@ -32,6 +33,10 @@ env:
 
 jobs:
   preview:
+    # This deployment targets the canonical repository's Cloudflare project
+    # and credentials. Downstream copies keep the workflow visible but do not
+    # allocate its private runner or attempt an upload they do not own.
+    if: ${{ github.repository == 'deepseek-harness/deepseek-harness' }}
     runs-on: dsh-ubuntu-24-04-16core
     name: cloudflare pages preview
     steps:

@@ -191,10 +191,7 @@ describe('loadProfile', () => {
     // @deepseek-ai/* through tsconfig paths regardless of the staged anchor.
     expect(PROFILE_TEMPLATES.web?.bundles).toContain('@deepseek-ai/dsh-base')
     expect(PROFILE_TEMPLATES.web?.patchReload).toBe('live')
-    expect(PROFILE_TEMPLATES.durash).toEqual({
-      bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile'],
-      patchReload: 'live',
-    })
+    expect(PROFILE_TEMPLATES.durash).toBeUndefined()
     expect(PROFILE_TEMPLATES.headless?.patchReload).toBe('startup')
     expect(PROFILE_TEMPLATES.acp).toEqual({
       bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
@@ -217,6 +214,31 @@ describe('loadProfile', () => {
       .toEqual([...PROFILE_TEMPLATES.web?.bundles ?? []])
     expect(readProfileManifest('t', resolveProfileDir('web', home)).dsh?.profile?.patchReload)
       .toBe('live')
+  })
+
+  it('accepts a source-owned profile template without publishing it as a default', () => {
+    const anchor = stageInstallation({
+      '@deepseek-ai/dsh-base': { patch: '[]\n' },
+      '@deepseek-ai/dsh-web-app': { patch: '[]\n' },
+      '@durash/dsh-web-profile': { patch: '[]\n' },
+    })
+    const home = tmp()
+    const profileTemplates = {
+      ...PROFILE_TEMPLATES,
+      durash: {
+        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile'],
+        patchReload: 'live' as const,
+      },
+    }
+
+    const profile = loadProfile('t', 'durash', anchor, home, { profileTemplates })
+
+    expect(profile.layers.map(layer => layer.packageName)).toEqual(profileTemplates.durash.bundles)
+    expect(profile.patchReload).toBe('live')
+    expect(readProfileManifest('t', resolveProfileDir('durash', home)).dsh?.profile).toEqual(
+      profileTemplates.durash,
+    )
+    expect(() => loadProfile('t', 'durash', anchor, tmp())).toThrow('profile "durash" does not exist')
   })
 
   it('normalizes only the exact installation-owned headless bundle tuple', () => {

@@ -12,11 +12,9 @@ Status: implemented
 
 ## 决定
 
-标准 `SessionEvent` 信封保留 `ignorable?: true`，每种表示都保留它：seed 校验、JSONL、SQLite、API 传输、生成目录与测试 fixture。`PersistenceCoordinator` 继续拒绝未知事件，除非已存信封显式带有 `ignorable: true`；字段不存在时仍表示读取必需。
+标准 `SessionEvent` 信封保留 `ignorable?: true`，每种表示都保留它：seed 校验、JSONL、API 传输、生成目录与测试 fixture。`PersistenceCoordinator` 继续拒绝未知事件，除非已存信封显式带有 `ignorable: true`；字段不存在时仍表示读取必需。
 
 一个严格限定的读取侧例外用于保留该标记出现前写入的 DuraSH 会话。`INERT_LEGACY_EVENT_TYPES` 只放行 `runs/dispatched`、`workflow/start` 与 `workflow/change`：它们是 0.1.1 时代的 workflow 运行状态镜像，其声明在运行持久化迁移到 storage `runs` 单元前已将 `modelVisible` 固定为 `false`。协调器把这些记录保留在加载后的事件流中，因为序号必须连续，且当前构建不会再次发出它们。其他所有未标记的未知事件仍会拒绝重建。
-
-SQLite schema 20 对打包物理行存储 `ignorable=0`，对带 `ignorable: true` 的标量事件存储 `ignorable=1`，对其他标量事件存储 `NULL`。这样，逻辑标记与打包行判别值可以共用一种表示，同时不会把名称与物理分片标签相同的标量事件混淆为打包行。
 
 只有替代机制在事件生产、持久化、重新加载与传输中都支持当前第三方插件，并为已包含该标记的会话提供显式切换方案后，才能删除此字段。[Session log 版本决策](2026-08-10-session-log-version-mechanism.zh.md)继续定义默认读取必需的安全规则与格式版本策略。
 
@@ -34,8 +32,6 @@ SQLite schema 20 对打包物理行存储 `ignorable=0`，对带 `ignorable: tru
 
 ## 影响
 
-第三方信息性事件的已存记录带有显式标记时可以继续重新加载，未知必需事件则仍会明确失败。在替代机制满足切换条件前，该字段继续属于公开事件信封、持久化 schema、传输类型、生成引用及其测试。
+第三方信息性事件的已存记录带有显式标记时可以继续重新加载，未知必需事件则仍会明确失败。在替代机制满足切换条件前，该字段继续属于公开事件信封、JSONL 表示、传输类型、生成引用及其测试。
 
 现有 DuraSH 0.1.1 会话保留原始字节与连续事件序号，已退役的 workflow 镜像保持惰性。扩展该例外必须为另一类事件提供同等证据；它不是通用兼容路径。
-
-恢复持久列改变了预发布物理数据库格式，因此 SQLite 从 schema 19 提升到 schema 20。提供方继续拒绝其他 schema 版本，而不是迁移它们。

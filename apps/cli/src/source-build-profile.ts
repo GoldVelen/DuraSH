@@ -6,12 +6,23 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  PROFILE_TEMPLATES,
+  type ProfileTemplateMap,
+} from '@deepseek-ai/dsh-app-boot'
 
 const DURASH_PROFILE = 'durash'
 const UPSTREAM_WEB_PROFILE = 'web'
 const DURASH_BUILD_RECORD = '.dsh-build/client-build-environment.json'
 const DURASH_BUILD_COMMAND = 'pnpm run build'
 const LOCAL_BUILD_COMMAND = 'pnpm run build:local'
+const DURASH_SOURCE_PROFILE_TEMPLATES: ProfileTemplateMap = {
+  ...PROFILE_TEMPLATES,
+  durash: {
+    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile'],
+    patchReload: 'live',
+  },
+}
 
 interface BuildRecordShape {
   readonly environment?: Record<string, unknown>
@@ -53,6 +64,20 @@ function readBuildRecord(root: string): BuildRecordShape | undefined {
   }
   if (record.environment === undefined) return {}
   return { environment: record.environment }
+}
+
+/**
+ * Select the installation-owned templates for a source checkout or an npm installation.
+ * @param sourceRoot - The detected DuraSH source root, or `undefined` outside the checkout.
+ * @returns Published templates plus the source-only DuraSH template when the checkout owns it.
+ */
+export function profileTemplatesForSourceRoot(sourceRoot: string | undefined): ProfileTemplateMap {
+  return sourceRoot === undefined ? PROFILE_TEMPLATES : DURASH_SOURCE_PROFILE_TEMPLATES
+}
+
+/** Profile templates owned by the running CLI's installation. */
+export function installationProfileTemplates(): ProfileTemplateMap {
+  return profileTemplatesForSourceRoot(repositoryRoot())
 }
 
 /**

@@ -325,9 +325,36 @@ class DshFamily extends ReleaseFamily {
   readonly patterns = ['packages/!(experimental)/*/package.json', 'apps/*/package.json'] as const
   readonly tagPrefix = 'dsh-v'
 
-  /** Keep private downstream packages outside the inherited npm release sequence. */
+  /**
+   * Keep private downstream packages outside the inherited npm release sequence and
+   * reject any published install edge that would make npm resolve one from the registry.
+   */
   override members(root: string): ReleaseMember[] {
-    return super.members(root).filter(member => member.manifest.private !== true)
+    const workspace = super.members(root)
+    const privateNames = new Set(workspace
+      .filter(member => member.manifest.private === true)
+      .map(member => member.name))
+    const published = workspace.filter(member => member.manifest.private !== true)
+    const violations: string[] = []
+    for (const member of published) {
+      for (const section of [...INSTALL_SECTIONS, ...PEER_SECTIONS]) {
+        const dependencies = member.manifest[section]
+        if (dependencies === null || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue
+        for (const name of Object.keys(dependencies).sort()) {
+          if (!privateNames.has(name)) continue
+          violations.push(
+            `${member.name}: ${section}.${name} names a private workspace package omitted from npm tarballs`,
+          )
+        }
+      }
+    }
+    if (violations.length > 0) {
+      throw new Error(
+        'dsh release members must not install private workspace packages; move source-only relationships to '
+        + `devDependencies or publish the dependency:\n${violations.join('\n')}`,
+      )
+    }
+    return published
   }
 
   /** Require current artifacts from a complete official client build. */

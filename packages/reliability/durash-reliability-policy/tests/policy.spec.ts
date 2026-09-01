@@ -17,7 +17,8 @@ import {
   name as storageJsonName,
 } from '@deepseek-ai/dsh-storage-json'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import ReliabilityPolicyService, { parseLaneSelector } from '../src/index.ts'
+import ReliabilityPolicyService, { parseLaneSelector, reliabilityPolicyDomainSpec } from '../src/index.ts'
+import type { ReliabilityPolicyRow } from '../src/index.ts'
 import type { LlmModelInfo, LlmProviderInfo } from '@deepseek-ai/dsh-llm/types'
 
 const roots: string[] = []
@@ -56,6 +57,28 @@ async function harness(llm = fakeLlm(
   return { ctx, policy: ctx.reliabilityPolicy }
 }
 
+async function seededHarness(
+  row: ReliabilityPolicyRow,
+  llm = fakeLlm(
+    [{ id: 'deepseek-official', name: 'DeepSeek' }],
+    { 'deepseek-official': [{ provider: 'deepseek-official', id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' }] },
+  ),
+): Promise<{ ctx: Context; policy: ReliabilityPolicyService }> {
+  const root = await mkdtemp(join(tmpdir(), 'durash-reliability-policy-seeded-'))
+  roots.push(root)
+  const ctx = new Context()
+  contexts.push(ctx)
+  ctx.provide('llm', llm)
+  await ctx.plugin(Storage)
+  await ctx.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
+  await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
+  const domain = await ctx.storageDomain.open(reliabilityPolicyDomainSpec)
+  await domain.table('sessions').put(row.sessionId, row)
+  await domain.close()
+  await ctx.plugin(ReliabilityPolicyService)
+  return { ctx, policy: ctx.reliabilityPolicy }
+}
+
 const SESSION = SessionId('session-workflow')
 
 describe('durash-reliability-policy', () => {
@@ -69,6 +92,7 @@ describe('durash-reliability-policy', () => {
       'deepseek-official/deepseek-v4-flash',
     ])
     expect(policy.workflowEnabled(SESSION)).toBe(false)
+    expect(policy.enabledRoutes(SESSION)).toBeUndefined()
   })
 
   it('ensurePolicy fills default selectors from the first catalog model', async () => {
@@ -90,6 +114,24 @@ describe('durash-reliability-policy', () => {
       reviewThinking: 'xhigh',
     })).rejects.toThrow(/select both implementation and review models/)
 
+    await expect(policy.configure({
+      sessionId: SESSION,
+      enabled: true,
+      implementationModel: 'deepseek-official/missing',
+      implementationThinking: 'high',
+      reviewModel: 'deepseek-official/deepseek-v4-flash',
+      reviewThinking: 'xhigh',
+    })).rejects.toThrow(/implementation model .* is not in the current catalog/)
+
+    await expect(policy.configure({
+      sessionId: SESSION,
+      enabled: true,
+      implementationModel: 'deepseek-official/deepseek-v4-pro',
+      implementationThinking: 'high',
+      reviewModel: 'deepseek-official/missing',
+      reviewThinking: 'xhigh',
+    })).rejects.toThrow(/review model .* is not in the current catalog/)
+
     const snapshot = await policy.configure({
       sessionId: SESSION,
       enabled: true,
@@ -104,6 +146,114 @@ describe('durash-reliability-policy', () => {
       implementation: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
       review: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
     })
+  })
+
+  it('keeps a disabled partial row off and fills only its missing defaults', async () => {
+    const { policy } = await harness()
+    await policy.configure({
+      sessionId: SESSION,
+      enabled: false,
+      implementationModel: null,
+      implementationThinking: 'minimal',
+      reviewModel: 'deepseek-official/deepseek-v4-flash',
+      reviewThinking: 'low',
+    })
+    expect(policy.enabledRoutes(SESSION)).toBeUndefined()
+    const snapshot = await policy.ensurePolicy({ sessionId: SESSION })
+    expect(snapshot).toMatchObject({
+      enabled: false,
+      implementationModel: 'deepseek-official/deepseek-v4-pro',
+      implementationThinking: 'minimal',
+      reviewModel: 'deepseek-official/deepseek-v4-flash',
+      reviewThinking: 'low',
+    })
+
+    const reviewMissing = SessionId('session-review-missing')
+    await policy.configure({
+      sessionId: reviewMissing,
+      enabled: false,
+      implementationModel: 'deepseek-official/deepseek-v4-flash',
+      implementationThinking: 'minimal',
+      reviewModel: null,
+      reviewThinking: 'low',
+    })
+    expect(await policy.ensurePolicy({ sessionId: reviewMissing })).toMatchObject({
+      implementationModel: 'deepseek-official/deepseek-v4-flash',
+      reviewModel: 'deepseek-official/deepseek-v4-pro',
+    })
+  })
+
+  it('returns an unpersisted baseline when an empty catalog has no defaults', async () => {
+    const { policy } = await harness(fakeLlm([], {}))
+    const snapshot = await policy.ensurePolicy({ sessionId: SESSION })
+    expect(snapshot).toMatchObject({
+      revision: 0,
+      enabled: false,
+      implementationModel: null,
+      reviewModel: null,
+    })
+    expect(await policy.policy({ sessionId: SESSION })).toMatchObject({ revision: 0, updatedAt: 0 })
+  })
+
+  it('fills defaults from the public reliability effort roster even when the catalog has one model', async () => {
+    const { policy } = await harness({
+      listProviders: () => [{ id: 'provider', name: 'Provider' }],
+      listModels: async () => [{
+        provider: 'provider',
+        id: 'model',
+        name: 'Model',
+      }],
+    })
+    expect(await policy.ensurePolicy({ sessionId: SESSION })).toMatchObject({
+      implementationModel: 'provider/model',
+      implementationThinking: 'high',
+      reviewModel: 'provider/model',
+      reviewThinking: 'xhigh',
+      models: [{
+        selector: 'provider/model',
+        thinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+      }],
+    })
+  })
+
+  it('continues a Session queue after a public configure rejection', async () => {
+    const { policy } = await harness()
+    await expect(policy.configure({
+      sessionId: SESSION,
+      enabled: true,
+      implementationModel: 'deepseek-official/missing',
+      implementationThinking: 'high',
+      reviewModel: 'deepseek-official/deepseek-v4-flash',
+      reviewThinking: 'xhigh',
+    })).rejects.toThrow(/implementation model .* is not in the current catalog/)
+    await expect(policy.configure({
+      sessionId: SESSION,
+      enabled: false,
+      implementationModel: null,
+      implementationThinking: null,
+      reviewModel: null,
+      reviewThinking: null,
+    })).resolves.toMatchObject({ revision: 1, enabled: false })
+  })
+
+  it('skips unavailable providers and labels cursor and custom provider routes', async () => {
+    const llm = {
+      listProviders: () => [
+        { id: 'cursor', name: 'Cursor' },
+        { id: 'custom__vendor', name: 'Custom' },
+        { id: 'offline', name: 'Offline' },
+      ],
+      listModels: async (provider: string): Promise<LlmModelInfo[]> => {
+        if (provider === 'offline') throw new Error('catalog unavailable')
+        return [{ provider, id: 'model', name: `${provider} model` }]
+      },
+    }
+    const { policy } = await harness(llm)
+    const snapshot = await policy.policy({ sessionId: SESSION })
+    expect(snapshot.models).toMatchObject([
+      { selector: 'cursor/model', badges: [{ label: 'Cursor' }, { label: 'Cursor' }] },
+      { selector: 'custom__vendor/model', badges: [{ label: 'DuraSH' }, { label: 'Custom Vendor' }] },
+    ])
   })
 
   it('turns an enabled row off when a saved model leaves the catalog', async () => {
@@ -144,8 +294,45 @@ describe('durash-reliability-policy', () => {
     expect(snapshot.enabled).toBe(false)
   })
 
+  it('turns incomplete and review-only-stale durable rows off', async () => {
+    const now = Date.now()
+    const incomplete = await seededHarness({
+      sessionId: SESSION,
+      revision: 1,
+      enabled: true,
+      implementationModel: null,
+      implementationThinking: 'high',
+      reviewModel: 'deepseek-official/deepseek-v4-pro',
+      reviewThinking: 'xhigh',
+      updatedAt: now,
+    })
+    expect(incomplete.policy.enabledRoutes(SESSION)).toBeUndefined()
+    expect((await incomplete.policy.policy({ sessionId: SESSION })).enabled).toBe(false)
+
+    const otherSession = SessionId('session-review-stale')
+    const staleReview = await seededHarness({
+      sessionId: otherSession,
+      revision: 1,
+      enabled: true,
+      implementationModel: 'deepseek-official/deepseek-v4-pro',
+      implementationThinking: 'high',
+      reviewModel: 'deepseek-official/missing',
+      reviewThinking: 'xhigh',
+      updatedAt: now,
+    })
+    expect((await staleReview.policy.policy({ sessionId: otherSession })).enabled).toBe(false)
+  })
+
+  it('fails before the durable table has started', async () => {
+    const ctx = new Context()
+    ctx.provide('llm', fakeLlm([], {}))
+    const policy = new ReliabilityPolicyService(ctx)
+    await expect(policy.policy({ sessionId: SESSION })).rejects.toThrow(/not started yet/)
+  })
+
   it('parses a provider/model selector on the first slash', () => {
     expect(parseLaneSelector('openai-codex/gpt-5')).toEqual({ provider: 'openai-codex', model: 'gpt-5' })
     expect(() => parseLaneSelector('noslash')).toThrow(/provider\/model/)
+    expect(() => parseLaneSelector('provider/')).toThrow(/provider\/model/)
   })
 })

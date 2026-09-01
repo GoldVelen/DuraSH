@@ -113,7 +113,7 @@ export function apply(ctx: Context): void {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
     async execute(rawArgs, exec) {
-      const objective = typeof rawArgs.objective === 'string' ? rawArgs.objective.trim() : ''
+      const objective = rawArgs.objective.trim()
       if (objective.length === 0) {
         throw new HarnessError(`${TOOL_NAME} requires a non-empty objective`, 'RELIABILITY_TOOL_INVALID_OBJECTIVE')
       }

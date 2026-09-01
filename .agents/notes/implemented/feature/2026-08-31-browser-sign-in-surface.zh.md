@@ -14,6 +14,8 @@ authorization 能力交付时接缝完整、消费方缺位。`llm-pi-ai` 为每
 
 wire 采用轮询形态，因为 `AuthorizationService.begin()` 要等一个人几分钟：`describe()` 在一份快照里同时应答登录流列表与宿主跟踪的尝试；`begin` 以控制器持有的交互启动尝试并立即应答；`respond` 回答唯一的待答提问（作答或拒绝）；`cancel` 撤回。尝试状态存于宿主——第二个浏览器标签页或重新加载的页面重新加入正在进行的尝试而不是另开一份；已结束的尝试保持可见，直到该 key 的下一次 begin。当没有被跟踪的尝试占用某个登录流 key 时，`describe()` 也会把已有且已配置的凭据投影为 `authorized`，因此进程重启不会让已经提交的登录显示成缺失；当前被跟踪的尝试始终优先于这项存储投影。区域挂载时以 1.5 秒节奏轮询，每次动作后立即刷新一次；本次改动不新增事件词汇，也不新增流。
 
+请求 schema 是 wire 的权威。解码后，控制器直接为已验证的凭据 key 加品牌，并消费作答或拒绝的联合类型；它不会重复解析同一套语法，也不会为 schema 不可能产生的请求虚构兜底答案。
+
 失败报告只陈述控制器能观察到的事实：登录流是否已经送达通知或提问，或者 authorization seam 是否以 `NOT_COMMITTED` 拒绝尝试。外层失败消息会脱敏 bearer 与 OAuth token 字段。`fetch failed` 这类传输包装错误最多从其 cause 或 `AggregateError` 追加 4 组白名单网络元数据；任意嵌套消息都不会传到浏览器。
 
 登录提交后，模型页写入与添加卡片相同的空白原生认证 profile（对该登录流的目录路径做 `settings.mutate` 写入 `{}`），catalog 路由随之注册、模型进入对话选择器，并打开该提供方的模型目录编辑器。仅凭授权仍不注册路由——是本页的写入把提供方写进用户设置文档。同一 key 稍后可以再次 begin；已经配置的行不会被改写。
@@ -32,4 +34,4 @@ wire 采用轮询形态，因为 `AuthorizationService.begin()` 要等一个人�
 
 ## 测试
 
-`authorization-controller.host.spec.ts` 钉住命名空间注册、服务缺失拒绝、流列表、非法/未知 key 与 method 拒绝、通知与提问投影、respond 完成与拒绝、cancel 撤回、prompt-signal 清理与过期 id 拒绝、二次 begin 冲突、存储凭据投影、`NOT_COMMITTED` 阶段、脱敏、白名单网络元数据及其输出上限。`sign-in-store.client.spec.ts` 钉住轮询生命周期、轮询失败时的最后良好快照、动作拒绝的呈现，以及 wire 参数透传。`sign-in-bind.client.spec.ts` 钉住 `remote.authorization` 出现前的空 wire、provide 之后的转发，以及 dispose 之后再次变空。`sign-in-section.client.spec.tsx` 钉住仅渲染 OAuth，以及尝试已授权时隐藏进行中通知。`enableNativeProviderProfile` 钉住写入空白 `{}` profile。宿主没有 OAuth 登录流时，区域不渲染。本次改动没有用测试运行真实发行方登录或已认证提供方请求；它们仍属于运行时验收。
+`authorization-controller.host.spec.ts` 钉住命名空间注册、服务缺失拒绝、流列表、非法/未知 key 与 method 拒绝、通知与提问投影、respond 完成与拒绝、cancel 撤回、prompt-signal 清理与过期 id 拒绝、二次 begin 冲突、存储凭据投影、`NOT_COMMITTED` 阶段、脱敏、白名单网络元数据及其输出上限。`sign-in-store.client.spec.ts` 钉住轮询生命周期、轮询失败时的最后良好快照、动作拒绝的呈现，以及 wire 参数透传。`sign-in-bind.client.spec.ts` 钉住 `remote.authorization` 出现前的空 wire、provide 之后的转发，以及 dispose 之后再次变空。`sign-in-section.client.spec.tsx` 钉住仅渲染 OAuth，以及尝试已授权时隐藏进行中通知。`enableNativeProviderProfile` 钉住写入空白 `{}` profile。宿主没有 OAuth 登录流时，区域不渲染。逐文件 V8 门禁只豁免纯组件 `ModelsSection.tsx` 与 `SignInSection.tsx`，直到浏览器级覆盖能够归因它们挂载后的 React 与 portal 分支；`sign-in-bind.ts`、`sign-in-store.ts` 和宿主 authorization 控制器仍受 100% 门禁约束，被豁免的呈现行为由 jsdom 组件 spec 与 Models 浏览器检查持有。本次改动没有用测试运行真实发行方登录或已认证提供方请求；它们仍属于运行时验收。

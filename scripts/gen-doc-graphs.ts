@@ -233,9 +233,9 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'session-persistence',
     title: 'Durable session persistence seam',
     mode: 'seam',
-    implementations: ['session-persistence-jsonl', 'session-persistence-sqlite'],
+    implementations: ['session-persistence-jsonl'],
     consumers: ['agent-loop', 'tool-bash', 'hooks-claude-code', 'hooks-codex', 'session-query', 'session-query-sqlite', 'message-feedback'],
-    note: 'Backends persist the same SessionEvent vocabulary; apps choose a backend at composition time.',
+    note: 'The JSONL backend persists the SessionEvent vocabulary as one artifact per Session.',
   },
   {
     key: 'settings',
@@ -319,6 +319,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'DuraSH reliability loop runtime',
     mode: 'core',
     note: 'Drives one bounded implement-review-rework cycle over the workflow engine with the whole state machine in one durable `reliability_loop` domain record; owns start/resume single ownership, bounded handoffs, and cancellation quiescence.',
+  },
+  {
+    key: 'reliabilityPolicy',
+    pkg: 'durash-reliability-policy',
+    title: 'DuraSH per-Session reliability policy',
+    mode: 'core',
+    consumers: ['durash-tool-reliability'],
+    note: 'Stores per-Session enablement plus implementation and review model selections, validates enabled selectors against the live LLM catalog, and turns off an enabled row when a saved model leaves the catalog.',
   },
   {
     key: 'sessionQuery',
@@ -444,7 +452,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'agent-loop',
     title: 'Concrete loop driver',
     mode: 'bundle',
-    consumers: ['agent-spine-demo'],
+    consumers: ['base', 'sdk-minimal'],
     note: 'The one concrete loop plugin; extension packages depend on dsh-agent events and services, not on this package.',
   },
   {

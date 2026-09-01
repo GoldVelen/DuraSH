@@ -14,6 +14,7 @@ export default defineConfig({
     ],
     testTimeout: 120_000,
     hookTimeout: 30_000,
+    // Downstream CI lowers this through Vitest's native VITEST_MAX_WORKERS override.
     maxWorkers: Math.min(5, availableParallelism()),
   },
 })

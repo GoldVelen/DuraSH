@@ -16,9 +16,13 @@ import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import { execa } from 'execa'
 import * as yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { readClientBuildRecord } from '../../../scripts/client-build-environment.ts'
 
 /** Published-entry acceptance for argument errors, profile lifecycle, and boot-free config dumps. */
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url))
+const builtWebProfile = readClientBuildRecord(repoRoot).environment.DSH_CLIENT_BUILD_PROFILE === 'durash'
+  ? 'durash'
+  : 'web'
 // The dsh built bin cold-starts slowly on the contended self-hosted Windows pool; the
 // execa deadline, its error text, the outer vitest case budget, and waitForFile all
 // share this value so a widening cannot leave a stale 25s diagnostic behind.
@@ -356,7 +360,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       expect(web.stdout).toContain('--port <port>')
       expect(web.stdout).not.toContain('dsh web: http://')
 
-      const wildcardHost = await runBuiltBin(['web', '--host', '0.0.0.0'], {
+      const wildcardHost = await runBuiltBin(['--profile', builtWebProfile, '--host', '0.0.0.0'], {
         DSH_HOME: home,
         DSH_TELEMETRY_DISABLED: '1',
       })
@@ -661,7 +665,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
     // ([Agent Note](../../../.agents/notes/implemented/bug-fix/2026-08-03-hmr-initial-scan-boot-deadlock.md)).
     const home = mkdtempSync(join(tmpdir(), 'dsh-invalid-patch-'))
     try {
-      const result = await runBuiltBin(['--profile', 'web', '--patch', invalidProvider], {
+      const result = await runBuiltBin(['--profile', builtWebProfile, '--patch', invalidProvider], {
         DSH_HOME: home,
         DEEPSEEK_API_KEY: 'keyless-invalid-config',
         DSH_TELEMETRY_DISABLED: '1',
@@ -957,7 +961,21 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
         ['terminal-bash', '@deepseek-ai/dsh-terminal-bash'],
         ['terminal-pwsh', '@deepseek-ai/dsh-terminal-bash'],
         ['fs-local', '@deepseek-ai/dsh-fs-local'],
-        ['agent-spine', '@deepseek-ai/dsh-agent-spine-demo'],
+        ['timer', '@deepseek-ai/cordis-plugin-timer'],
+        ['llm', '@deepseek-ai/dsh-llm'],
+        ['session', '@deepseek-ai/dsh-session'],
+        ['session-title', '@deepseek-ai/dsh-session-title'],
+        ['system-prompt', '@deepseek-ai/dsh-system-prompt'],
+        ['tools', '@deepseek-ai/dsh-tools'],
+        ['agent', '@deepseek-ai/dsh-agent'],
+        ['llm-retry', '@deepseek-ai/dsh-llm-retry'],
+        ['jobs', '@deepseek-ai/dsh-jobs-local'],
+        ['invariants', '@deepseek-ai/dsh-invariants'],
+        ['session-invariant', '@deepseek-ai/dsh-session/invariant'],
+        ['agent-invariant', '@deepseek-ai/dsh-agent/invariant'],
+        ['scope-invariant', '@deepseek-ai/dsh-scope/invariant'],
+        ['agent-loop-invariant', '@deepseek-ai/dsh-agent-loop/invariant'],
+        ['agent-loop', '@deepseek-ai/dsh-agent-loop'],
         ['persistent-bash', '@deepseek-ai/dsh-tool-bash-persistent'],
         ['persistent-pwsh', '@deepseek-ai/dsh-tool-pwsh-persistent'],
         ['str-replace-editor', '@deepseek-ai/dsh-tool-str-replace-editor'],

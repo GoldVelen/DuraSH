@@ -73,6 +73,43 @@ describe('the sign-in store', () => {
     expect(polls).toBe(after)
   })
 
+  it('skips the immediate poll when the snapshot is already pre-warmed', async () => {
+    vi.useFakeTimers()
+    let polls = 0
+    const store = new SignInStore({
+      describe: () => { polls += 1; return ok({ flows: FLOWS, attempts: [] }) },
+      begin: () => ok({ started: true } as const),
+      respond: () => ok(undefined),
+      cancel: () => ok(undefined),
+    })
+    await store.refresh()
+    expect(polls).toBe(1)
+    const stop = store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(polls).toBe(1)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(polls).toBe(2)
+    stop()
+  })
+
+  it('stops safely before polling and disposes an active cadence', async () => {
+    vi.useFakeTimers()
+    let polls = 0
+    const store = new SignInStore({
+      describe: () => { polls += 1; return ok({ flows: FLOWS, attempts: [] }) },
+      begin: () => ok({ started: true } as const),
+      respond: () => ok(undefined),
+      cancel: () => ok(undefined),
+    })
+    store.stopPolling()
+    store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(polls).toBe(1)
+    store.dispose()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(polls).toBe(1)
+  })
+
   it('keeps the last good snapshot when a poll fails, and reports the area error', async () => {
     const store = new SignInStore({
       describe: () => Promise.resolve(ok({ flows: FLOWS, attempts: [] })),
@@ -95,18 +132,55 @@ describe('the sign-in store', () => {
     expect(failing.store.getSnapshot().error).toContain('the host is gone')
   })
 
+  it('ignores a stale refresh result or failure after a newer refresh won', async () => {
+    let resolveFirst!: (value: RemoteResult<AuthorizationDescribeValue>) => void
+    let rejectSecond!: (reason?: unknown) => void
+    const store = new SignInStore({
+      describe: vi.fn()
+        .mockImplementationOnce(() => new Promise<RemoteResult<AuthorizationDescribeValue>>((resolve) => { resolveFirst = resolve }))
+        .mockImplementationOnce(() => Promise.reject(new Error('newest failure'))),
+      begin: () => ok({ started: true } as const),
+      respond: () => ok(undefined),
+      cancel: () => ok(undefined),
+    })
+
+    const first = store.refresh()
+    const second = store.refresh()
+    await second
+    expect(store.store.getSnapshot()).toMatchObject({ status: 'error', error: 'newest failure' })
+
+    resolveFirst({ ok: true, value: { flows: FLOWS, attempts: [] } })
+    await first
+    expect(store.store.getSnapshot()).toMatchObject({ status: 'error', error: 'newest failure' })
+
+    const throwing = new SignInStore({
+      describe: vi.fn()
+        .mockImplementationOnce(() => new Promise<RemoteResult<AuthorizationDescribeValue>>((_, reject) => { rejectSecond = reject }))
+        .mockImplementationOnce(() => ok({ flows: FLOWS, attempts: [] })),
+      begin: () => ok({ started: true } as const),
+      respond: () => ok(undefined),
+      cancel: () => ok(undefined),
+    })
+    const staleFailure = throwing.refresh()
+    const latest = throwing.refresh()
+    await latest
+    rejectSecond(new Error('stale failure'))
+    await staleFailure
+    expect(throwing.store.getSnapshot()).toMatchObject({ status: 'ready', flows: FLOWS, error: null })
+  })
+
   it('surfaces action refusals as failure messages without touching the snapshot status', async () => {
     const store = new SignInStore({
       describe: () => Promise.resolve(ok({ flows: FLOWS, attempts: [] })),
       begin: () => fail('an authorization attempt is already running'),
       respond: () => fail('no pending prompt'),
-      cancel: () => ok(undefined),
+      cancel: () => fail('no running attempt'),
     })
     await store.refresh()
     await expect(store.begin('llm-pi-ai/openai-codex')).resolves.toContain('already running')
     await expect(store.respond('llm-pi-ai/openai-codex', 'prompt-1', { value: 'x' }))
       .resolves.toContain('no pending prompt')
-    await expect(store.cancel('llm-pi-ai/openai-codex')).resolves.toBeUndefined()
+    await expect(store.cancel('llm-pi-ai/openai-codex')).resolves.toContain('no running attempt')
     expect(store.store.getSnapshot().status).toBe('ready')
   })
 
@@ -121,5 +195,23 @@ describe('the sign-in store', () => {
       'respond:prompt-7',
       'cancel:llm-pi-ai/openai-codex',
     ])
+  })
+
+  it('forwards an explicit method and surfaces thrown action errors as plain text', async () => {
+    const store = new SignInStore({
+      describe: () => ok({ flows: FLOWS, attempts: [] }),
+      begin: vi.fn(async (request: { key: string; method?: string }) => {
+        if (request.method === 'oauth') return { ok: true as const, value: { started: true as const } }
+        throw 'begin exploded'
+      }),
+      respond: vi.fn(async () => { throw 'respond exploded' }),
+      cancel: vi.fn(async () => { throw 'cancel exploded' }),
+    })
+
+    await expect(store.begin('llm-pi-ai/openai-codex', 'oauth')).resolves.toBeUndefined()
+    await expect(store.begin('llm-pi-ai/openai-codex')).resolves.toBe('begin exploded')
+    await expect(store.respond('llm-pi-ai/openai-codex', 'prompt-1', { value: '123456' }))
+      .resolves.toBe('respond exploded')
+    await expect(store.cancel('llm-pi-ai/openai-codex')).resolves.toBe('cancel exploded')
   })
 })
