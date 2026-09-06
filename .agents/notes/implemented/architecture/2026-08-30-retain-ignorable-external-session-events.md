@@ -12,11 +12,13 @@ That producer inventory did not cover a third-party plugin that currently depend
 
 ## Decision
 
-The canonical `SessionEvent` envelope retains `ignorable?: true`, and every representation preserves it: seed validation, JSONL, API transport, generated catalogs, and test fixtures. `PersistenceCoordinator` continues to refuse an unknown event unless its stored envelope explicitly carries `ignorable: true`; absent remains required-on-read.
+The canonical `SessionEvent` envelope retains `ignorable?: true`, and every representation preserves it: seed validation, JSONL, API transport, generated catalogs, and test fixtures. The persistence seam's stored-event validation (`validateStoredEvents`) continues to refuse an unknown event unless its stored envelope explicitly carries `ignorable: true`; absent remains required-on-read.
 
-One narrow read-side exception preserves DuraSH sessions written before that marker was available. `INERT_LEGACY_EVENT_TYPES` admits only `runs/dispatched`, `workflow/start`, and `workflow/change`, the 0.1.1-era workflow run-state mirrors whose declarations fixed `modelVisible: false` before run durability moved to the storage `runs` unit. The coordinator retains these records in the loaded stream because sequence numbers must remain contiguous and the current build never re-emits them. Every other unmarked unknown event still refuses reconstruction.
+One narrow read-side exception preserves DuraSH sessions written before that marker was available. `INERT_LEGACY_EVENT_TYPES` admits only `runs/dispatched`, `workflow/start`, and `workflow/change`, the 0.1.1-era workflow run-state mirrors whose declarations fixed `modelVisible: false` before run durability moved to the storage `runs` unit. Stored-event validation and the v0-to-v2 format edges retain these records in the loaded stream because sequence numbers must remain contiguous and the current build never re-emits them. Every other unmarked unknown event still refuses reconstruction.
 
 The field is removable only after a replacement supports the current third-party plugin across event production, persistence, reload, and transport, with an explicit cutover for sessions already containing the marker. The [session log versioning decision](2026-08-10-session-log-version-mechanism.md) continues to own the default-required safety rule and format-version policy.
+
+Historical format migration is deliberately stricter in the alpha implementation. The v0-to-v1 edge refuses every unknown v0 type, including an ignorable one, except `INERT_LEGACY_EVENT_TYPES`, because an opaque payload may contain references that a format edge cannot validate. The [alpha historical-event decision](2026-08-31-alpha-historical-unknown-event-refusal.md) owns that bounded exception; equal-version append and reload continue to follow this note.
 
 ## Alternatives considered
 

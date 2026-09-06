@@ -1,7 +1,7 @@
 /** Published dsh web + pnpm dev:web → browser HMR, with no page reload. */
 
-import { existsSync, globSync } from 'node:fs'
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync, globSync, statSync } from 'node:fs'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
@@ -10,11 +10,22 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
-import {
-  clientBuildRecordPath,
-  readVerifiedClientBuildEnvironment,
-} from './client-build-record.ts'
+import { readVerifiedClientBuildEnvironment } from './client-build-record.ts'
 import { REPO_ROOT } from './support.ts'
+
+const CLIENT_ARTIFACT_PATTERNS = [
+  'apps/web/dist/**/*',
+  'packages/*/*/lib/client.js',
+  'packages/*/*/lib/client.js.map',
+]
+
+/** Return every artifact that `pnpm run dev:web` can rewrite. */
+function clientArtifactPaths(): string[] {
+  return globSync(CLIENT_ARTIFACT_PATTERNS, { cwd: REPO_ROOT })
+    .map(path => join(REPO_ROOT, path))
+    .filter(path => statSync(path).isFile())
+    .sort()
+}
 
 function spawnSpec(argv: readonly string[], cwd: string, env?: Record<string, string>): SubprocessSpawnSpec {
   return {
@@ -78,14 +89,9 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
   if (!existsSync(binPath)) throw new Error('HMR browser test needs the built dsh bin; run pnpm run build first')
   const clientBuildEnvironment = readVerifiedClientBuildEnvironment(REPO_ROOT)
   const runtimeProfile = clientBuildEnvironment.DSH_CLIENT_BUILD_PROFILE === 'durash' ? 'durash' : 'web'
-  const clientBundlePaths = globSync('packages/*/*/lib/client.js{,.map}', { cwd: REPO_ROOT })
-    .map(path => join(REPO_ROOT, path))
-  const originalClientBundles = await Promise.all(clientBundlePaths.map(async path => [path, await readFile(path)] as const))
-  const buildRecordPath = join(REPO_ROOT, clientBuildRecordPath)
-  const originalBuildRecord = await readFile(buildRecordPath)
-  const webDistPath = join(REPO_ROOT, 'apps/web/dist')
-  const webDistBackup = join(world, 'web-dist')
-  await cp(webDistPath, webDistBackup, { recursive: true })
+  const originalClientArtifacts = await Promise.all(clientArtifactPaths()
+    .map(async path => [path, await readFile(path)] as const))
+  const originalClientArtifactPaths = new Set(originalClientArtifacts.map(([path]) => path))
   const originalSource = await readFile(sourcePath)
   const oldText = 'Into the Unknown'
   const sourceNeedle = "'hero.headline': 'Into the Unknown'"
@@ -140,15 +146,21 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
   } finally {
     await writeFile(sourcePath, originalSource).catch((error: unknown) => failures.push(error))
     if (watcher !== undefined) await stopTree(watcher).catch((error: unknown) => failures.push(error))
-    await Promise.all(originalClientBundles.map(async ([path, content]) => {
-      await writeFile(path, content).catch((error: unknown) => failures.push(error))
-    }))
-    await rm(webDistPath, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
-    await cp(webDistBackup, webDistPath, { recursive: true }).catch((error: unknown) => failures.push(error))
-    await writeFile(buildRecordPath, originalBuildRecord).catch((error: unknown) => failures.push(error))
     if (host !== undefined) await stopTree(host).catch((error: unknown) => failures.push(error))
     await browser?.close().catch((error: unknown) => failures.push(error))
     await subprocessFiber?.dispose().catch((error: unknown) => failures.push(error))
+    await Promise.all(clientArtifactPaths()
+      .filter(path => !originalClientArtifactPaths.has(path))
+      .map(async (path) => { await rm(path, { force: true }) }))
+      .catch((error: unknown) => failures.push(error))
+    await Promise.all(originalClientArtifacts.map(async ([path, content]) => {
+      await writeFile(path, content)
+    })).catch((error: unknown) => failures.push(error))
+    try {
+      readVerifiedClientBuildEnvironment(REPO_ROOT)
+    } catch (error) {
+      failures.push(error)
+    }
     await rm(world, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
   }
   if (failures.length > 0) throw new AggregateError(failures, 'HMR browser test or cleanup failed')

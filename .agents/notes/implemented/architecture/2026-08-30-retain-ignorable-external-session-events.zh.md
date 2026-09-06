@@ -12,11 +12,13 @@ Status: implemented
 
 ## 决定
 
-标准 `SessionEvent` 信封保留 `ignorable?: true`，每种表示都保留它：seed 校验、JSONL、API 传输、生成目录与测试 fixture。`PersistenceCoordinator` 继续拒绝未知事件，除非已存信封显式带有 `ignorable: true`；字段不存在时仍表示读取必需。
+标准 `SessionEvent` 信封保留 `ignorable?: true`，每种表示都保留它：seed 校验、JSONL、API 传输、生成目录与测试 fixture。持久化 seam 的已存事件校验（`validateStoredEvents`）继续拒绝未知事件，除非已存信封显式带有 `ignorable: true`；字段不存在时仍表示读取必需。
 
-一个严格限定的读取侧例外用于保留该标记出现前写入的 DuraSH 会话。`INERT_LEGACY_EVENT_TYPES` 只放行 `runs/dispatched`、`workflow/start` 与 `workflow/change`：它们是 0.1.1 时代的 workflow 运行状态镜像，其声明在运行持久化迁移到 storage `runs` 单元前已将 `modelVisible` 固定为 `false`。协调器把这些记录保留在加载后的事件流中，因为序号必须连续，且当前构建不会再次发出它们。其他所有未标记的未知事件仍会拒绝重建。
+一个严格限定的读取侧例外用于保留该标记出现前写入的 DuraSH 会话。`INERT_LEGACY_EVENT_TYPES` 只放行 `runs/dispatched`、`workflow/start` 与 `workflow/change`：它们是 0.1.1 时代的 workflow 运行状态镜像，其声明在运行持久化迁移到 storage `runs` 单元前已将 `modelVisible` 固定为 `false`。已存事件校验与 v0-to-v2 格式迁移边把这些记录保留在加载后的事件流中，因为序号必须连续，且当前构建不会再次发出它们。其他所有未标记的未知事件仍会拒绝重建。
 
 只有替代机制在事件生产、持久化、重新加载与传输中都支持当前第三方插件，并为已包含该标记的会话提供显式切换方案后，才能删除此字段。[Session log 版本决策](2026-08-10-session-log-version-mechanism.zh.md)继续定义默认读取必需的安全规则与格式版本策略。
+
+Alpha 实现中的历史格式迁移有意更严格。v0-to-v1 迁移边会拒绝每个未知 v0 类型，包括 ignorable 类型，但 `INERT_LEGACY_EVENT_TYPES` 除外，因为不透明 payload 可能包含格式迁移边无法校验的引用。[Alpha 历史事件决策](2026-08-31-alpha-historical-unknown-event-refusal.zh.md)定义该有限例外；同版本 append 与 reload 继续遵循本记录。
 
 ## 曾考虑的替代方案
 
