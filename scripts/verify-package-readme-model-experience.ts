@@ -262,14 +262,23 @@ function isDirectSystemPromptEntry(title: string): boolean {
 
 /** Anchored generated-catalog links in one model-view field. */
 function toolCatalogLinkFragments(text: string): string[] {
-  return [...text.matchAll(/\]\(\.\.\/\.\.\/\.\.\/docs\/tool-catalog\.md#([a-z0-9_-]+)\)/g)]
+  return [...text.matchAll(/\]\(\.\.\/\.\.\/\.\.\/docs\/(?:durash-)?tool-catalog\.md#([a-z0-9_-]+)\)/g)]
     .map(match => match[1] as string)
 }
 
 const toolCatalogFragments = new Set<string>()
-for (const line of readFileSync(resolve(root, 'docs/tool-catalog.md'), 'utf8').split('\n')) {
-  const title = /^## (.+)$/.exec(line)?.[1]
-  if (title !== undefined) toolCatalogFragments.add(headingFragment(title))
+for (const catalog of ['docs/tool-catalog.md', 'docs/durash-tool-catalog.md']) {
+  const path = resolve(root, catalog)
+  let text: string
+  try {
+    text = readFileSync(path, 'utf8')
+  } catch {
+    continue
+  }
+  for (const line of text.split('\n')) {
+    const title = /^## (.+)$/.exec(line)?.[1]
+    if (title !== undefined) toolCatalogFragments.add(headingFragment(title))
+  }
 }
 
 const failures: Failure[] = []

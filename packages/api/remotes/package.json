@@ -82,7 +82,6 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@deepseek-ai/dsh-scope": "workspace:^",
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
-    "@durash/dsh-reliability-policy": "workspace:^",
     "zod": "^4.4.3"
   }
 }

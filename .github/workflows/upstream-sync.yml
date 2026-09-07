@@ -136,6 +136,11 @@ jobs:
             set -e
             if [ "$merge_status" -ne 0 ]; then
               conflicts="$(git diff --name-only --diff-filter=U | paste -sd, -)"
+              if [ -z "$conflicts" ]; then
+                git merge --abort || true
+                echo "git merge failed without unmerged paths (not a text conflict)" >&2
+                exit 1
+              fi
               git merge --abort
               echo "changed=false" >> "$GITHUB_OUTPUT"
               echo "conflict=true" >> "$GITHUB_OUTPUT"
@@ -165,15 +170,27 @@ jobs:
           CONFLICT_FILES: ${{ steps.prepare.outputs.conflict-files }}
           UPSTREAM_SHA: ${{ steps.prepare.outputs.upstream-sha }}
         run: |
-          title="Upstream sync blocked by merge conflicts"
-          body="DeepSeek Harness $UPSTREAM_SHA could not be merged automatically. Conflicted files: ${CONFLICT_FILES:-unknown}. Resolve this against the product overlay without dropping DuraSH behavior."
-          issue="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
-          if [ -n "$issue" ]; then
-            gh issue comment "$issue" --body "$body"
-          else
-            gh issue create --title "$title" --body "$body"
+          set -euo pipefail
+          pnpm exec tsx scripts/upstream-sync-block.ts report \
+            --upstream-sha "$UPSTREAM_SHA" \
+            --conflict-files "${CONFLICT_FILES:-}"
+
+      - name: Clear a resolved merge-conflict block
+        if: steps.prepare.outputs.conflict != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          UPSTREAM_SHA: ${{ steps.prepare.outputs.upstream-sha }}
+          PREPARE_CHANGED: ${{ steps.prepare.outputs.changed }}
+        run: |
+          set -euo pipefail
+          reason=in-sync
+          if [ "$PREPARE_CHANGED" = "true" ]; then
+            reason=pr-prepared
           fi
-          exit 1
+          pnpm exec tsx scripts/upstream-sync-block.ts resolve \
+            --reason "$reason" \
+            --upstream-sha "$UPSTREAM_SHA"
 
       - name: Open or locate the synchronization pull request
         if: steps.prepare.outputs.changed == 'true'

@@ -39,15 +39,22 @@ async function bench() {
     ensurePolicy: vi.fn(() => Promise.resolve({ ok: true, value: SNAPSHOT })),
     configure: vi.fn(() => Promise.resolve({ ok: true, value: { ...SNAPSHOT, enabled: true } })),
   }
-  ctx.provide('remote', { reliabilityPolicy })
+  let mounted = false
+  const disposeMount = vi.fn(async () => { mounted = false })
+  const mount = vi.fn(async () => {
+    if (mounted) throw new Error('duplicate reliabilityPolicy remote')
+    mounted = true
+    return disposeMount
+  })
+  ctx.provide('remote', { reliabilityPolicy, $mount: mount })
   ctx.provide('remote.reliabilityPolicy', reliabilityPolicy)
   ctx.provide('locale', new LocaleRuntime(ctx))
-  return { ctx, slots, reliabilityPolicy }
+  return { ctx, slots, reliabilityPolicy, mount, disposeMount }
 }
 
 describe('ui-reliability browser apply', () => {
   it('declares every service it binds', () => {
-    expect(inject).toEqual(['slots', 'remote', 'remote.reliabilityPolicy', 'locale'])
+    expect(inject).toEqual(['slots', 'remote', 'locale'])
   })
 
   it('node-half apply is an intentional no-op', () => {
@@ -76,7 +83,31 @@ describe('ui-reliability browser apply', () => {
       reviewThinking: SNAPSHOT.reviewThinking,
     })).resolves.toEqual({ ok: true })
     expect(b.reliabilityPolicy.configure).toHaveBeenCalled()
+    expect(b.mount).toHaveBeenCalledOnce()
+    expect(b.mount).toHaveBeenCalledWith(expect.objectContaining({ package: '@durash/dsh-reliability-policy' }))
     await fiber.dispose()
     expect(b.slots.entries('conversation.input.left')).toHaveLength(0)
+    expect(b.disposeMount).toHaveBeenCalledOnce()
+  })
+
+  it('unmounts the Remote contribution when later Client registration fails', async () => {
+    const b = await bench()
+    vi.spyOn(b.slots, 'inject').mockImplementationOnce(() => { throw new Error('slot registration failed') })
+    await expect(apply(b.ctx)).rejects.toThrow(/slot registration failed/)
+    expect(b.mount).toHaveBeenCalledOnce()
+    expect(b.disposeMount).toHaveBeenCalledOnce()
+  })
+
+  it('remounts after dispose instead of registering the namespace twice', async () => {
+    const b = await bench()
+    const first = b.ctx.plugin({ inject: [...inject], apply })
+    await first.await()
+    await first.dispose()
+    const second = b.ctx.plugin({ inject: [...inject], apply })
+    await second.await()
+    expect(b.mount).toHaveBeenCalledTimes(2)
+    expect(b.disposeMount).toHaveBeenCalledOnce()
+    await second.dispose()
+    expect(b.disposeMount).toHaveBeenCalledTimes(2)
   })
 })

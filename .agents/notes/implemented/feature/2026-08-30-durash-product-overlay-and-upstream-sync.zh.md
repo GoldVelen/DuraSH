@@ -16,7 +16,7 @@ Status: implemented
 
 DuraSH 自有的六个包——`@durash/dsh-web-profile`、`@durash/dsh-client-ui-brand`、`@durash/dsh-client-ui-reliability`、`@durash/dsh-reliability-loop`、`@durash/dsh-reliability-policy` 与 `@durash/dsh-tool-reliability`——都是私有源码 checkout 包。源码 CLI 会把 `durash` 作为安装自有模板交给 app boot。公开的 `@deepseek-ai/dsh` 只暴露由已发布包支撑的模板，并且只能从 `devDependencies` 引用私有 workspace 包；发布 family 会拒绝指向私有 workspace 包的 `dependencies`、`optionalDependencies` 与 `peerDependencies`。
 
-在 `UPSTREAM_SOURCES.json` 中记录每个源码级上游。定时 workflow 审计全部记录的来源，为 DSH 主上游准备唯一一个自动化专属 merge PR，并为更新的 vendored 公共发行版维持唯一一个 review Issue。主上游合并会在临时 checkout 中显式启用仓库的双语配对驱动，使已确认的伴随记录可以合并，同时所有者文件冲突仍会阻止运行。registry 与 Actions 依赖遵循 [Dependabot 更新决策](../process/2026-07-27-dependabot-version-updates.zh.md)：每日检查、不设置人为冷却期，而且只有配置 required compatibility checks 后才允许显式启用自动合并。
+在 `UPSTREAM_SOURCES.json` 中记录每个源码级上游。定时 workflow 审计全部记录的来源，为 DSH 主上游准备唯一一个自动化专属 merge PR，并为更新的 vendored 公共发行版维持唯一一个 review Issue。主上游合并会在临时 checkout 中显式启用仓库的双语配对驱动，使已确认的伴随记录可以合并，同时所有者文件冲突仍会阻止合并。相同的已知文本冲突会留在专用 issue 上，不再让后续 cron 失败（[同步阻塞说明](../process/2026-09-06-durash-sync-block-reliability-remote-catalog.zh.md)）。registry 与 Actions 依赖遵循 [Dependabot 更新决策](../process/2026-07-27-dependabot-version-updates.zh.md)：每日检查、不设置人为冷却期，而且只有配置 required compatibility checks 后才允许显式启用自动合并。
 
 继承的 Issue lifecycle 与 PR policy job 将 `deepseek-harness/deepseek-harness` 声明为唯一适用仓库。下游仓库会在 checkout、令牌创建或 policy 执行前跳过这些 job；它不会把自己无法管理的 Project 状态报告成 policy 通过。Python runtime workflow 在每个仓库中都保留完整的无密钥 installed-wheel 矩阵。real-API 预检与在线 smoke 步骤只适用于符合条件的 `deepseek-harness/deepseek-harness` CI；canonical 路径缺少外部密钥时仍会失败，而 fork、Dependabot 与下游运行不会请求该密钥。
 

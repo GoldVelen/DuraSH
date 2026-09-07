@@ -48,7 +48,7 @@ kind: "package-reference"
 
 - [可靠性策略](../durash-reliability-policy/README.zh.md) — 门控本工具的开关 Host 真值。
 - [可靠性闭环](../durash-reliability-loop/README.zh.md) — 本工具启动的引擎。
-- [工具目录](../../../docs/tool-catalog.zh.md) — `dsh_reliability_handoff` 的生成 schema。
+- [DuraSH 工具目录](../../../docs/durash-tool-catalog.zh.md) — `dsh_reliability_handoff` 的生成 schema。
 
 -----
 
@@ -79,7 +79,7 @@ For this Session the reliability loop is enabled. This tool is the only implemen
 
 #### 模型看到什么
 
-生成的[工具目录](../../../docs/tool-catalog.zh.md#durashdsh-tool-reliability)拥有 `dsh_reliability_handoff` schema。本包的描述要求模型先给出计划，再带着完整目标调用。模型会看到 `dsh_reliability_handoff` 的目录条目。
+生成的[DuraSH 工具目录](../../../docs/durash-tool-catalog.zh.md#durashdsh-tool-reliability)拥有 `dsh_reliability_handoff` schema。本包的描述要求模型先给出计划，再带着完整目标调用。模型会看到 `dsh_reliability_handoff` 的目录条目。
 
 #### Token 影响
 

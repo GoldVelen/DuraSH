@@ -48,7 +48,7 @@ No runtime invariant companion is published because this tool owns no independen
 
 - [Reliability policy](../durash-reliability-policy/README.md) — the switch's Host truth that gates this tool.
 - [Reliability loop](../durash-reliability-loop/README.md) — the engine this tool starts.
-- [Tool catalog](../../../docs/tool-catalog.md) — generated schema for `dsh_reliability_handoff`.
+- [DuraSH tool catalog](../../../docs/durash-tool-catalog.md) — generated schema for `dsh_reliability_handoff`.
 
 -----
 
@@ -79,7 +79,7 @@ Enabling or disabling the composer switch adds or removes this section from the 
 
 #### What the model sees
 
-The generated [tool catalog](../../../docs/tool-catalog.md#durashdsh-tool-reliability) owns the `dsh_reliability_handoff` schema. This package's description tells the model to present a plan first, then call with the complete objective. The model sees the catalog entry for `dsh_reliability_handoff`.
+The generated [DuraSH tool catalog](../../../docs/durash-tool-catalog.md#durashdsh-tool-reliability) owns the `dsh_reliability_handoff` schema. This package's description tells the model to present a plan first, then call with the complete objective. The model sees the catalog entry for `dsh_reliability_handoff`.
 
 #### Token effect
 

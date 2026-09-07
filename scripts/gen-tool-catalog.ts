@@ -6,8 +6,8 @@
  * `.agents/notes/implemented/process/2026-07-02-tool-schema-catalog.md`.
  */
 
-import { globSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
@@ -67,7 +67,6 @@ import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
 import VmWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
 import * as ToolWorkflow from '@deepseek-ai/dsh-tool-workflow'
-import * as ToolReliability from '@durash/dsh-tool-reliability'
 import { githubSlug } from './verify-md-links.ts'
 
 /** Attachment seam marker that makes the attachments-conditional `read_image` schema harvestable. */
@@ -183,12 +182,14 @@ export interface ToolPackage {
 }
 
 /**
- * The boot manifest: every shipped tool package (a `tool-*` leaf or DuraSH's
- * `durash-tool-*` product overlay under `packages/`). Ordered by package name
- * (the render order); the completeness guard proves it is exhaustive against
- * the on-disk globs.
+ * Upstream boot manifest: every shipped `tool-*` package under `packages/`.
+ * Ordered by package name (the render order); the completeness guard proves it
+ * is exhaustive against {@link TOOL_PACKAGE_GLOBS}. DuraSH product tools use
+ * `scripts/gen-durash-tool-catalog.ts`.
  */
-const TOOL_PACKAGES: ToolPackage[] = [
+export const TOOL_PACKAGE_GLOBS = ['packages/*/tool-*'] as const
+
+export const TOOL_PACKAGES: ToolPackage[] = [
   {
     pkg: '@deepseek-ai/dsh-tool-ask-user',
     dir: 'tool-ask-user',
@@ -592,36 +593,6 @@ const TOOL_PACKAGES: ToolPackage[] = [
     note:
       'web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.',
   },
-  {
-    pkg: '@durash/dsh-tool-reliability',
-    dir: 'durash-tool-reliability',
-    source: 'packages/reliability/durash-tool-reliability/src/index.ts',
-    requires: [
-      'ctx.tools',
-      'ctx.systemPrompt',
-      'ctx.agents',
-      'ctx.reliabilityPolicy',
-      'ctx.reliabilityLoopRuntime',
-      'a live enabled root Agent at execution time',
-    ],
-    writes: ['tool/call', 'reliability-loop durable state and child Session events', 'tool/result'],
-    async mount(ctx) {
-      // Registration only needs the service identities. Execution is
-      // unreachable while harvesting schemas, so inert doubles keep the
-      // generator independent of storage and workflow backends.
-      ctx.provide('agents', {} as never)
-      ctx.provide('reliabilityPolicy', {
-        workflowEnabled: () => false,
-        enabledRoutes: () => undefined,
-      } as never)
-      ctx.provide('reliabilityLoopRuntime', {
-        start: () => Promise.reject(new Error('tool-catalog reliability execution is unreachable')),
-      } as never)
-      await ctx.plugin(ToolReliability)
-    },
-    note:
-      'Shipped only by the `durash` profile. Its schema is process-wide; execution fails closed unless the current Session policy is enabled with both implementation and review routes.',
-  },
 ]
 
 /** One package's contribution to the catalog: its schemas plus attribution. */
@@ -640,26 +611,29 @@ interface CatalogPackage {
 export type ToolCatalog = CatalogPackage[]
 
 /**
- * Assert the boot manifest covers every shipped tool package on disk (a
- * `tool-*` leaf or DuraSH's `durash-tool-*` product overlay under `packages/`).
- * Booting has no source declaration to enumerate, so this glob restores the
+ * Assert the boot manifest covers every shipped tool package on disk matching
+ * `globs`. Booting has no source declaration to enumerate, so this restores the
  * "a new tool cannot be silently undocumented" guarantee: an unlisted package
- * fails the generator (and the freshness gate) until it is added to
- * {@link TOOL_PACKAGES}. Exported for a direct negative test.
+ * fails the generator (and the freshness gate) until it is added to the
+ * matching boot manifest. Exported for a direct negative test.
  *
  * `scanRoot` defaults to the repo root; a test may point it at a fixture tree.
+ * Default `globs` are the upstream `tool-*` packages.
  */
-export function assertManifestComplete(packages: ToolPackage[] = TOOL_PACKAGES, scanRoot: string = root): void {
-  const onDisk = [
-    ...globSync('packages/*/tool-*', { cwd: scanRoot }),
-    ...globSync('packages/*/durash-tool-*', { cwd: scanRoot }),
-  ].map(p => basename(p)).sort()
+export function assertManifestComplete(
+  packages: ToolPackage[] = TOOL_PACKAGES,
+  scanRoot: string = root,
+  globs: readonly string[] = TOOL_PACKAGE_GLOBS,
+): void {
+  const onDisk = globs.flatMap(glob => globSync(glob, { cwd: scanRoot }))
+    .filter(dir => existsSync(join(scanRoot, dir, 'package.json')))
+    .map(p => basename(p)).sort()
   const listed = new Set(packages.map(p => p.dir))
   const missing = onDisk.filter(dir => !listed.has(dir))
   if (missing.length > 0) {
     throw new Error(
       `gen-tool-catalog: ${missing.length} tool package(s) not in the boot manifest: ${missing.join(', ')}. `
-      + 'Add each to TOOL_PACKAGES in scripts/gen-tool-catalog.ts so its schema is catalogued.',
+      + 'Add each to the generator boot manifest so its schema is catalogued.',
     )
   }
 }
@@ -693,8 +667,12 @@ export function assertToolsHarvested(entry: ToolPackage, harvested: number): voi
  * schemas come from exactly that package) and isolates a boot failure to its
  * own entry. Disposed after harvest so no executor/provider outlives the run.
  */
-export async function collectToolCatalog(packages: ToolPackage[] = TOOL_PACKAGES): Promise<ToolCatalog> {
-  assertManifestComplete(packages)
+export async function collectToolCatalog(
+  packages: ToolPackage[] = TOOL_PACKAGES,
+  scanRoot: string = root,
+  globs: readonly string[] = TOOL_PACKAGE_GLOBS,
+): Promise<ToolCatalog> {
+  assertManifestComplete(packages, scanRoot, globs)
   const catalog: ToolCatalog = []
   for (const entry of packages) {
     const ctx = new Context()
@@ -766,9 +744,9 @@ export function render(catalog: ToolCatalog): string {
     '',
     'Every model-facing tool a shipped plugin contributes to `ctx.tools`: the `name`, `description`, and JSON-Schema `parameters` the model receives via the system-prompt assembly. It complements the [subsystem pages](subsystems/core.md) (the types plus each page\'s generated Cordis API region) — this page is the *tools* the agent is offered.',
     '',
-    'This file is GENERATED and verified fresh by `pnpm run verify-tool-catalog` (part of `doc-sync`) — do not edit it by hand. Unlike the cordis catalog (a pure source-AST pass), this generator BOOTS each tool plugin on a real context and reads `ctx.tools.schemas()`, because a tool schema is not statically knowable (runtime-spread enums, concatenated descriptions, config-driven names, raw-JSON-Schema MCP tools). A completeness guard globs `packages/*/tool-*` and DuraSH product-overlay `packages/*/durash-tool-*` packages and fails if any package is missing from the generator\'s boot manifest, so a new tool cannot be silently undocumented. See [the tool-schema-catalog Agent Note](../.agents/notes/implemented/process/2026-07-02-tool-schema-catalog.md).',
+    'This file is GENERATED and verified fresh by `pnpm run verify-tool-catalog` (part of `doc-sync`) — do not edit it by hand. Unlike the cordis catalog (a pure source-AST pass), this generator BOOTS each tool plugin on a real context and reads `ctx.tools.schemas()`, because a tool schema is not statically knowable (runtime-spread enums, concatenated descriptions, config-driven names, raw-JSON-Schema MCP tools). A completeness guard globs `packages/*/tool-*` packages and fails if any package is missing from the generator\'s boot manifest, so a new tool cannot be silently undocumented. See [the tool-schema-catalog Agent Note](../.agents/notes/implemented/process/2026-07-02-tool-schema-catalog.md).',
     '',
-    'Scope: shipped product tools under `packages/*/tool-*` and `packages/*/durash-tool-*`, each booted with its DEFAULT config, except where a Config field is REQUIRED with no default — there the generator must choose, and the per-package note records which branch this page shows. The registered tool NAME can be a load-time config (e.g. `tool-subagent`\'s `toolName`), so a deployment may expose a package under a different or additional name — a per-package note records those shipped aliases where they exist. The `examples/` demo tools (e.g. `echo`) are excluded, matching the cordis catalog\'s packages-only scope.',
+    'Scope: shipped product tools under `packages/*/tool-*`, each booted with its DEFAULT config, except where a Config field is REQUIRED with no default — there the generator must choose, and the per-package note records which branch this page shows. The registered tool NAME can be a load-time config (e.g. `tool-subagent`\'s `toolName`), so a deployment may expose a package under a different or additional name — a per-package note records those shipped aliases where they exist. The `examples/` demo tools (e.g. `echo`) are excluded, matching the cordis catalog\'s packages-only scope.',
     '',
     '## Tool Package Map',
     '',

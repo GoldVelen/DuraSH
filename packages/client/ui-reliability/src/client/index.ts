@@ -9,7 +9,9 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { ReliabilityPolicyController, type ReliabilityPolicyRemote } from './controller.ts'
+import reliabilityPolicyRemote from '@durash/dsh-reliability-policy/remote'
+import type {} from '@durash/dsh-reliability-policy/remote'
+import { ReliabilityPolicyController } from './controller.ts'
 import { WorkflowPolicyDock, type WorkflowPolicyDockInjected } from './WorkflowPolicyDock.tsx'
 import { en, NS, zh, type ReliabilityKey } from './locales.ts'
 
@@ -23,16 +25,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required controller, generated Remote, locale, and conversation slot services. */
+/** Required carrier, locale, and conversation slot services. The generated namespace is mounted in apply before consumers wait on it. */
 export const inject = [
-  'slots', 'remote', 'remote.reliabilityPolicy', 'locale',
+  'slots', 'remote', 'locale',
 ]
 
-/** Install the process-wide policy controller and the composer chip. */
-export function apply(ctx: ClientContext): void {
+function registerUi(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-reliability: dictionaries')
-  const remote = (ctx.remote as typeof ctx.remote & { reliabilityPolicy: ReliabilityPolicyRemote }).reliabilityPolicy
-  const controller = new ReliabilityPolicyController(remote)
+  const controller = new ReliabilityPolicyController(ctx.remote.reliabilityPolicy)
   ctx.effect(() => () => { controller.dispose() }, 'ui-reliability: controller')
 
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
@@ -49,4 +49,25 @@ export function apply(ctx: ClientContext): void {
       sessionId,
     }),
   }, WorkflowPolicyDock))
+}
+
+/**
+ * Mount the generated reliability-policy Remote, then register its browser UI.
+ * @param ctx - Client Context carrying Remote, locale, and slot services.
+ * @returns disposer for both the UI registrations and Remote namespace.
+ */
+export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
+  const disposeRemote = await ctx.remote.$mount(reliabilityPolicyRemote)
+  const ui = ctx.inject(['slots', 'remote.reliabilityPolicy', 'locale'], registerUi)
+  try {
+    await ui
+  } catch (error) {
+    await ui.dispose()
+    await disposeRemote()
+    throw error
+  }
+  return async () => {
+    await ui.dispose()
+    await disposeRemote()
+  }
 }
