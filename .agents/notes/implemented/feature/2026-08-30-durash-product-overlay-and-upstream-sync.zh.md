@@ -16,11 +16,11 @@ Status: implemented
 
 DuraSH 自有的六个包——`@durash/dsh-web-profile`、`@durash/dsh-client-ui-brand`、`@durash/dsh-client-ui-reliability`、`@durash/dsh-reliability-loop`、`@durash/dsh-reliability-policy` 与 `@durash/dsh-tool-reliability`——都是私有源码 checkout 包。源码 CLI 会把 `durash` 作为安装自有模板交给 app boot。公开的 `@deepseek-ai/dsh` 只暴露由已发布包支撑的模板，并且只能从 `devDependencies` 引用私有 workspace 包；发布 family 会拒绝指向私有 workspace 包的 `dependencies`、`optionalDependencies` 与 `peerDependencies`。
 
-在 `UPSTREAM_SOURCES.json` 中记录每个源码级上游。定时 workflow 审计全部记录的来源，为 DSH 主上游准备唯一一个自动化专属 merge PR，并为更新的 vendored 公共发行版维持唯一一个 review Issue。主上游合并会在临时 checkout 中显式启用仓库的双语配对驱动，使已确认的伴随记录可以合并，同时所有者文件冲突仍会阻止运行。registry 与 Actions 依赖遵循 [Dependabot 更新决策](../process/2026-07-27-dependabot-version-updates.zh.md)：每日检查、不设置人为冷却期，而且只有配置 required compatibility checks 后才允许显式启用自动合并。
+在 `UPSTREAM_SOURCES.json` 中记录每个源码级上游。定时 workflow 审计全部记录的来源，为 DSH 主上游准备唯一一个自动化专属 merge PR，并为更新的 vendored 公共发行版维持唯一一个 review Issue。主上游合并会在临时 checkout 中显式启用仓库的双语配对驱动，使已确认的伴随记录可以合并，同时所有者文件冲突仍会阻止合并。相同的已知文本冲突会留在专用 issue 上，不再让后续 cron 失败（[同步阻塞说明](../process/2026-09-06-durash-sync-block-reliability-remote-catalog.zh.md)）。registry 与 Actions 依赖遵循 [Dependabot 更新决策](../../archived/process/2026-07-27-dependabot-version-updates.md)：每日检查、不设置人为冷却期，而且只有配置 required compatibility checks 后才允许显式启用自动合并。
 
 继承的 Issue lifecycle 与 PR policy job 将 `deepseek-harness/deepseek-harness` 声明为唯一适用仓库。下游仓库会在 checkout、令牌创建或 policy 执行前跳过这些 job；它不会把自己无法管理的 Project 状态报告成 policy 通过。Python runtime workflow 在每个仓库中都保留完整的无密钥 installed-wheel 矩阵。real-API 预检与在线 smoke 步骤只适用于符合条件的 `deepseek-harness/deepseek-harness` CI；canonical 路径缺少外部密钥时仍会失败，而 fork、Dependabot 与下游运行不会请求该密钥。
 
-继承的 PR CI 只在 `deepseek-harness/deepseek-harness` 中选择上游企业 runner 或自托管故障转移池。下游仓库会在标准 `ubuntu-24.04` 与 `windows-2025` runner 上运行相同代码门禁；其外层门禁调度器、覆盖率分区、Vitest 进程、快照、代码检查器与包检查使用下游 worker 预算，而不沿用 canonical 仓库的 16 核配置。上游故障转移变量既不会改变这些 job 的 runner，也不会重新放大其并发。Cloudflare 预览 job 会在 checkout 或读取凭据前限定为仅 canonical 仓库运行，因为其 Pages 项目与 Access 凭据都属于上游仓库。
+继承的 PR CI 只在 `deepseek-harness/deepseek-harness` 中选择上游企业 runner、Blacksmith 或自托管故障转移池。下游仓库会在标准 `ubuntu-24.04` 与 `windows-2025` runner 上运行相同代码门禁；其外层门禁调度器、覆盖率分区、Vitest 进程、快照、代码检查器与包检查使用下游 worker 预算，而不沿用 canonical 仓库的 16 核配置。上游故障转移变量既不会改变这些 job 的 runner，也不会重新放大其并发。Cloudflare 预览 job 会在 checkout 或读取凭据前限定为仅 canonical 仓库运行，因为其 Pages 项目与 Access 凭据都属于上游仓库。
 
 消费者门禁还会选择仓库自有的客户端构建 profile：`deepseek-harness/deepseek-harness` 使用 `official`，下游使用 `durash`。Node 兼容性检查会先于该仓库构建完成，因为两者都会替换共享客户端产物。随后，构建后的 Web、HMR、CLI、PWA 与组合浏览器验收读取同一份已验证构建记录，因此运行时组合与产品身份不会静默分离。录制的 PowerShell 工具回合夹具会保留与其他已交付 profile 快照相同的权限、沙箱、审批及模型可见运行时上下文事件，因此回放能够发现静默漏掉这些段落的 profile。
 

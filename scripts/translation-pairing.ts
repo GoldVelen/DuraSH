@@ -348,6 +348,7 @@ export function requiresSourceLanguageSwitcher(source: string): boolean {
     'docs/module-graph.md',
     'docs/persistence-catalog.md',
     'docs/tool-catalog.md',
+    'docs/durash-tool-catalog.md',
     'docs/tool-execution-pipeline.md',
   ].includes(source)
 }

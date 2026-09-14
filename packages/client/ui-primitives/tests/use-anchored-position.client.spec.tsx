@@ -3,16 +3,15 @@
  * `useAnchoredPosition` wiring: a floating panel is placed from its anchor and
  * keeps tracking it while open.
  *
- * The geometry itself needs real layout, which jsdom does not provide — the
- * browser layout scenario in `apps/web/tests/message-feedback-layout.e2e.ts`
- * owns that. What is asserted here is the wiring the clamp depends on: the
- * listeners and the panel/anchor size observer are attached while open and
- * released on close, a size change replays the placement, and the hook still
- * works where `ResizeObserver` does not exist.
+ * The geometry itself needs real layout, which jsdom does not provide. What
+ * is asserted here is the wiring the clamp depends on: the
+ * listeners and the panel-size observer are attached while open and released on
+ * close, a size change replays the placement, and the hook still works where
+ * `ResizeObserver` does not exist.
  */
 import { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
+import { cleanup, render } from '@testing-library/react'
 import { useAnchoredPosition } from '../src/useAnchoredPosition.ts'
 
 afterEach(() => {
@@ -52,10 +51,10 @@ function stubResizeObserver(): Recorded[] {
  * @param props - whether the panel is open.
  * @returns the anchor and, while open, the panel carrying the position.
  */
-function Host({ open, side = 'bottom' }: { open: boolean; side?: 'top' | 'bottom' }) {
+function Host({ open }: { open: boolean }) {
   const anchorRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const position = useAnchoredPosition({ open, anchorRef, panelRef, gap: 4, margin: 12, side })
+  const position = useAnchoredPosition({ open, anchorRef, panelRef, gap: 4, margin: 12 })
   return (
     <>
       <button ref={anchorRef} type="button">anchor</button>
@@ -64,21 +63,13 @@ function Host({ open, side = 'bottom' }: { open: boolean; side?: 'top' | 'bottom
   )
 }
 
-/** Mount the hook without either target to cover an open portal's pre-ref commit. */
-function MissingTargets() {
-  const anchorRef = useRef<HTMLElement>(null)
-  const panelRef = useRef<HTMLElement>(null)
-  useAnchoredPosition({ open: true, anchorRef, panelRef, gap: 4, margin: 12 })
-  return null
-}
-
 describe('useAnchoredPosition', () => {
-  it('observes the panel and anchor while open and disconnects when it closes', () => {
+  it('observes the panel while open and disconnects when it closes', () => {
     const made = stubResizeObserver()
     const ui = render(<Host open />)
 
     expect(made).toHaveLength(1)
-    expect(made[0]?.observed).toEqual([ui.getByTestId('panel'), ui.getByRole('button', { name: 'anchor' })])
+    expect(made[0]?.observed).toEqual([ui.getByTestId('panel')])
     expect(made[0]?.disconnected).toBe(false)
 
     ui.rerender(<Host open={false} />)
@@ -106,17 +97,6 @@ describe('useAnchoredPosition', () => {
     expect(() => render(<Host open />)).not.toThrow()
   })
 
-  it('does not observe targets before their refs are attached', () => {
-    const made = stubResizeObserver()
-    const ui = render(<MissingTargets />)
-
-    expect(made).toHaveLength(1)
-    expect(made[0]?.observed).toEqual([])
-
-    ui.unmount()
-    expect(made[0]?.disconnected).toBe(true)
-  })
-
   it('attaches no listeners while the element is closed', () => {
     const made = stubResizeObserver()
     const add = vi.spyOn(window, 'addEventListener')
@@ -126,33 +106,5 @@ describe('useAnchoredPosition', () => {
     expect(made).toHaveLength(0)
     expect(add.mock.calls.filter(([type]) => type === 'scroll' || type === 'resize')).toEqual([])
     add.mockRestore()
-  })
-
-  it('returns a top offset when the panel opens above its anchor', () => {
-    const ui = render(<Host open side="top" />)
-    const panel = ui.getByTestId('panel')
-
-    expect(panel.style.top).toBe('-4px')
-    expect(panel.style.bottom).toBe('')
-  })
-
-  it('detaches an above panel only when its measured size would cross the viewport margin', () => {
-    const made = stubResizeObserver()
-    const ui = render(<Host open side="top" />)
-    const anchor = ui.getByRole('button', { name: 'anchor' })
-    const panel = ui.getByTestId('panel')
-    vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue({
-      x: 980, y: 80, left: 980, right: 1_000, top: 80, bottom: 100,
-      width: 20, height: 20, toJSON: () => ({}),
-    })
-    Object.defineProperties(panel, {
-      offsetWidth: { configurable: true, value: 440 },
-      offsetHeight: { configurable: true, value: 480 },
-    })
-
-    act(() => { made[0]?.callback([], {} as ResizeObserver) })
-
-    expect(panel.style.left).toBe('572px')
-    expect(panel.style.top).toBe('12px')
   })
 })

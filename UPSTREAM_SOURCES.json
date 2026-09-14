@@ -4,8 +4,8 @@
     {
       "id": "deepseek-harness",
       "name": "DeepSeek Harness",
-      "baseline": "d347e703908d0406b7a7ef80e3a0e594d86b2215",
-      "release": "dsh-v0.1.3-alpha.1",
+      "baseline": "c291e7961a515f6d7af9304e7fd1d257929aef26",
+      "release": "dsh-v0.1.5-rc.2",
       "syncMode": "primary-merge",
       "kind": "github",
       "repository": "deepseek-ai/deepseek-harness",

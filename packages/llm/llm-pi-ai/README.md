@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-llm-pi-ai` is the pi-ai-backed multi-provider adapter for the harness LLM service: one plugin instance owns a dictionary of provider routes, each served through [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai). A route inherits the installed catalog under its own key by default, or explicitly selects another installed provider as its catalog source while keeping its own route identity; a route with no catalog source is declared outright. An OpenAI-compatible gateway or self-hosted server is therefore configuration, not a code change. Profiles and credentials resolve per request over the optional settings and credential seams, so editing the user settings document changes the next request without a restart. A provider that ships a login can be signed into through the harness authorization seam, and the stored sign-in — an OAuth grant, or a key typed into pi-ai's own login prompt — authenticates its route and refreshes itself under the store's cross-process lock. The plugin can mount dormant with zero routes and activate them the moment a settings section supplies profiles.
+`@deepseek-ai/dsh-llm-pi-ai` routes model requests to multiple pi-ai providers, OpenAI-compatible gateways, or self-hosted servers from one configuration. Installed pi-ai providers supply endpoint, protocol, and model-catalog defaults; custom routes can declare those values without code changes. Profiles and credentials are resolved for each request, so settings changes take effect on the next request without a restart. Supported providers can use stored OAuth or interactive-key sign-in with cross-process refresh locking. The package may start with no routes and activate when user settings add them.
 
 ## Table of Contents
 
@@ -54,13 +54,6 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
         models:
           - id: claude-sonnet-4-5
             contextWindow: 200000
-      openai-proxy:
-        catalogProvider: openai
-        apiKeyEnv: OPENAI_PROXY_API_KEY
-        api: openai-completions
-        baseURL: https://gateway.example/v1
-        models:
-          - id: gpt-5.6-sol
       acme-gateway:
         displayName: Acme Gateway
         apiKeyEnv: ACME_GATEWAY_API_KEY
@@ -82,7 +75,7 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
 | `apiKeyEnv` | absent | Credential reference resolved per request; omission defers to pi-ai ambient discovery |
 | `displayName` | provider name | Label shown by selector surfaces |
 | `catalogProvider` | provider name | Installed provider whose catalog, protocol, endpoint, and auth supply defaults without changing the route key |
-| `api` | catalog protocol | Wire protocol override; required when no catalog source supplies one |
+| `api` | catalog protocol | Wire protocol; only needed for routes the catalog does not supply |
 | `baseURL` | catalog endpoint | Endpoint of every model on the route |
 | `models` | installed catalog | Replaces the route's catalog wholesale; each entry defaults from the installed model |
 | `modelOverrides` | none | Reshapes individual installed-catalog models without replacing the rest |
@@ -104,11 +97,13 @@ A provider pi-ai ships a login for can be signed into through the harness author
 
 A profile's catalog source is its route key unless `catalogProvider` explicitly names another installed provider. The latter is useful when a private gateway serves an official provider's models under a deployment-specific route name: the route keeps its own endpoint, credential, and selection identity while inheriting model capabilities such as context, modalities, and reasoning efforts. DSH does not infer this source from model ids because different gateways may implement the same id differently; an empty or unavailable source is refused.
 
-A profile's `models` list replaces the selected installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a route with no catalog source, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
+A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
 
 ### Run with reasoning and wire compatibility
 
 `reasoningEfforts` declares a model's selectable thinking levels: each key is a level selectors offer, its value the spelling dispatch sends on the wire, so `max: ultra` renames a level for a gateway with its own vocabulary. Omitting the field keeps the installed catalog entry's capability; `false` declares a non-reasoning model. `compat` switches reshape the request for endpoints pi-ai cannot recognize — which role carries the system prompt, which field caps output, how a thinking level travels — configurable per route and per model. A model neither the entry nor the installed catalog sizes takes the route's `defaultContextWindow` and `defaultMaxTokens` fallbacks.
+
+For self-hosted Chat Completions endpoints, `thinkingTokenBudgetField` selects the reasoning-budget parameter, and `vllmPriority` sets an integer scheduler priority when the server enables priority scheduling. Template arguments accept `$var: thinking.budget`. `openai-responses` gateways can set `supportsMaxOutputTokens: false` to omit `max_output_tokens`; Azure and Codex transports ignore this shared compatibility field. These controls are opt-in; catalog-owned Anthropic effort and fallback capabilities are not configurable switches.
 
 ### Change configuration at runtime
 
@@ -120,7 +115,11 @@ The plugin answers "which models can this provider serve?" for a route a configu
 
 ### Failures and recovery
 
-A route with no installed catalog source needs `api`, `baseURL`, and a non-empty `models` list; an explicit `catalogProvider` must name an installed provider. An unserviceable profile is refused where it is written, naming the route and model. Failures carry stable codes: a credential that cannot be used fails with `INVALID_CREDENTIAL` naming the route and reference, a route whose `apiKeyEnv` reference resolves to nothing fails with `MISSING_CREDENTIAL`, an unconfigured model fails with `UNKNOWN_MODEL`, and terminal provider failures distinguish `QUOTA` from transient `RATE_LIMIT`. `GenerateOptions.stop` is rejected with `UNSUPPORTED_OPTION` because pi-ai's common streaming UI cannot guarantee it across providers.
+A route pi-ai does not ship needs `api`, `baseURL`, and a non-empty `models` list; an explicit `catalogProvider` must name an installed provider. An unserviceable profile is refused where it is written, naming the route and model. Failures carry stable codes: a credential that cannot be used fails with `INVALID_CREDENTIAL` naming the route and reference, a route whose `apiKeyEnv` reference resolves to nothing fails with `MISSING_CREDENTIAL`, an unconfigured model fails with `UNKNOWN_MODEL`, and terminal provider failures distinguish `QUOTA` from transient `RATE_LIMIT`. `GenerateOptions.stop` is rejected with `UNSUPPORTED_OPTION` because pi-ai's common streaming UI cannot guarantee it across providers.
+
+Settings writes strictly validate each new or changed provider after merging its composition and user layers. During namespace registration, stored catalog failures retain the namespace and provider rows, with the first available model diagnostic or route failure in `LlmConfigurableProvider.error`; unchanged failed providers do not block edits elsewhere. Serviceable models remain selectable, while unresolved models remain in the editable configuration and fail with `INVALID_CONFIG` before network I/O if requested directly. Repairing or deleting the offending configuration clears its diagnostic. Schema and self-contained profile errors still reject loading. Later external edits validate changed providers and retain the last accepted section on failure.
+
+Changing `displayName`, `apiKeyEnv`, or `baseURL` without resolving the provider's model errors still rejects the save. For example, renaming an OpenRouter route whose model `111` needs an `api` cannot be saved on its own: repair or remove that model in the same editor draft, then save the complete provider configuration. Intermediate repairs remain in the draft until the whole provider validates; other providers can be saved independently.
 
 -----
 
@@ -157,7 +156,7 @@ The plugin declares every installed catalog provider it can authenticate in the 
 
 ### Replay and vocabulary
 
-Successful assistant responses store a versioned, lossless-JSON replay state beside the provider and model that produced them — response-level facts plus one per-block entry per streamed block. At request time, `LlmRuntime` passes replay state only when the same adapter instance owns both routes; the adapter validates it and restores native response ids and provider signatures, degrading an unusable state to provider-neutral content instead of failing the request. pi-ai tool-call arguments are parsed objects, so the adapter parses input and re-stringifies output to the harness raw-JSON convention; pi-ai in-stream error events map to terminal `finish` chunks.
+Successful assistant responses store a versioned, lossless-JSON replay state beside the provider and model that produced them — response-level facts plus one per-block entry per streamed block. At request time, `LlmRuntime` passes replay state only when the same adapter instance owns both routes; the adapter validates it and restores native response ids, provider signatures, and optional `providerThinkingLevel` effort metadata, keeping absent effort metadata absent. Replay validates the requested model identity against the assistant source and separately restores an Anthropic response model when the provider resolved an alias or fallback. An unusable state degrades to provider-neutral content instead of failing the request. pi-ai tool-call arguments are parsed objects, so the adapter parses input and re-stringifies output to the harness raw-JSON convention; pi-ai in-stream error events map to terminal `finish` chunks.
 
 </details>
 
@@ -184,7 +183,7 @@ Read these pages when the package-level contract is not enough. They move from t
 
 #### What the model sees
 
-The selected catalog model receives `GenerateOptions.system`, history, tools, and sampling fields supported by pi-ai's common streaming API. Each retained image is preceded by text naming its complete attachment id and actual request dimensions. When the current execution filesystem maps the attachment provider's host object, the text also carries a read-only normalized-object path and warns that normalization or request projection may have resized or re-encoded the upload. When accumulated base64 image payload exceeds the route's `maxRequestImageBytes`, each offloaded image keeps its own identity and currently resolved access in replacement text. Offloaded normalized attachments are not read or transformed. Provider-native replay metadata is restored only when the adapter validates it for the historical content.
+The selected catalog model receives one system prompt (`GenerateOptions.system`, otherwise the text of a leading `system` history message; a leading system message with empty text sends none), the remaining history, tools, and sampling fields supported by pi-ai's common streaming API. Each retained image is preceded by text naming its complete attachment id and actual request dimensions. When the current execution filesystem maps the attachment provider's host object, the text also carries a read-only normalized-object path and warns that normalization or request projection may have resized or re-encoded the upload. When accumulated base64 image payload exceeds the route's `maxRequestImageBytes`, each offloaded image keeps its own identity and currently resolved access in replacement text. Offloaded normalized attachments are not read or transformed. Provider-native replay metadata is restored only when the adapter validates it for the historical content.
 
 #### Token effect
 
@@ -227,7 +226,7 @@ These limits define where the adapter stops and future work begins. They are cur
 - **A modality declaration is not verified** — a model declaring `image` its gateway does not serve is refused by the provider after prompt admission. The durable image remains in history and the same misdeclared model can fail again; switching to a text-only model remains possible because the shared LLM runtime projects image references into stable text for that request.
 - **An unauthenticated route depends on its protocol** — a route naming no credential resolves as configured-but-keyless, but pi-ai's OpenAI-compatible implementation still requires an API key or an `Authorization` header, so a keyless local server needs a placeholder credential referenced by `apiKeyEnv` or an `Authorization` entry in `headers`.
 - **`GenerateOptions.stop` is unsupported** — pi-ai's common stream options cannot guarantee stop-sequence behavior across providers.
-- **In-history `system` messages use pi-ai's common context conversion** — provider-specific placement follows pi-ai rather than a harness-owned wire override.
+- **Only a leading in-history `system` message becomes pi-ai's `systemPrompt`** — pi-ai has one system slot, so a later `system` message, or a leading one when `GenerateOptions.system` is also set, folds into a `user` message at its position; provider-specific placement of the prompt follows pi-ai rather than a harness-owned wire override. Images in system or assistant history, including the leading system message, fail with `UNSUPPORTED_CONTENT` on both conversion paths.
 - **Provider HTTP status is unavailable** — pi-ai error events do not expose a stable HTTP status across providers.
 - **Retry policy is provider-owned, not an SDK retry** — pi-ai SDK retries stay disabled so durable agent steps and `llm/retry` events own every visible attempt, and direct `ctx.llm.stream()` calls remain single-attempt.
 

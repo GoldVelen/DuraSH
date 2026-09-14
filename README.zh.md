@@ -22,7 +22,7 @@ DuraSH 不是 DeepSeek 官方产品，也未获得 DeepSeek 背书。
 
 它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
 
-本次同步采用当时已验证的最新上游版本：`dsh-v0.1.2-alpha.2` / `0a53fb55bea1`。精确边界见[上游策略](UPSTREAM.md)、[融合状态](INTEGRATION_STATUS.md)与[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
+本次同步采用当时已验证的最新上游版本：`dsh-v0.1.5-rc.2` / `c291e7961a51`。精确边界见[上游策略](UPSTREAM.md)、[融合状态](INTEGRATION_STATUS.md)与[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
 
 ## 开发者预览
 
@@ -78,6 +78,18 @@ pnpm start
 请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
 
 面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
+
+## 引用
+
+```bibtex
+@misc{deepseek-harness2026,
+  title={DeepSeek Harness: Everything is a Plugin},
+  author={DeepSeek-AI},
+  year={2026},
+  publisher={GitHub},
+  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
+}
+```
 
 ## 许可证
 

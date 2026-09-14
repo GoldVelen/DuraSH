@@ -7,9 +7,9 @@ This document separates current source truth from the older DSH fork's accepted 
 ## Verified baseline
 
 - Primary upstream: `deepseek-ai/deepseek-harness`
-- Branch/tag: `master` / `dsh-v0.1.2-alpha.2`
-- Commit: `0a53fb55bea101816fa226bb964ae2bed71c343b`
-- Baseline fetched, reconciled with the DuraSH product overlay, and compared with `origin/master` on 2026-08-31
+- Branch/tag: `master` / `dsh-v0.1.5-rc.2`
+- Commit: `c291e7961a515f6d7af9304e7fd1d257929aef26`
+- Baseline fetched, reconciled with the DuraSH product overlay, and compared with `durash-upstream/master` on 2026-09-14
 
 ## Capability matrix
 
@@ -30,7 +30,7 @@ This document separates current source truth from the older DSH fork's accepted 
 
 ## Current upstream drift
 
-The live 2026-08-31 audit confirms that the primary DSH branch is current after this reconciliation. It also detects four newer public vendored-package releases: Cordis `4.0.0-rc.9`, Cordis Loader `1.0.0-rc.6`, Cordis Include `1.0.5`, and Cordis Timer `1.1.3`. The latest official DSH baseline still carries the recorded older snapshots plus local modifications. DuraSH reports this drift and requires the vendored compatibility runbook before accepting it; detection is not evidence that these releases are already integrated.
+The live 2026-09-14 audit confirms that the primary DSH branch is current after this reconciliation. It also detects five newer public vendored-package releases: Cordis `4.0.0-rc.10`, Cordis Loader `1.0.0-rc.7`, Cordis Include `1.1.0`, Cordis Timer `1.1.3`, and Cordis HMR `1.1.0`. The latest official DSH baseline still carries the recorded older snapshots plus local modifications. DuraSH reports this drift and requires the vendored compatibility runbook before accepting it; detection is not evidence that these releases are already integrated.
 
 ## Fusion assessment
 

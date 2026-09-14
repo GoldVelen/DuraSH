@@ -8,7 +8,7 @@ import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
-import { getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
+import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { createModels, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
 import { resolveProfiles } from '../src/config.ts'
@@ -112,114 +112,6 @@ describe('hand-declared providers', () => {
     })
   })
 
-  it('reuses an explicitly selected installed catalog under a custom route key', async () => {
-    const catalogModel = getBuiltinModels('openai').find(model => model.id === 'gpt-5.6-sol')
-    if (catalogModel === undefined) throw new Error('the installed catalog ships no gpt-5.6-sol model')
-    const server = await mockServer([{ events: textEvents }])
-    const providers = {
-      'openai-proxy': {
-        catalogProvider: 'openai',
-        apiKeyEnv: KEY_ENV,
-        api: 'openai-completions',
-        baseURL: `${server.url}/v1`,
-        models: [{ id: catalogModel.id }],
-      },
-    } satisfies Record<string, LlmPiAi.PiAiProviderProfile>
-    const ctx = await harness({ providers })
-
-    const info = await ctx.llm.resolveModelInfo('openai-proxy', catalogModel.id)
-    expect(info).toMatchObject({
-      provider: 'openai-proxy',
-      id: catalogModel.id,
-      name: catalogModel.name,
-      context: { contextWindow: catalogModel.contextWindow },
-      reasoning: { efforts: [
-        { id: 'off' },
-        { id: 'low' },
-        { id: 'medium' },
-        { id: 'high' },
-        { id: 'xhigh' },
-        { id: 'max' },
-      ] },
-    })
-    const [model] = resolveProfiles(providers).get('openai-proxy')?.piProvider.getModels() ?? []
-    expect(model).toMatchObject({
-      provider: 'openai-proxy',
-      id: catalogModel.id,
-      api: 'openai-completions',
-      baseUrl: `${server.url}/v1`,
-    })
-    expect(getSupportedThinkingLevels(model as Model<Api>))
-      .toEqual(['off', 'low', 'medium', 'high', 'xhigh', 'max'])
-    expect(model?.thinkingLevelMap).toMatchObject({
-      off: 'none',
-      low: 'low',
-      medium: 'medium',
-      high: 'high',
-      xhigh: 'xhigh',
-      max: 'max',
-    })
-
-    const result = await assemble(ctx, { provider: 'openai-proxy', model: catalogModel.id, messages: [] })
-    expect(result.finish).toEqual({ kind: 'stop' })
-    expect(server.paths).toEqual(['/v1/chat/completions'])
-  })
-
-  it('serves the selected source catalog when a custom route lists no models', async () => {
-    const server = await mockServer([{
-      status: 401,
-      body: JSON.stringify({ error: { message: 'expected mock failure' } }),
-    }])
-    const config = {
-      providers: {
-        'openai-proxy': {
-          catalogProvider: 'openai',
-          apiKeyEnv: KEY_ENV,
-          baseURL: `${server.url}/v1`,
-        },
-      },
-    } satisfies LlmPiAi.Config
-    const resolved = resolveProfiles(config.providers)
-    const provider = resolved.get('openai-proxy')?.piProvider
-
-    expect(provider?.id).toBe('openai-proxy')
-    expect(provider?.getModels().map(model => model.id).sort())
-      .toEqual(getBuiltinModels('openai').map(model => model.id).sort())
-    expect(provider?.getModels().every(model => model.provider === 'openai-proxy')).toBe(true)
-
-    const ctx = await harness(config)
-    const result = await assemble(ctx, { provider: 'openai-proxy', model: 'gpt-5.6-sol', messages: [] })
-    expect(result.finish.kind).toBe('error')
-    expect(server.paths).toEqual(['/v1/responses'])
-  })
-
-  it('accepts an explicit catalog source through the user-settings schema', async () => {
-    const dir = await home()
-    const ctx = await bootWithSettings(dir, {})
-    await ctx.settings.update('llm-pi-ai', {
-      providers: {
-        'openai-proxy': {
-          catalogProvider: 'openai',
-          api: 'openai-completions',
-          baseURL: 'https://gateway.example/v1',
-          models: [{ id: 'gpt-5.6-sol' }],
-        },
-      },
-    })
-
-    await expect(ctx.llm.resolveModelInfo('openai-proxy', 'gpt-5.6-sol')).resolves.toMatchObject({
-      provider: 'openai-proxy',
-      reasoning: { efforts: [
-        { id: 'off' },
-        { id: 'low' },
-        { id: 'medium' },
-        { id: 'high' },
-        { id: 'xhigh' },
-        { id: 'max' },
-      ] },
-    })
-  })
-
   it('offers no reasoning control it could not honour', async () => {
     const server = await mockServer([])
     const ctx = await harness(gateway(`${server.url}/v1`))
@@ -279,7 +171,7 @@ describe('hand-declared providers', () => {
       },
     })
     const modelsOf = (route: string): readonly { id: string; contextWindow: number; maxTokens: number }[] =>
-      resolved.get(route)?.piProvider.getModels() ?? []
+      resolved.get(route)?.piProvider?.getModels() ?? []
 
     expect(modelsOf('acme-gateway')).toMatchObject([
       { id: 'bare', contextWindow: 262_144, maxTokens: 32_768 },
@@ -318,7 +210,7 @@ describe('hand-declared providers', () => {
       'anthropic': { defaultInput: ['text'] },
     })
     const inputOf = (route: string, id: string): readonly string[] | undefined =>
-      resolved.get(route)?.piProvider.getModels().find(model => model.id === id)?.input
+      resolved.get(route)?.piProvider?.getModels().find(model => model.id === id)?.input
 
     expect(inputOf('acme-gateway', 'bare')).toEqual(['text'])
     expect(inputOf('acme-gateway', 'seeing')).toEqual(['text', 'image'])
@@ -381,8 +273,8 @@ describe('hand-declared providers', () => {
         models: [{ id: 'bare', input: [] }],
       },
     })
-    expect(resolved.get('acme-gateway')?.piProvider.getModels()[0]?.input).toEqual(['text'])
-    expect(resolved.get('deepseek')?.piProvider.getModels()[0]?.input).toEqual(catalogModel.input)
+    expect(resolved.get('acme-gateway')?.piProvider?.getModels()[0]?.input).toEqual(['text'])
+    expect(resolved.get('deepseek')?.piProvider?.getModels()[0]?.input).toEqual(catalogModel.input)
 
     // Nothing sits below the route value, so its empty list states no answer
     // anything could take, and is refused where it is written.
@@ -410,6 +302,18 @@ describe('hand-declared providers', () => {
     })).toThrow(/more than once/)
   })
 
+  it('retains duplicate-id diagnostics without offering the ambiguous model after loading', () => {
+    const profile = resolveProfiles({
+      'acme-gateway': {
+        api: 'openai-completions',
+        baseURL: 'https://acme.test',
+        models: [{ id: 'dup' }, { id: 'valid' }, { id: 'dup' }],
+      },
+    }, 'deferred').get('acme-gateway')
+    expect(profile?.modelErrors.get('dup')).toContain('lists model "dup" more than once')
+    expect(profile?.piProvider?.getModels().map(model => model.id)).toEqual(['valid'])
+  })
+
   it('rejects a declaration that names no wire protocol or endpoint', () => {
     expect(() => resolveProfiles({
       'acme-gateway': { baseURL: 'https://acme.test', models: [{ id: 'm', contextWindow: 1, maxTokens: 1 }] },
@@ -417,6 +321,18 @@ describe('hand-declared providers', () => {
     expect(() => resolveProfiles({
       'acme-gateway': { api: 'openai-completions', models: [{ id: 'm', contextWindow: 1, maxTokens: 1 }] },
     })).toThrow(/needs a baseURL/)
+  })
+
+  it('retains the missing-api model diagnostic when a stored custom provider cannot be built', () => {
+    const profile = resolveProfiles({
+      'acme-gateway': { baseURL: 'https://acme.test', models: [{ id: '111' }] },
+    }, 'deferred').get('acme-gateway')!
+    const failure = 'llm-pi-ai: provider "acme-gateway" model "111" needs an api; '
+      + 'the installed catalog does not describe it, so set the route\'s api to the wire protocol its endpoint speaks'
+
+    expect(profile.catalogError).toBe(failure)
+    expect(profile.modelErrors.get('111')).toBe(failure)
+    expect(profile.piProvider).toBeUndefined()
   })
 
   it.each(['bedrock-converse-stream', 'google-vertex', 'azure-openai-responses', 'openai-codex-responses'])(
@@ -609,7 +525,7 @@ describe('catalog routes with per-model configuration', () => {
     const resolved = resolveProfiles({
       nvidia: { models: [{ id: headered.id, contextWindow: 4096 }] },
     })
-    const [model] = resolved.get('nvidia')?.piProvider.getModels() ?? []
+    const [model] = resolved.get('nvidia')?.piProvider?.getModels() ?? []
     expect(model?.headers).toEqual(headered.headers)
     expect(model?.contextWindow).toBe(4096)
   })
@@ -635,15 +551,15 @@ describe('catalog routes with per-model configuration', () => {
     // `opencode` ships no provider-level endpoint: the address lives on every
     // catalog model, so the route resolves without any configured baseURL.
     const resolved = resolveProfiles({ opencode: {} })
-    const models = resolved.get('opencode')?.piProvider.getModels() ?? []
+    const models = resolved.get('opencode')?.piProvider?.getModels() ?? []
     expect(models.length).toBeGreaterThan(0)
     expect(models.every(model => model.baseUrl.length > 0)).toBe(true)
-    expect(resolved.get('opencode')?.piProvider.baseUrl).toBeUndefined()
+    expect(resolved.get('opencode')?.piProvider?.baseUrl).toBeUndefined()
   })
 
   it('repoints a catalog route at another wire protocol without restating its endpoint', () => {
     const resolved = resolveProfiles({ openai: { api: 'openai-completions' } })
-    const models = resolved.get('openai')?.piProvider.getModels() ?? []
+    const models = resolved.get('openai')?.piProvider?.getModels() ?? []
     // The protocol changes for the whole route; each model keeps the catalog
     // endpoint it already had.
     expect(models.every(model => model.api === 'openai-completions')).toBe(true)
@@ -674,7 +590,7 @@ describe('catalog routes with per-model configuration', () => {
     // the wire format its models speak: naming an api must not cost a profile
     // its provider-native discovery.
     const resolved = resolveProfiles({ openai: { api: 'openai-completions' } })
-    expect(resolved.get('openai')?.piProvider.auth.apiKey?.name).toBe('OpenAI API key')
+    expect(resolved.get('openai')?.piProvider?.auth.apiKey?.name).toBe('OpenAI API key')
   })
 
   it('lets an OAuth-only catalog route authenticate with the key its profile names', async () => {
@@ -697,7 +613,7 @@ describe('catalog routes with per-model configuration', () => {
     // and holds no OAuth store, so declaring the provider configured would
     // trade a truthful refusal for an endpoint's 401.
     const resolved = resolveProfiles({ 'openai-codex': {} })
-    expect(resolved.get('openai-codex')?.piProvider.auth.apiKey).toBeUndefined()
+    expect(resolved.get('openai-codex')?.piProvider?.auth.apiKey).toBeUndefined()
   })
 })
 
@@ -709,7 +625,7 @@ describe('per-model reasoning efforts', () => {
 
   /** The first materialized model of one route, or throw. */
   function modelOf(providers: Record<string, LlmPiAi.PiAiProviderProfile>, route = 'acme-gateway'): Model<Api> {
-    const [model] = resolveProfiles(providers).get(route)?.piProvider.getModels() ?? []
+    const [model] = resolveProfiles(providers).get(route)?.piProvider?.getModels() ?? []
     if (model === undefined) throw new Error(`route "${route}" resolved no models`)
     return model
   }
@@ -799,31 +715,6 @@ describe('per-model reasoning efforts', () => {
   })
 })
 
-describe('installed xai catalog', () => {
-  /** The installed xAI model of this id, or throw. */
-  function xaiModel(id: string): Model<Api> {
-    const model = (getBuiltinModels('xai') as readonly Model<Api>[]).find(entry => entry.id === id)
-    if (model === undefined) throw new Error(`the installed catalog ships no xai model "${id}"`)
-    return model
-  }
-
-  it('offers xhigh on grok-4.6 through a blank xai profile', () => {
-    const catalog = xaiModel('grok-4.6')
-    expect(getSupportedThinkingLevels(catalog)).toEqual(['low', 'medium', 'high', 'xhigh'])
-
-    const [model] = resolveProfiles({ xai: {} }).get('xai')?.piProvider.getModels()
-      .filter(entry => entry.id === 'grok-4.6') ?? []
-    if (model === undefined) throw new Error('a blank xai profile dropped grok-4.6')
-    expect(getSupportedThinkingLevels(model)).toEqual(['low', 'medium', 'high', 'xhigh'])
-    expect(model.api).toBe('openai-responses')
-    expect(model.thinkingLevelMap?.xhigh).toBe('xhigh')
-  })
-
-  it('does not offer xhigh on grok-4.5', () => {
-    expect(getSupportedThinkingLevels(xaiModel('grok-4.5'))).toEqual(['low', 'medium', 'high'])
-  })
-})
-
 describe('modelOverrides', () => {
   const deepseekModel = (): Model<Api> => {
     const [model] = getBuiltinModels('deepseek')
@@ -845,7 +736,7 @@ describe('modelOverrides', () => {
         },
       },
     })
-    const models = resolved.get('deepseek')?.piProvider.getModels() ?? []
+    const models = resolved.get('deepseek')?.piProvider?.getModels() ?? []
     const reshaped = models.find(model => model.id === target.id)
     if (reshaped === undefined) throw new Error('the overridden model vanished from the route')
 
@@ -898,29 +789,8 @@ describe('modelOverrides', () => {
 describe('compat switches', () => {
   /** The materialized models of one route, keyed by id. */
   function modelsOf(providers: Record<string, LlmPiAi.PiAiProviderProfile>, route: string): Map<string, Model<Api>> {
-    const models = resolveProfiles(providers).get(route)?.piProvider.getModels() ?? []
+    const models = resolveProfiles(providers).get(route)?.piProvider?.getModels() ?? []
     return new Map(models.map(model => [model.id, model]))
-  }
-
-  /**
-   * One installed provider that still ships both Chat Completions and Responses
-   * models. The mixed-route tests need that split; they do not care which vendor
-   * currently supplies it.
-   */
-  function mixedCompletionsAndResponses(): {
-    provider: string
-    completions: Model<Api>
-    responses: Model<Api>
-  } {
-    for (const provider of getBuiltinProviders()) {
-      const catalog = getBuiltinModels(provider) as readonly Model<Api>[]
-      const completions = catalog.find(model => model.api === 'openai-completions')
-      const responses = catalog.find(model => model.api === 'openai-responses')
-      if (completions !== undefined && responses !== undefined) {
-        return { provider, completions, responses }
-      }
-    }
-    throw new Error('the installed catalog no longer ships a provider with both openai-completions and openai-responses models')
   }
 
   it('applies route switches to every openai-completions model, entries winning per field', () => {
@@ -956,16 +826,17 @@ describe('compat switches', () => {
   })
 
   it('skips models of other protocols on a mixed route instead of failing them', () => {
-    // A mixed catalog means a route-level completions-only switch must land on
-    // the completions model without invalidating the responses one.
-    const { provider, completions, responses } = mixedCompletionsAndResponses()
+    const catalog = getBuiltinModels('opencode') as readonly Model<Api>[]
+    const completions = catalog.find(model => model.api === 'openai-completions')
+    const responses = catalog.find(model => model.api === 'openai-responses')
+    if (completions === undefined || responses === undefined) throw new Error('opencode ships no mixed catalog')
 
     const models = modelsOf({
-      [provider]: {
+      opencode: {
         compat: { supportsReasoningEffort: false },
         models: [{ id: completions.id }, { id: responses.id }],
       },
-    }, provider)
+    }, 'opencode')
 
     expect((models.get(completions.id)?.compat as OpenAICompletionsCompat).supportsReasoningEffort).toBe(false)
     expect(models.get(responses.id)?.compat).toEqual(responses.compat)
@@ -1034,15 +905,18 @@ describe('compat switches', () => {
   })
 
   it('lands each route switch only on the models whose protocol declares it', () => {
-    const { provider, completions, responses } = mixedCompletionsAndResponses()
+    const catalog = getBuiltinModels('opencode') as readonly Model<Api>[]
+    const completions = catalog.find(model => model.api === 'openai-completions')
+    const responses = catalog.find(model => model.api === 'openai-responses')
+    if (completions === undefined || responses === undefined) throw new Error('opencode ships no mixed catalog')
 
     const models = modelsOf({
-      [provider]: {
+      opencode: {
         // Both protocols take the first switch; only completions takes the second.
         compat: { supportsDeveloperRole: false, thinkingFormat: 'openai' },
         models: [{ id: completions.id }, { id: responses.id }],
       },
-    }, provider)
+    }, 'opencode')
 
     const onCompletions = models.get(completions.id)?.compat as OpenAICompletionsCompat
     expect(onCompletions.supportsDeveloperRole).toBe(false)
@@ -1085,7 +959,6 @@ describe('compat switches', () => {
             supportsFinishReason: false,
             thinkingFormat: 'baseten',
             chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
-            thinkingTokenBudgetField: 'thinking_budget',
             supportsThinkingTokenBudget: true,
           },
         }],
@@ -1096,7 +969,6 @@ describe('compat switches', () => {
       supportsFinishReason: false,
       thinkingFormat: 'baseten',
       chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
-      thinkingTokenBudgetField: 'thinking_budget',
       supportsThinkingTokenBudget: true,
     })
   })
@@ -1226,11 +1098,7 @@ describe('compat switches', () => {
   })
 
   it('refuses compat keys pi-ai’s catalog owns, pointing at the catalog route', () => {
-    for (const compat of [
-      { openRouterRouting: {} },
-      { supportsAdditionalTools: true },
-      { allowedFallbackModels: [] },
-    ]) {
+    for (const compat of [{ openRouterRouting: {} }, { supportsAdditionalTools: true }]) {
       expect(() => resolveProfiles({
         'acme-gateway': {
           api: 'openai-completions',
