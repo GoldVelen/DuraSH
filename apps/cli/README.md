@@ -9,15 +9,16 @@ The `dsh` command is the sole supported Node application launcher: profiles are 
 | Command | Purpose |
 |---|---|
 | `dsh --profile <name>` | Boot the named profile under `$DSH_HOME/profiles/<name>`. |
-| `dsh --profile durash` | Boot the DuraSH Web composition over the upstream Web stack (source checkout only). |
+| `dsh --profile <name> --from-default-profile <template>` | Create a new custom profile from a shipped template, then boot it. |
 | `dsh --profile acp` | Serve automation clients over ACP stdio until disconnect. |
 | `dsh --profile headless "job"` | Run one fresh persisted session, print the final answer, and exit. |
 | `dsh --profile sdk` | Serve SDK clients over JSON-RPC stdio until shutdown or disconnect. |
 | `dsh --profile sdk-minimal` | Serve SDK clients with the standalone minimal agent tree. |
+| `dsh --profile durash` | Boot the DuraSH Web composition over the upstream Web stack (source checkout only). |
 | `dsh web` | Alias of `--profile web`. |
 | `dsh plugin --profile <name> <pnpm args>` | Manage a profile's plugins by forwarding to pnpm in the profile directory. |
 
-The invoking directory is the default workspace root. A published `@deepseek-ai/dsh` installation auto-initializes `web`, `headless`, `sdk`, `sdk-minimal`, and `acp` on first use. The DuraSH source checkout additionally supplies its private `durash` template; any other profile must be created through `dsh plugin`.
+The invoking directory is the default workspace root. A published `@deepseek-ai/dsh` installation auto-initializes `web`, `headless`, `sdk`, `sdk-minimal`, and `acp` on first use. The DuraSH source checkout additionally supplies its private `durash` template; any other profile must be created through `dsh plugin`. The `desktop` name is reserved for the Electron-owned profile, so the CLI rejects boot, config-dump, and plugin-management requests for it.
 
 ## App arguments
 

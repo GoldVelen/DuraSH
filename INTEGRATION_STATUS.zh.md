@@ -7,9 +7,9 @@
 ## 已验证基线
 
 - 主上游：`deepseek-ai/deepseek-harness`
-- 分支/标签：`master` / `dsh-v0.1.2-alpha.2`
-- 提交：`0a53fb55bea101816fa226bb964ae2bed71c343b`
-- 2026-08-31 已拉取基线、与 DuraSH 产品叠加层完成协调，并和 `origin/master` 比对
+- 分支/标签：`master` / `dsh-v0.1.5-rc.2`
+- 提交：`c291e7961a515f6d7af9304e7fd1d257929aef26`
+- 2026-09-14 已拉取基线、与 DuraSH 产品叠加层完成协调，并和 `durash-upstream/master` 比对
 
 ## 能力矩阵
 
@@ -30,7 +30,7 @@
 
 ## 当前上游漂移
 
-2026-08-31 实时审计确认本次协调后主 DSH 分支已是最新，同时检测到四个更高版本的公共 vendored 包：Cordis `4.0.0-rc.9`、Cordis Loader `1.0.0-rc.6`、Cordis Include `1.0.5` 与 Cordis Timer `1.1.3`。最新官方 DSH 基线仍携带已记录的旧 snapshot 与本地修改。DuraSH 会暴露这项漂移，并要求先执行 vendored 兼容性 runbook 才能接受；检测到新版本不等于这些版本已经完成融合。
+2026-09-14 实时审计确认本次协调后主 DSH 分支已是最新，同时检测到五个更高版本的公共 vendored 包：Cordis `4.0.0-rc.10`、Cordis Loader `1.0.0-rc.7`、Cordis Include `1.1.0`、Cordis Timer `1.1.3` 与 Cordis HMR `1.1.0`。最新官方 DSH 基线仍携带已记录的旧 snapshot 与本地修改。DuraSH 会暴露这项漂移，并要求先执行 vendored 兼容性 runbook 才能接受；检测到新版本不等于这些版本已经完成融合。
 
 ## 融合结论
 

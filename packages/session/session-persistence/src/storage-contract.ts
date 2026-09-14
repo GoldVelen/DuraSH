@@ -28,6 +28,21 @@ function unsupported(reason: string, location: SessionLocation | undefined): Ses
 }
 
 /**
+ * Durable session-stream records of the retired workflow-orchestrator runs
+ * domain, last written by the 0.1.1-era harness before run state moved to the
+ * storage `runs` unit. Their declaring type pinned `modelVisible: false`, so
+ * they never carried a fact a reconstructed model request reads, and this
+ * build never re-emits them — which is also why they stay outside
+ * {@link KNOWN_SESSION_EVENT_TYPES}. Stored-event validation lets them through
+ * instead of refusing: `seq` must stay contiguous from 0.
+ */
+const INERT_LEGACY_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'runs/dispatched',
+  'workflow/start',
+  'workflow/change',
+])
+
+/**
  * Refuse stored metadata that is not bound to the requested session id.
  * @param id - the requested session id.
  * @param meta - the stored header.
@@ -39,7 +54,7 @@ export function assertStoredId(id: SessionId, meta: SessionHeader): void {
 }
 
 /**
- * Refuse a stored header whose format version this build does not read.
+ * Refuse a header that has not been restored to the current logical format.
  * @param meta - the stored header.
  * @param location - the backend's artifact location for the refusal, when one exists.
  */
@@ -53,31 +68,12 @@ export function assertVersion(
 }
 
 /**
- * Durable session-stream records of the retired workflow-orchestrator runs
- * domain, last written by the 0.1.1-era harness before run state moved to the
- * storage `runs` unit. Their declaring type pinned `modelVisible: false`, so
- * they never carried a fact a reconstructed model request reads, and this
- * build never re-emits them — which is also why they stay outside
- * {@link KNOWN_SESSION_EVENT_TYPES}. Stored-event validation lets them through
- * instead of refusing: `seq` must stay contiguous from 0 (the `seq = log.length`
- * contract forbids dropping stored records), event folds ignore types outside
- * their branches by the merge-extensible default, and every other unknown type
- * still refuses.
- */
-const INERT_LEGACY_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'runs/dispatched',
-  'workflow/start',
-  'workflow/change',
-])
-
-/**
  * Validate one exclusively owned stored event array in place: adopt each
  * record (validating and freezing it) and refuse any event type this build
- * does not know, unless its writer marked it `ignorable: true` or it is one of
- * {@link INERT_LEGACY_EVENT_TYPES} — silently skipping an unknown required
- * event could reconstruct a wrong session (the envelope contract on
- * `SessionEvent.ignorable`). Both newer vocabularies and retired pre-release
- * shapes refuse here; this build ships no migration.
+ * does not know, unless its writer marked it `ignorable: true` — silently
+ * skipping an unknown required event could reconstruct a wrong session (the
+ * envelope contract on `SessionEvent.ignorable`). Unknown required types and
+ * retired pre-release shapes refuse here; this validator performs no migration.
  * @param meta - the stored header the events belong to.
  * @param events - exclusively owned decoded events; validated in place.
  * @param location - the backend's artifact location for refusals, when one exists.

@@ -8,7 +8,7 @@ export { assertReleasedArtifactRelationships } from './relationships.ts'
 export {
   INERT_LEGACY_EVENT_TYPES,
   assertReleasedSurfaceMetadata,
-  assertReleasedV1Artifact,
+  assertReleasedEventPayload,
   assertReleasedV1Header,
   restoreReleasedV1Artifact,
 } from './validation.ts'

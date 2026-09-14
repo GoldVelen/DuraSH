@@ -144,6 +144,10 @@ it('accepts pasted images into the composer rail in order and removes them', asy
 it('accepts a whole-page drop under the limits-labeled overlay and refuses an over-limit batch at intake', async () => {
   mountAssembledApp()
 
+  const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
+  const start = tree.querySelector<HTMLButtonElement>('button[aria-label="New session in fixture"]')
+  if (start === null) throw new Error('fixture Workspace new-session action missing')
+  fireEvent.click(start)
   const textarea = await startFixtureComposer()
 
   // A file drag anywhere over the page raises the full-viewport overlay whose
@@ -187,6 +191,11 @@ it('accepts a whole-page drop under the limits-labeled overlay and refuses an ov
 
 it('renders a host dimension rejection with the projected 2000px limit', async () => {
   mountAssembledApp('?fixture&fixturePrompt=reject')
+
+  const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
+  const start = tree.querySelector<HTMLButtonElement>('button[aria-label="New session in fixture"]')
+  if (start === null) throw new Error('fixture Workspace new-session action missing')
+  fireEvent.click(start)
 
   const textarea = await startFixtureComposer()
   const image = new File([new Uint8Array([137, 80, 78, 71])], 'too-wide.png', { type: 'image/png' })

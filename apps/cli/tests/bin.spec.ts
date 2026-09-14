@@ -29,7 +29,10 @@ async function importBinFor(invocation: ProfileInvocation, options: {
     loadLayeredEnv,
   }))
 
-  const loaded = import('../src/bin.ts')
+  const loaded = import('../src/bin.ts').then(async (mod) => {
+    await mod.runCli()
+    return mod
+  })
   return { loaded, assertSourceBuildProfile, runProfile, loadLayeredEnv }
 }
 
@@ -57,6 +60,7 @@ describe('bin source-build-profile dispatch', () => {
     expect(subject.runProfile).toHaveBeenCalledWith({
       environment: { DSH_ENV: 'fixture' },
       profile: 'durash',
+      fromDefaultProfile: undefined,
       patchFiles: [],
       args: ['--help'],
     })

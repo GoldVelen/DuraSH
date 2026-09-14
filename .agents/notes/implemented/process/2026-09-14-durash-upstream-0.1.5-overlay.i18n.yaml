@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-14-durash-upstream-0.1.5-overlay.md
+2026-09-14-durash-upstream-0.1.5-overlay.md: 33f4f473cae7cd7bad4d80a49838a2a0edbd1e04
+2026-09-14-durash-upstream-0.1.5-overlay.zh.md: a2f859e47828159494e8e112ca39d6a2302fd8d2

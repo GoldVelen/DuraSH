@@ -206,6 +206,7 @@ describe('validateStoredEvents', () => {
         time: 1,
         // No identified message: adoption refuses the record.
         data: { role: 'user', content: [], source: { kind: 'user' } },
+        surfaceOp: 'append',
       },
     ] as unknown as SessionEvent[]
     let failure: unknown

@@ -1,20 +1,13 @@
 ---
-name: Task / 任务
-about: Track a bounded non-feature, non-bug result / 跟踪范围明确的非功能、非缺陷结果
-title: ''
-labels: ''
-assignees: ''
+name: Task
+about: 明确的非 Feature、非 Bug 工作
 type: Task
 ---
 
-<!-- English or Chinese is welcome. 中文或英文均可。 -->
-Describe the result in one sentence. / 用一句话说明要完成的结果。
+## Summary
 
-<details>
-<summary>Acceptance and deliverables / 验收与交付</summary>
+<!-- 简要说明需要完成的工作。 -->
 
-- Acceptance / 验收条件：
-- Deliverable / 交付物：
-- Validation / 验证：
+## Deliverables
 
-</details>
+<!-- 列出需要提交或更新的代码、文档、配置或结论。 -->

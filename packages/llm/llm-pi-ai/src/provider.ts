@@ -2,14 +2,14 @@
  * Construction of the pi-ai `Provider` that one configured route registers into
  * the adapter's `Models` collection.
  *
- * Two constructions, one decision: a route whose selected catalog provider
- * keeps its wire protocol **reuses that catalog provider** with its models and
- * route identity replaced. The catalog provider owns API implementations this
+ * Two constructions, one decision: a route the installed catalog ships, whose
+ * profile does not override the wire protocol, **reuses that catalog provider**
+ * with its models replaced — the catalog provider owns API implementations this
  * package cannot reconstruct (Bedrock loads its Smithy module through a
  * separate entry point), so rebuilding it from parts would silently narrow
- * which providers work. Every other route — one with no catalog source, or a
- * route pointed at a different protocol — is built by `createProvider` over
- * the protocol table below.
+ * which providers work. Every other route — one pi-ai has never heard of, or a
+ * catalog route pointed at a different protocol — is built by `createProvider`
+ * over the protocol table below.
  *
  * Credentials never reach this module's storage: the harness resolves a route's
  * key through `ctx.credentials` before the request enters pi-ai and hands it
@@ -24,7 +24,7 @@ import type { Api, ApiKeyAuth, Model, Provider, ProviderStreams } from '@earendi
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
-import { catalogProvider as installedCatalogProvider } from './catalog.ts'
+import { catalogProvider, PiAiCatalogError } from './catalog.ts'
 
 /**
  * Wire protocols a configured route may name, mapped to pi-ai's lazily loaded
@@ -167,9 +167,9 @@ function reuseCatalogProvider(base: Provider, spec: ProviderSpec): Provider {
  * @throws Error when the route names a wire protocol this build cannot serve.
  */
 export function buildProvider(spec: ProviderSpec): Provider {
-  const catalog = installedCatalogProvider(spec.catalogProvider ?? spec.provider)
-  // A route keeping its selected catalog protocol reuses that provider; an
-  // explicit protocol means the deployment is repointing the route at a
+  const catalog = catalogProvider(spec.catalogProvider ?? spec.provider)
+  // A catalog route keeping its catalog protocol reuses the catalog provider;
+  // an explicit protocol means the deployment is repointing the route at a
   // different wire format, which only the protocol table can serve.
   if (catalog !== undefined && spec.api === undefined) return reuseCatalogProvider(catalog, spec)
 
@@ -178,7 +178,7 @@ export function buildProvider(spec: ProviderSpec): Provider {
   // replaces each catalog model's own. So the route has a single API.
   const factory = spec.api === undefined ? undefined : PROTOCOLS[spec.api]
   if (factory === undefined) {
-    throw new Error(
+    throw new PiAiCatalogError(
       `llm-pi-ai: provider "${spec.provider}" names api "${spec.api}", which this build cannot serve;`
       + ` supported protocols are ${supportedProtocols().join(', ')}`,
     )
