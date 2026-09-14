@@ -10,7 +10,7 @@ The six-hour `Sync verified upstream` workflow could not merge DeepSeek Harness 
 
 ## Decision
 
-Merge `c291e7961a515f6d7af9304e7fd1d257929aef26` (`dsh-v0.1.5-rc.2` on `master`) onto the DuraSH overlay in an isolated worktree. Keep the product packages, `durash` profile, Client-mounted reliability Remote, split tool catalogs, `INERT_LEGACY_EVENT_TYPES`, pi-ai `catalogProvider`, and downstream runner prefixes that force `ubuntu-24.04` / `windows-2025` before any Blacksmith or enterprise label. Restore DuraSH project references in the host TypeScript program, keep the tool-catalog completeness glob parameter so `gen-durash-tool-catalog` does not scan upstream `tool-*` packages, and rewrite `pnpm-lock.yaml` after taking upstream's lockfile so `@durash/*` packages remain installable. Record the primary baseline in `UPSTREAM_SOURCES.json` and `INTEGRATION_STATUS.md`.
+Merge `c291e7961a515f6d7af9304e7fd1d257929aef26` (`dsh-v0.1.5-rc.2` on `master`) onto the DuraSH overlay in an isolated worktree. Keep the product packages, `durash` profile, Client-mounted reliability Remote, split tool catalogs, `INERT_LEGACY_EVENT_TYPES`, pi-ai `catalogProvider`, and downstream runner prefixes that force `ubuntu-24.04` / `windows-2025` before any Blacksmith or enterprise label. Restore DuraSH project references in the host TypeScript program and list `apps/web/tests/client-build-record.ts` there so overlay HMR e2e type-checks, keep the tool-catalog completeness glob parameter so `gen-durash-tool-catalog` does not scan upstream `tool-*` packages, and rewrite `pnpm-lock.yaml` after taking upstream's lockfile so `@durash/*` packages remain installable. Record the primary baseline in `UPSTREAM_SOURCES.json` and `INTEGRATION_STATUS.md`.
 
 ## Alternatives considered
 
@@ -29,3 +29,4 @@ After this lands, the recorded primary SHA matches `durash-upstream/master`. The
 - `packages/llm/llm-pi-ai/tests/catalog.spec.ts`: empty or unavailable `catalogProvider` is refused.
 - `packages/core/tools/tests/gen-tool-catalog.spec.ts` and `packages/reliability/durash-tool-reliability/tests/gen-durash-tool-catalog.spec.ts`: upstream completeness names `tool-bash` and not `durash-tool-reliability`; the DuraSH glob names the product tool.
 - Session format suites remain the owners of inert legacy event types. The scheduled GitHub mail and the live 3080 GUI are not claimed by those suites.
+- `pnpm run typecheck`: host program lists `apps/web/tests/client-build-record.ts` for overlay HMR e2e.

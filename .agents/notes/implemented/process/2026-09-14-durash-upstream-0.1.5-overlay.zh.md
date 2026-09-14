@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-在隔离 worktree 中，把 `c291e7961a515f6d7af9304e7fd1d257929aef26`（`master` 上的 `dsh-v0.1.5-rc.2`）合并进 DuraSH 叠加层。保留产品包、`durash` profile、由 Client 挂载的 reliability Remote、拆分后的工具目录、`INERT_LEGACY_EVENT_TYPES`、pi-ai `catalogProvider`，以及在任何 Blacksmith 或企业标签之前强制 `ubuntu-24.04` / `windows-2025` 的下游 runner 前缀。恢复 Host TypeScript 程序中的 DuraSH 工程引用，保留工具目录完整性检查的 glob 参数，使 `gen-durash-tool-catalog` 不会扫描上游 `tool-*` 包，并在采用上游 lockfile 之后重写 `pnpm-lock.yaml`，使 `@durash/*` 包仍可安装。把主基线记录进 `UPSTREAM_SOURCES.json` 与 `INTEGRATION_STATUS.md`。
+在隔离 worktree 中，把 `c291e7961a515f6d7af9304e7fd1d257929aef26`（`master` 上的 `dsh-v0.1.5-rc.2`）合并进 DuraSH 叠加层。保留产品包、`durash` profile、由 Client 挂载的 reliability Remote、拆分后的工具目录、`INERT_LEGACY_EVENT_TYPES`、pi-ai `catalogProvider`，以及在任何 Blacksmith 或企业标签之前强制 `ubuntu-24.04` / `windows-2025` 的下游 runner 前缀。恢复 Host TypeScript 程序中的 DuraSH 工程引用，并在其中列出 `apps/web/tests/client-build-record.ts` 以便叠加层 HMR e2e 能通过类型检查，保留工具目录完整性检查的 glob 参数，使 `gen-durash-tool-catalog` 不会扫描上游 `tool-*` 包，并在采用上游 lockfile 之后重写 `pnpm-lock.yaml`，使 `@durash/*` 包仍可安装。把主基线记录进 `UPSTREAM_SOURCES.json` 与 `INTEGRATION_STATUS.md`。
 
 ## 考虑过的替代方案
 
@@ -29,3 +29,4 @@ Status: implemented
 - `packages/llm/llm-pi-ai/tests/catalog.spec.ts`：空的或不可用的 `catalogProvider` 会被拒绝。
 - `packages/core/tools/tests/gen-tool-catalog.spec.ts` 与 `packages/reliability/durash-tool-reliability/tests/gen-durash-tool-catalog.spec.ts`：上游完整性检查点名 `tool-bash` 而不点名 `durash-tool-reliability`；DuraSH glob 点名产品工具。
 - Session format 套件仍是 inert legacy 事件类型的所有者。定时 GitHub 邮件与正在运行的 3080 GUI 不在这些套件的声明范围内。
+- `pnpm run typecheck`：Host 程序列出 `apps/web/tests/client-build-record.ts`，供叠加层 HMR e2e 使用。
