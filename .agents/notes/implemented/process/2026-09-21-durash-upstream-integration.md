@@ -22,6 +22,10 @@ The [existing conflict classification and deduplication](2026-09-06-durash-sync-
 
 CI downloads its checksum-pinned Ubuntu bubblewrap payload from an official dated snapshot; rolling archive pools remove superseded package versions. Repository policy checks retain DuraSH’s private security-report entry and exclude upstream-only organization workflows. The floating-panel observer check covers both the panel and its anchor, matching the existing resize behavior.
 
+Source profile resolution uses real filesystem lookup anchors so TypeScript hooks and profile-loaded plugins share tool module identities. Source-launch compatibility tests exercise that identity through the actual CLI.
+
+Browser process checks select the profile matching the verified client build. Browser fixtures accept reuse of an empty conversation, retain exact bootstrap batching apart from the adaptive directory picker, and record the implemented account sign-in section. PowerShell replay headers describe each isolated scenario’s enabled tools; committed Session generations remain unchanged.
+
 ## Alternatives considered
 
 **Select either side for all conflicts.** Upstream-only resolution removes downstream ownership, while downstream-only resolution retains deleted APIs and misses new startup behavior. Reconcile source consumers before rebuilding generated outputs.

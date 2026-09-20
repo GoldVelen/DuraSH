@@ -8,6 +8,7 @@ import type { Readable } from 'node:stream'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
+import { readVerifiedWebProfile } from '../../../../../web/tests/client-build-record.ts'
 
 const repoRoot = fileURLToPath(new URL('../../../../../../', import.meta.url))
 const dshBin = join(repoRoot, 'apps/cli/lib/bin.js')
@@ -136,7 +137,7 @@ describe.skipIf(!builtArtifactsExist)('dsh Web profile best-effort startup', () 
     const fixture = createFixture()
     const child = execa(process.execPath, [
       dshBin,
-      '--profile', 'web',
+      '--profile', readVerifiedWebProfile(repoRoot),
       '--patch', fixture.patch,
       '--no-open',
       '--port', '0',
@@ -215,7 +216,7 @@ describe.skipIf(!builtArtifactsExist)('dsh Web profile best-effort startup', () 
     try {
       const result = await execa(process.execPath, [
         dshBin,
-        '--profile', 'web',
+        '--profile', readVerifiedWebProfile(repoRoot),
         '--patch', fixture.patch,
         '--no-open',
         '--port', '0',
@@ -269,7 +270,7 @@ describe.skipIf(!builtArtifactsExist)('dsh Web profile best-effort startup', () 
     try {
       const result = await execa(process.execPath, [
         dshBin,
-        '--profile', 'web',
+        '--profile', readVerifiedWebProfile(repoRoot),
         '--no-open',
         '--port', String(address.port),
       ], {
@@ -313,7 +314,7 @@ describe.skipIf(!builtArtifactsExist)('dsh Web profile best-effort startup', () 
         expect(dirname(path!)).toBe(join(home, 'logs'))
         report = readFileSync(path!, 'utf8')
       }
-      expect(report).toContain("profile: 'web'")
+      expect(report).toContain(`profile: '${readVerifiedWebProfile(repoRoot)}'`)
       expect(report).toContain('nodeVersion:')
       expect(report).toContain('dshVersion:')
       expect(report).toContain('configurationPath:')
@@ -349,7 +350,7 @@ describe.skipIf(!builtArtifactsExist)('dsh Web profile best-effort startup', () 
     try {
       const result = await execa(process.execPath, [
         dshBin,
-        '--profile', 'web',
+        '--profile', readVerifiedWebProfile(repoRoot),
         '--patch', fixture.patch,
         '--no-open',
         '--port', '0',

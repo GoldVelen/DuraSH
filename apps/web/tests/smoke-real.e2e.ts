@@ -316,7 +316,7 @@ const notReady = UI_PLUGIN_DIRS.filter((dir) => {
 if (notReady.length > 0) console.warn(`[smoke-real] skipped — client bundles not ready: ${notReady.join(', ')}`)
 
 describe('dsh web keyless CLI smoke', () => {
-  it('serves a usable app from two immutable plugin batches', async () => {
+  it('serves immutable bootstrap batches with the adaptive directory picker', async () => {
     requireDist()
     const sessionsDir = mkdtempSync(join(tmpdir(), 'dsh-web-keyless-'))
     const tsxLoader = pathToFileURL(createRequire(join(REPO_ROOT, 'package.json')).resolve('tsx')).href
@@ -363,19 +363,20 @@ describe('dsh web keyless CLI smoke', () => {
       await page.goto(readyUrl)
       await page.getByRole('button', { name: 'New session', exact: true }).first().waitFor({ timeout: 30_000 })
       const batchPaths = [...new Set(pluginScripts)].sort()
-      expect(batchPaths).toHaveLength(2)
-      expect(batchPaths).toContainEqual(expect.stringMatching(
+      // The adaptive picker can mount after the bootstrap manifest was captured.
+      const pickerBatch = /^\/plugins\/\?\?@deepseek-ai\/dsh-client-ui-directory-picker-(?:native|browse)\/client\.js&rev=[a-f\d]{12}$/
+      const bootstrapBatches = batchPaths.filter(path => !pickerBatch.test(path))
+      expect(batchPaths.filter(path => pickerBatch.test(path)).length).toBeLessThanOrEqual(1)
+      expect(bootstrapBatches).toHaveLength(2)
+      expect(bootstrapBatches).toContainEqual(expect.stringMatching(
         /^\/plugins\/\?\?.+\/client\.js,.+\/client\.js&rev=[a-f\d]{12}$/,
       ))
-      expect(batchPaths).toContainEqual(expect.stringMatching(
+      expect(bootstrapBatches).toContainEqual(expect.stringMatching(
         /^\/plugins\/\?\?@deepseek-ai\/dsh-client-modules\/client\.js&rev=[a-f\d]{12}$/,
       ))
       const readyOrigin = new URL(readyUrl).origin
-      expect([...cacheHeaders.values()]).toEqual([
-        'public, max-age=31536000, immutable',
-        'public, max-age=31536000, immutable',
-      ])
       for (const path of batchPaths) {
+        expect(cacheHeaders.get(path)).toBe('public, max-age=31536000, immutable')
         const [scriptResponse, mapResponse] = await Promise.all([
           fetch(`${readyOrigin}${path}`),
           fetch(`${readyOrigin}${comboMapUrl(path)}`),

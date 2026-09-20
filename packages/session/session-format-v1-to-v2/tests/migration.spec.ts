@@ -165,6 +165,50 @@ describe('sessionFormatV1ToV2', () => {
     expect(() => { stage.transformEvent(candidate as SessionFormatEvent, output) }).toThrow(expected)
   })
 
+  it.each(['runs/dispatched', 'workflow/start', 'workflow/change'])(
+    'preserves retired %s payloads while remapping seq after an Assistant attempt',
+    (type) => {
+      const retained = event(type, 5, 6, { runId: 'retired-run', state: { status: 'completed' } })
+      const source: SessionFormatArtifact = {
+        header: { version: 1, id: 'retired-workflow', createdAt: 1, isSeeded: false, delegationDepth: 0 },
+        inheritedEventCount: 0,
+        events: [
+          event('turn/start', 0, 1, { turn: 1 }),
+          event('step/start', 1, 2, { turn: 1, step: 1 }),
+          event('assistant/chunk', 2, 3, {
+            turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'hello' },
+          }),
+          event('assistant/chunk', 3, 4, {
+            turn: 1, step: 1, chunk: { type: 'finish', reason: { kind: 'stop' } },
+          }),
+          {
+            ...event('assistant/message', 4, 5, { turn: 1, step: 1, message }),
+            sourceEventSeqs: [2, 3], surfaceOp: 'append',
+          },
+          retained,
+          event('step/end', 6, 7, { turn: 1, step: 1 }),
+          event('turn/end', 7, 8, { turn: 1, reason: { kind: 'completed' } }),
+        ],
+      }
+      const original = JSON.stringify(source)
+      const { stage, output } = stageHarness({ id: source.header.id })
+      for (const row of source.events) stage.transformEvent(row, output)
+      expect(stage.finish(output)).toBe(0)
+      const migrated = output.values
+
+      expect(migrated.map(row => row.type)).toEqual([
+        'turn/start', 'step/start', 'assistant/message', type, 'step/end', 'turn/end',
+      ])
+      expect(migrated.map(row => row.seq)).toEqual([0, 1, 2, 3, 4, 5])
+      expect(migrated[3]).toEqual({ ...retained, seq: 3 })
+      expect(migrated[2]?.data).toMatchObject({ message, stream: [
+        { type: 'text-chunks', texts: ['hello'] },
+        { type: 'chunk', chunk: { type: 'finish', reason: { kind: 'stop' } } },
+      ] })
+      expect(JSON.stringify(source)).toBe(original)
+    },
+  )
+
   it('checks own-generation delivery markers but accepts inherited markers', () => {
     const marker = (sessionId: string): SessionFormatEvent => event(
       'session-log-deepseek/delivery-accepted',

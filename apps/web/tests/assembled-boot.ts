@@ -11,7 +11,7 @@ import { globSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { bootInjections, orderByModuleGraph } from '@deepseek-ai/dsh-client-modules'
 import type { ClientModuleLoaderTarget, WebBootEntry, WebBootGraph } from '@deepseek-ai/dsh-client-modules/client'
@@ -328,19 +328,19 @@ export function mountAssembledApp(options: AssembledBootOptions = {}): Assembled
 }
 
 /**
- * Start a fixture session and return its bound, editable composer.
- * @returns the composer after the new session replaces the previously selected row.
+ * Open the fixture Workspace's blank session and return its editable composer.
+ * @returns the composer after the blank session is selected, including an existing blank session.
  */
 export async function startFixtureComposer(): Promise<HTMLElement> {
   const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
   const start = tree.querySelector<HTMLButtonElement>('button[aria-label="New session in fixture"]')
   if (start === null) throw new Error('fixture Workspace new-session action missing')
-  const previousSession = tree.querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"]')
   fireEvent.click(start)
   return await waitFor(() => {
     const selectedSession = tree.querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"]')
-    if (selectedSession === null || selectedSession === previousSession) {
-      throw new Error('fresh fixture session missing')
+    if (selectedSession === null
+      || within(selectedSession).queryByText('New Session', { exact: true }) === null) {
+      throw new Error('blank fixture session missing')
     }
     const surface = document.querySelector<HTMLElement>(
       '[data-composer-input][contenteditable="true"][data-lexical-editor="true"]',

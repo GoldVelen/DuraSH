@@ -77,6 +77,22 @@ describe('useAnchoredPosition', () => {
     expect(made[0]?.disconnected).toBe(true)
   })
 
+  it('leaves unmounted refs unobserved and disconnects on teardown', () => {
+    const made = stubResizeObserver()
+    function UnmountedElements() {
+      const anchorRef = useRef<HTMLButtonElement>(null)
+      const panelRef = useRef<HTMLDivElement>(null)
+      useAnchoredPosition({ open: true, anchorRef, panelRef, gap: 4, margin: 12 })
+      return null
+    }
+    const ui = render(<UnmountedElements />)
+
+    expect(made).toHaveLength(1)
+    expect(made[0]?.observed).toEqual([])
+    ui.unmount()
+    expect(made[0]?.disconnected).toBe(true)
+  })
+
   it('replaces the panel when its own size changes', () => {
     const made = stubResizeObserver()
     render(<Host open />)

@@ -814,6 +814,17 @@ describe('headless recorded-session snapshots', () => {
     expect(activeToolRows).toEqual(expected)
   })
 
+  it.each([
+    ['pwsh-tool-turn', ['job_kill', 'job_list', 'job_output', 'pwsh']],
+    ['persistent-pwsh-tool-turn', ['pwsh']],
+  ] as const)('pins only the %s composition tools without requiring PowerShell', async (scenario, names) => {
+    const schemas = parseToolSchemasSnapshot(await readFile(
+      join(snapshotsRoot, scenario, 'tool-schemas.expected.json'), 'utf8',
+    ))
+    expect(schemas.initial.map(tool => (tool as { name: string }).name).sort()).toEqual(names)
+    expect(schemas.changes).toEqual([])
+  })
+
   it('recognizes the supported OS-assigned listener forms', () => {
     expect(listenerPortViolations('accepted.mjs', [
       "server.listen(0, '127.0.0.1')",

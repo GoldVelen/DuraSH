@@ -74,6 +74,6 @@ Enabling or disabling the switch changes whether the handoff guidance section is
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-None.
+Source-only plugin tests stub the generated `/remote` descriptor at its import and verify mount and teardown through a test carrier. The descriptor belongs to Host build output; these tests do not validate its generated wire codecs.
 
 </details>

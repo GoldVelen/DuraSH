@@ -616,6 +616,7 @@ function assertOptionalEquivalent(
 
 /**
  * Install one profile generation on Node's default ESM and CommonJS resolvers.
+ * ESM lookup anchors use real paths so source hooks preserve workspace module identity.
  * @param generation - complete package table and profile scope.
  * @param behavior - enforce the generation, or verify a materialized generation.
  * @returns a registration that replaces the generation or restores the native methods.
@@ -690,7 +691,7 @@ export function installProfileResolution(
         if (cacheable && !(result instanceof Promise)) state.esm = result
         return result
       }
-      const routedParent = pathToFileURL(route.kind === 'fallback' ? route.entry.declarer : route.parent).href
+      const routedParent = pathToFileURL(canonicalPath(route.kind === 'fallback' ? route.entry.declarer : route.parent)).href
       if (behavior === 'enforce') {
         const previous = delegatedEsm
         delegatedEsm = { parent: routedParent, request }

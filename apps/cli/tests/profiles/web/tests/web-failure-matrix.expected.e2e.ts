@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { FiberState } from '@deepseek-ai/cordis'
+import { readVerifiedWebProfile } from '../../../../../web/tests/client-build-record.ts'
 
 const repoRoot = fileURLToPath(new URL('../../../../../../', import.meta.url))
 const bin = join(repoRoot, 'apps/cli/lib/bin.js')
@@ -108,7 +109,7 @@ function fixture() {
 }
 
 function start(f: ReturnType<typeof fixture>, extra: string[] = []) {
-  const child = execa(process.execPath, [bin, '--profile', 'web', '--patch', f.watcher, ...extra, '--no-open', '--port', '0'], {
+  const child = execa(process.execPath, [bin, '--profile', readVerifiedWebProfile(repoRoot), '--patch', f.watcher, ...extra, '--no-open', '--port', '0'], {
     cwd: f.root,
     env: { ...process.env, DSH_HOME: f.home, DSH_AGENTS_HOME: join(f.root, '.agents'), DSH_TELEMETRY_DISABLED: '1', DEEPSEEK_API_KEY: 'keyless-matrix-no-call', NODE_NO_WARNINGS: '1' },
     input: '', reject: false, timeout: 110_000, killSignal: 'SIGKILL',

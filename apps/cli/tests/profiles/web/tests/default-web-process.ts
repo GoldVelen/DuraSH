@@ -13,6 +13,7 @@ import { expect } from 'vitest'
 import type { TestContext } from 'vitest'
 import { PROCESS_SHUTDOWN_TIMEOUT_MS } from '../../../../src/process-shutdown.ts'
 import type { RuntimeRoster } from './runtime-roster.ts'
+import { readVerifiedWebProfile } from '../../../../../web/tests/client-build-record.ts'
 
 const repoRoot = fileURLToPath(new URL('../../../../../../', import.meta.url))
 
@@ -53,7 +54,7 @@ export async function withDefaultWeb(test: TestContext, inspect: (app: DefaultWe
     const launch = resolveExampleLaunch({
       srcBin: join(repoRoot, 'apps/cli/src/bin.ts'),
       mode: 'lib',
-      configArgs: ['--profile', 'web', '--patch', patch, '--host', '127.0.0.1', '--port', '0', '--no-open'],
+      configArgs: ['--profile', readVerifiedWebProfile(repoRoot), '--patch', patch, '--host', '127.0.0.1', '--port', '0', '--no-open'],
       env: {
         NODE_OPTIONS: undefined,
         NODE_PATH: undefined,

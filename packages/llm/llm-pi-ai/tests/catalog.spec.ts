@@ -444,6 +444,25 @@ describe('hand-declared providers', () => {
     expect(() => resolveProfiles({ 'acme-gateway': { displayName: '' } })).toThrow(/empty displayName/)
   })
 
+  it('serves a catalog-backed alias with the route identity and inherited model capabilities', () => {
+    const installed = getBuiltinModels('openai').find(model => model.id === 'gpt-6-astra')!
+    const profile = resolveProfiles({
+      'openai-proxy': {
+        catalogProvider: 'openai',
+        displayName: 'Team OpenAI',
+        baseURL: 'https://gateway.example/v1',
+        models: [{ id: installed.id }],
+      },
+    }).get('openai-proxy')!
+
+    expect(profile.piProvider).toMatchObject({ id: 'openai-proxy', name: 'Team OpenAI' })
+    expect(profile.piProvider?.getModels()).toEqual([{
+      ...installed, provider: 'openai-proxy', baseUrl: 'https://gateway.example/v1',
+    }])
+    expect(profile.catalogError).toBeUndefined()
+    expect(profile.modelErrors.size).toBe(0)
+  })
+
   it('refuses an empty or unavailable catalog source', () => {
     expect(() => resolveProfiles({ 'openai-proxy': { catalogProvider: '' } }))
       .toThrow(/empty catalogProvider/)

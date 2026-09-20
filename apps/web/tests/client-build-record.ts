@@ -35,6 +35,15 @@ export function readVerifiedClientBuildEnvironment(root: string): Readonly<Recor
   return environment as Record<string, string>
 }
 
+/**
+ * Select the browser runtime profile matching the verified client artifacts.
+ * @param root - repository root containing the client build record.
+ * @returns the DuraSH profile for its branded build, otherwise the upstream Web profile.
+ */
+export function readVerifiedWebProfile(root: string): 'durash' | 'web' {
+  return readVerifiedClientBuildEnvironment(root).DSH_CLIENT_BUILD_PROFILE === 'durash' ? 'durash' : 'web'
+}
+
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }

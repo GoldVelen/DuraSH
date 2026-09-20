@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { readProfileManifest } from '@deepseek-ai/dsh-app-boot'
 import { startHttpMcpFixture } from '../../../../../../packages/mcp/mcp-client/tests/http-fixture.ts'
+import { readVerifiedWebProfile } from '../../../../../web/tests/client-build-record.ts'
 
 interface Observation {
   approvals: string[]
@@ -44,7 +45,7 @@ it('configures MCP on a live profile, restores it on restart, and removes its to
     name: new URL('./fixtures/creator-plugin-manager.mjs', import.meta.url).href, config: { bundle },
   }] }]))
   const start = async () => {
-    const child = spawn(process.execPath, [join(repo, 'apps/cli/lib/bin.js'), '--profile', 'web', '--patch', patch,
+    const child = spawn(process.execPath, [join(repo, 'apps/cli/lib/bin.js'), '--profile', readVerifiedWebProfile(repo), '--patch', patch,
       '--port', '0', '--no-open'], { cwd: join(root, 'workspace'),
       env: { ...process.env, DSH_HOME: join(root, 'home'), DSH_AGENTS_HOME: join(root, 'agents'),
         DSH_TELEMETRY_DISABLED: '1', DEEPSEEK_API_KEY: 'keyless-no-model-calls' },
@@ -87,7 +88,7 @@ it('configures MCP on a live profile, restores it on restart, and removes its to
   expect(initial.after).toContain('mcp__demo__ping')
   expect(initial.other).toContain('mcp__demo__ping')
   expect(JSON.stringify(initial.ping)).toContain('pong')
-  const saved = readProfileManifest('dsh', join(root, 'home/profiles/web'))
+  const saved = readProfileManifest('dsh', join(root, 'home', 'profiles', readVerifiedWebProfile(repo)))
   expect(saved.dsh?.profile?.bundles).toContain('@test/creator-mcp')
   expect(saved.dependencies).toHaveProperty('@test/creator-mcp')
   await first.stop()

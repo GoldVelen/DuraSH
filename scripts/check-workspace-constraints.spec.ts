@@ -1,6 +1,7 @@
 /** Experimental-package publication and dependency constraints. */
 
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   isPublicExperimentalPackageDirectory,
@@ -66,8 +67,8 @@ describe('DuraSH source-only package constraints', () => {
     }).filter(error => error.includes('source-only DuraSH') || error.includes('release member'))
 
     expect(errors).toEqual([
-      'packages/reliability/durash-other/package.json: @durash/dsh-other: release member must not set "private": true',
-      'packages/reliability/durash-other/package.json: @durash/dsh-other: release member must set publishConfig.access to "public"',
+      `${join('packages/reliability/durash-other', 'package.json')}: @durash/dsh-other: release member must not set "private": true`,
+      `${join('packages/reliability/durash-other', 'package.json')}: @durash/dsh-other: release member must set publishConfig.access to "public"`,
     ])
   })
 
@@ -77,8 +78,8 @@ describe('DuraSH source-only package constraints', () => {
       ...sourcePackage,
       manifest: { ...sourcePackage.manifest, private: false, publishConfig: { access: 'public' } },
     }).filter(error => error.includes('source-only DuraSH'))).toEqual([
-      'packages/bundle/durash-web-profile/package.json: @durash/dsh-web-profile: source-only DuraSH package must set "private": true',
-      'packages/bundle/durash-web-profile/package.json: @durash/dsh-web-profile: source-only DuraSH package must not set publishConfig',
+      `${join('packages/bundle/durash-web-profile', 'package.json')}: @durash/dsh-web-profile: source-only DuraSH package must set "private": true`,
+      `${join('packages/bundle/durash-web-profile', 'package.json')}: @durash/dsh-web-profile: source-only DuraSH package must not set publishConfig`,
     ])
   })
 })
