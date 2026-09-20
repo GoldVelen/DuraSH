@@ -18,7 +18,9 @@ Status: implemented
 
 `scripts/tspath-loader.ts` 与 `apps/cli/src/tsconfig-paths-loader.ts` 已删除。随之消失的还有该 loader「仅为已声明运行时依赖映射 workspace import」的运行时规则——tsx 无条件应用 `paths` 映射。声明完整性现在仅由静态门禁保障：配置的裸插件走 `verify-cordis-config`，manifest（元数据清单）走 workspace constraints。（该运行时规则确实发现过真实缺陷：`dsh-plan-mode` 与 `dsh-tool-jobs` 导入 `@deepseek-ai/dsh-llm` 却只声明在 devDependencies；后已修复。）
 
-node-compat CI 矩阵（Node 22.19 与 26）新增 `dsh-source-launch-smoke`（`apps/cli/tests/source-launch.compat.spec.ts`）：以精确的生产运行时启动向量做 keyless 管道 stdio 启动，断言进程会因 TTY 拒绝而以非零状态退出。未来 Node 对模块钩子或 TypeScript 处理的任何改动都会让该门禁变红，而不是破坏开发者的 `pnpm dsh`。
+profile 解析将声明依赖的包的真实路径传给 ESM 钩子。位于 `node_modules` 下的 pnpm 符号链接路径会使 tsx 对配置插件跳过 workspace paths 映射，而插件的普通 import 仍选择源码，导致模块局部身份出现副本。规范化查找锚点让两类 import 使用同一份源码模块，无需将其中的符号改成全局键。
+
+node-compat CI 矩阵运行 `dsh-source-launch-smoke`（`apps/cli/tests/source-launch.compat.spec.ts`）：以精确的生产运行时启动向量做 keyless 启动，断言缺少 profile 时的诊断信息，以及 profile 启动后工具调度器的身份一致性。未来 Node 对模块钩子或 TypeScript 处理的任何改动都会让该门禁变红，而不是破坏开发者的 `pnpm dsh`。
 
 ## 备选方案
 

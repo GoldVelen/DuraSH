@@ -12,6 +12,12 @@ import type { WorkflowPolicyDockInjected } from '../src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as nodeApply } from '../src/index.ts'
 
+// The generated Remote descriptor belongs to the artifact lane; this source-only
+// suite owns its mount lifecycle and supplies the same explicit Remote test double.
+vi.mock('@durash/dsh-reliability-policy/remote', () => ({
+  default: { package: '@durash/dsh-reliability-policy' },
+}))
+
 const SID = 's-workflow' as SessionId
 
 const SNAPSHOT = {

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The reliability group holds DuraSH-owned orchestration policies that turn raw model work into certified outcomes. Its first member is the bounded implement/review loop: one implementation stage, one review stage, and at most one rework cycle, driven over `ctx.workflowEngine` with the loop's state machine persisted as product-owned records in the storage-domain form. The group composes only into the `durash` profile. The loop runtime still adds no agent-loop behavior; the composer switch, per-session policy, and gated handoff tool are the model-facing consumer of that loop. Nothing here re-implements a workflow engine or a subagent provider — those seams stay the sole execution path, and this group owns the durable state machine, its bounds, and the Session policy that admits a handoff.
+DuraSH reliability packages provide one implementation stage, independent review, and at most one rework cycle in the `durash` profile. Product-owned storage-domain records preserve the bounded state machine. The composer switch, per-session policy, and gated handoff tool admit model work into the loop. Stages use `ctx.workflowEngine` and its subagent providers without changing the agent loop or duplicating those execution services; these packages own durable state, bounds, and admission policy.
 
 ## Table of Contents
 

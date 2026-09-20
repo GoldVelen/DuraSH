@@ -5,7 +5,7 @@
  *
  * The geometry itself needs real layout, which jsdom does not provide. What
  * is asserted here is the wiring the clamp depends on: the
- * listeners and the panel-size observer are attached while open and released on
+ * listeners and the panel/anchor size observer are attached while open and released on
  * close, a size change replays the placement, and the hook still works where
  * `ResizeObserver` does not exist.
  */
@@ -64,16 +64,32 @@ function Host({ open }: { open: boolean }) {
 }
 
 describe('useAnchoredPosition', () => {
-  it('observes the panel while open and disconnects when it closes', () => {
+  it('observes the panel and anchor while open and disconnects when it closes', () => {
     const made = stubResizeObserver()
     const ui = render(<Host open />)
 
     expect(made).toHaveLength(1)
-    expect(made[0]?.observed).toEqual([ui.getByTestId('panel')])
+    expect(made[0]?.observed).toEqual([ui.getByTestId('panel'), ui.getByRole('button', { name: 'anchor' })])
     expect(made[0]?.disconnected).toBe(false)
 
     ui.rerender(<Host open={false} />)
 
+    expect(made[0]?.disconnected).toBe(true)
+  })
+
+  it('leaves unmounted refs unobserved and disconnects on teardown', () => {
+    const made = stubResizeObserver()
+    function UnmountedElements() {
+      const anchorRef = useRef<HTMLButtonElement>(null)
+      const panelRef = useRef<HTMLDivElement>(null)
+      useAnchoredPosition({ open: true, anchorRef, panelRef, gap: 4, margin: 12 })
+      return null
+    }
+    const ui = render(<UnmountedElements />)
+
+    expect(made).toHaveLength(1)
+    expect(made[0]?.observed).toEqual([])
+    ui.unmount()
     expect(made[0]?.disconnected).toBe(true)
   })
 

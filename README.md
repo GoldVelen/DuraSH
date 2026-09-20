@@ -22,7 +22,7 @@ DuraSH is not an official DeepSeek product and is not endorsed by DeepSeek.
 
 It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
 
-The current source base is the latest verified upstream release at the time of this synchronization: `dsh-v0.1.5-rc.2` / `c291e7961a51`. See [upstream policy](UPSTREAM.md), [integration status](INTEGRATION_STATUS.md), and [open-source attribution](OPEN_SOURCE_ATTRIBUTION.md) for the exact boundaries.
+The current source baseline is `dsh-v0.1.6-alpha.2`; its exact revision is recorded in [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json). See [upstream policy](UPSTREAM.md), [integration status](INTEGRATION_STATUS.md), and [open-source attribution](OPEN_SOURCE_ATTRIBUTION.md) for the exact boundaries.
 
 ## Developer preview
 

@@ -10,6 +10,7 @@ import {
 } from '../../../../scripts/gen-tool-catalog.ts'
 import {
   collectDurashToolCatalog,
+  renderDurash,
   DURASH_TOOL_PACKAGE_GLOBS,
   DURASH_TOOL_PACKAGES,
 } from '../../../../scripts/gen-durash-tool-catalog.ts'
@@ -22,6 +23,10 @@ describe('DuraSH tool catalog', () => {
     const names = catalog.flatMap(entry => entry.schemas.map(schema => schema.name)).sort()
     expect(names).toEqual(['dsh_reliability_handoff'])
     expect(catalog.map(entry => entry.pkg)).toEqual(['@durash/dsh-tool-reliability'])
+    const markdown = renderDurash(catalog)
+    expect(markdown).toContain('A completeness guard globs `packages/*/durash-tool-*`')
+    expect(markdown).toContain('Scope: shipped product tools under `packages/*/durash-tool-*`')
+    expect(markdown).not.toContain('`packages/*/tool-*`')
   })
 
   it('fails when a DuraSH tool package is missing from the DuraSH boot list', () => {

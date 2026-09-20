@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 摘要
 
-可靠性组承载 DuraSH 自有的编排策略，把原始模型工作转化为经过认证的成果。它的第一个成员是有界实施/审查闭环：一个实施阶段、一个审查阶段、至多一轮返工，全部跑在 `ctx.workflowEngine` 之上，循环状态机以产品自有记录的形式持久化在 storage-domain 数据形态中。本组只组合进 `durash` profile。闭环运行时仍不改变 agent 循环；composer 开关、按会话策略与受门控的交接工具是该闭环的模型入口。组内任何内容都不重新实现 workflow 引擎或 subagent 提供方——那些 seam 仍是唯一执行路径，本组拥有持久状态机、其边界，以及允许交接的会话策略。
+DuraSH 可靠性包在 `durash` profile 中提供一个实施阶段、独立审查和至多一轮返工。产品自有的 storage-domain 记录保存有界状态机。composer 开关、按会话策略和受门控的交接工具允许模型工作进入闭环。阶段使用 `ctx.workflowEngine` 及其 subagent 提供方，不改变 agent 循环或重复实现这些执行服务；这些包负责持久状态、执行边界与准入策略。
 
 ## 目录
 

@@ -22,7 +22,7 @@ DuraSH 不是 DeepSeek 官方产品，也未获得 DeepSeek 背书。
 
 它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
 
-本次同步采用当时已验证的最新上游版本：`dsh-v0.1.5-rc.2` / `c291e7961a51`。精确边界见[上游策略](UPSTREAM.md)、[融合状态](INTEGRATION_STATUS.md)与[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
+当前源码基线为 `dsh-v0.1.6-alpha.2`；精确版本记录在 [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) 中。精确边界见[上游策略](UPSTREAM.md)、[融合状态](INTEGRATION_STATUS.md)与[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
 
 ## 开发者预览
 

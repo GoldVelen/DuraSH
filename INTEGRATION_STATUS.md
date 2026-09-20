@@ -4,21 +4,21 @@ English | [中文](INTEGRATION_STATUS.zh.md)
 
 This document separates current source truth from the older DSH fork's accepted behavior. A historical feature is not part of DuraSH until it is integrated on the current upstream baseline and its focused regression passes.
 
-## Verified baseline
+## Source baseline
 
 - Primary upstream: `deepseek-ai/deepseek-harness`
-- Branch/tag: `master` / `dsh-v0.1.5-rc.2`
-- Commit: `c291e7961a515f6d7af9304e7fd1d257929aef26`
-- Baseline fetched, reconciled with the DuraSH product overlay, and compared with `durash-upstream/master` on 2026-09-14
+- Branch/tag: `master` / `dsh-v0.1.6-alpha.2`
+- Exact revision: [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json)
+- Baseline fetched, reconciled with the DuraSH product overlay, and compared with `durash-upstream/master` on 2026-09-21
 
 ## Capability matrix
 
 | Capability | Current state | Evidence / boundary |
 | --- | --- | --- |
-| Latest DSH source baseline | Implemented | This branch starts at the verified commit above |
+| Latest DSH source baseline | Implemented | The source incorporates the recorded upstream baseline |
 | Independent DuraSH brand and Web profile | Implemented | Product-owned brand package and additive `durash` profile; upstream official brand package is unchanged |
 | DuraSH source build and assembled browser composition | Implemented | `build:durash`, the DuraSH browser-composition regression, and its pull-request workflow verify the product profile independently of the official client build |
-| Workflow scripts, resource caps, cancellation, member lifecycle events | Inherited from latest DSH | `@deepseek-ai/dsh-workflow`, worker-thread engine, workflow tool, and workflow-run UI |
+| Workflow scripts, resource caps, cancellation, member lifecycle events | Inherited from latest DSH | `@deepseek-ai/dsh-workflow` and its Node PTC engine; DuraSH enables the engine for reliability while general workflow and Ralph tools remain disabled |
 | Primary-upstream and dependency drift detection | Operational | The scheduled workflow detected this upstream release, opened the conflict issue, and continues to audit vendored and registry dependencies |
 | CI-gated automatic upstream merge | Operational with a manual conflict gate | Clean upstream changes prepare a synchronization PR; product-overlay conflicts stop without overwriting DuraSH behavior and require the reconciliation performed for this baseline |
 | Independent durable Run store from the older fork | Implemented for the bounded loop | `@durash/dsh-reliability-loop` keeps one durable record per loop in the `reliability-loop` storage domain; the old fork's general RunStore control plane remains unmatched |
@@ -30,7 +30,7 @@ This document separates current source truth from the older DSH fork's accepted 
 
 ## Current upstream drift
 
-The live 2026-09-14 audit confirms that the primary DSH branch is current after this reconciliation. It also detects five newer public vendored-package releases: Cordis `4.0.0-rc.10`, Cordis Loader `1.0.0-rc.7`, Cordis Include `1.1.0`, Cordis Timer `1.1.3`, and Cordis HMR `1.1.0`. The latest official DSH baseline still carries the recorded older snapshots plus local modifications. DuraSH reports this drift and requires the vendored compatibility runbook before accepting it; detection is not evidence that these releases are already integrated.
+The primary source revision and vendored snapshots are recorded in [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json). The scheduled audit reports changes against those records. Vendored package updates require the compatibility procedure in [`vendor/README.md`](vendor/README.md); a newer public package release does not establish that its source is integrated.
 
 ## Fusion assessment
 

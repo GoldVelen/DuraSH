@@ -7,18 +7,42 @@
     - button "模型":
       - img
       - text: 模型
-    - button "插件":
+    - button "内置插件":
       - img
-      - text: 插件
+      - text: 内置插件
     - button "Agent 预设":
       - img
       - text: Agent 预设
+    - button "已归档会话":
+      - img
+      - text: 已归档会话
   - button "打开配置文件"
   - button "关闭":
     - img
     - text: 关闭
   - heading "模型" [level=2]
   - paragraph: 填入各提供方的 API 密钥即可使用其模型。
+  - heading "账号登录" [level=3]
+  - paragraph: 使用订阅账号登录，或在下方用 API 密钥添加提供方。
+  - list:
+    - listitem:
+      - text: Anthropic
+      - button "登录"
+    - listitem:
+      - text: GitHub Copilot
+      - button "登录"
+    - listitem:
+      - text: Kimi For Coding
+      - button "登录"
+    - listitem:
+      - text: OpenAI Codex
+      - button "登录"
+    - listitem:
+      - text: OpenRouter
+      - button "登录"
+    - listitem:
+      - text: xAI
+      - button "登录"
   - list:
     - listitem:
       - text: openrouter

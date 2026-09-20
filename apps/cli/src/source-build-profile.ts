@@ -20,7 +20,6 @@ const DURASH_SOURCE_PROFILE_TEMPLATES: ProfileTemplateMap = {
   ...PROFILE_TEMPLATES,
   durash: {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile'],
-    patchReload: 'live',
   },
 }
 

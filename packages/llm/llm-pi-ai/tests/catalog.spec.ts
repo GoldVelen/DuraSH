@@ -9,9 +9,10 @@ import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
-import { createModels, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
+import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
 import { resolveProfiles } from '../src/config.ts'
+import { createModels, createProvider, getSupportedThinkingLevels } from '../src/models.ts'
 import { buildProvider, supportedProtocols } from '../src/provider.ts'
 import { assemble } from './assemble.ts'
 import { memoryAuth } from './auth-double.ts'
@@ -355,6 +356,28 @@ describe('hand-declared providers', () => {
     expect(() => buildProvider(spec)).toThrow(/cannot serve; supported protocols are/)
   })
 
+  it('delegates both stream methods from a static provider', () => {
+    const [model] = getBuiltinModels('deepseek')
+    if (model === undefined) throw new Error('the installed catalog ships no deepseek model')
+    const direct = new AssistantMessageEventStream()
+    const simple = new AssistantMessageEventStream()
+    const stream = vi.fn(() => direct)
+    const streamSimple = vi.fn(() => simple)
+    const provider = createProvider({
+      id: 'local',
+      name: 'Local',
+      models: [model],
+      auth: { apiKey: { name: 'Local', resolve: () => Promise.resolve({ auth: {}, source: 'Local' }) } },
+      api: { stream, streamSimple },
+    })
+    const context = { messages: [] }
+
+    expect(provider.stream(model, context)).toBe(direct)
+    expect(provider.streamSimple(model, context)).toBe(simple)
+    expect(stream).toHaveBeenCalledOnce()
+    expect(streamSimple).toHaveBeenCalledOnce()
+  })
+
   it('leaves an unauthenticated route to its protocol rather than inventing a credential', async () => {
     const server = await mockServer([{ events: textEvents }])
     // Naming no credential is the deliberately unauthenticated posture — a
@@ -419,6 +442,25 @@ describe('hand-declared providers', () => {
     })
     expect(resolved.get('acme-gateway')?.displayName).toBe('acme-gateway')
     expect(() => resolveProfiles({ 'acme-gateway': { displayName: '' } })).toThrow(/empty displayName/)
+  })
+
+  it('serves a catalog-backed alias with the route identity and inherited model capabilities', () => {
+    const installed = getBuiltinModels('openai').find(model => model.id === 'gpt-6-astra')!
+    const profile = resolveProfiles({
+      'openai-proxy': {
+        catalogProvider: 'openai',
+        displayName: 'Team OpenAI',
+        baseURL: 'https://gateway.example/v1',
+        models: [{ id: installed.id }],
+      },
+    }).get('openai-proxy')!
+
+    expect(profile.piProvider).toMatchObject({ id: 'openai-proxy', name: 'Team OpenAI' })
+    expect(profile.piProvider?.getModels()).toEqual([{
+      ...installed, provider: 'openai-proxy', baseUrl: 'https://gateway.example/v1',
+    }])
+    expect(profile.catalogError).toBeUndefined()
+    expect(profile.modelErrors.size).toBe(0)
   })
 
   it('refuses an empty or unavailable catalog source', () => {

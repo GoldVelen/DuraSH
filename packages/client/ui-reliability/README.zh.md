@@ -74,6 +74,6 @@ kind: "package-reference"
 <details>
 <summary>维护者工作上下文——点击展开</summary>
 
-无。
+源码插件测试在 import 处替换生成的 `/remote` 描述符，并通过测试载体验证挂载和卸载。描述符属于 Host 构建产物；这些测试不验证生成的传输编解码器。
 
 </details>

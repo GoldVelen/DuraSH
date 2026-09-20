@@ -9,7 +9,8 @@ import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type {
   SubagentCapabilities, SubagentProvider, SubagentResult, SubagentRun, SubagentStartRequest,
 } from '@deepseek-ai/dsh-subagent'
-import WorkerThreadWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
+import PtcWorkflowEngine from '@deepseek-ai/dsh-workflow-ptc'
+import { fakeParent as workflowParent, mountWorkflowRuntime } from '../../../workflow/workflow-ptc/tests/setup.ts'
 import Storage from '@deepseek-ai/dsh-storage'
 import { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import type { StorageBackend } from '@deepseek-ai/dsh-storage'
@@ -33,7 +34,7 @@ import ReliabilityLoopRuntime, { ReliabilityLoopId } from '../src/index.ts'
 import { assertReliabilityLoopRecord } from '../src/checks.ts'
 import type { ReliabilityLoopRecord, ReliabilityLoopStage } from '../src/index.ts'
 
-// Allow cold worker startup on contended CI runners.
+// Allow cold PTC process startup on contended CI runners.
 vi.setConfig({ testTimeout: 30_000 })
 
 /** A minimal parent stand-in: the engine only threads it through to the provider. */
@@ -162,7 +163,7 @@ interface HarnessOptions {
   root?: string
 }
 
-/** Boot the real composition: subagent registry, worker-thread engine, storage family, loop runtime. */
+/** Boot the real composition: subagent registry, PTC engine, storage family, loop runtime. */
 async function harness(options: HarnessOptions = {}): Promise<{
   ctx: Context
   runtime: ReliabilityLoopRuntime
@@ -180,7 +181,8 @@ async function harness(options: HarnessOptions = {}): Promise<{
   const manual = new ManualProvider()
   ctx.subagents.registerProvider(manual)
   // A fixed concurrency ceiling: the auto-resolved default is machine-derived.
-  await ctx.plugin(WorkerThreadWorkflowEngine, { provider: 'stub', maxConcurrentAgents: 8 })
+  await mountWorkflowRuntime(ctx, { cwd: root })
+  await ctx.plugin(PtcWorkflowEngine, { provider: 'stub', maxConcurrentAgents: 8 })
   await ctx.plugin(Storage)
   if (options.failPutAt === undefined) {
     await ctx.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
@@ -194,7 +196,7 @@ async function harness(options: HarnessOptions = {}): Promise<{
   await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
   const runtimeConfig = options.maxHandoffChars === undefined ? {} : { maxHandoffChars: options.maxHandoffChars }
   const runtimeFiber = await ctx.plugin(ReliabilityLoopRuntime, runtimeConfig)
-  const parent = fakeParent()
+  const parent = workflowParent(ctx)
   return {
     ctx,
     runtime: ctx.reliabilityLoopRuntime,
@@ -241,8 +243,8 @@ async function awaitChild(manual: ManualProvider, count: number): Promise<Contro
 
 describe('durash-reliability-loop', () => {
   it('drives implement then review to `completed` and keeps every transition durable', async () => {
-    const { runtime, manual, loopId } = await harness()
-    const handle = await runtime.start({ parent: fakeParent(), objective: 'ship the widget' })
+    const { runtime, manual, loopId, parent } = await harness()
+    const handle = await runtime.start({ parent, objective: 'ship the widget' })
     const id = loopId()
 
     // The durable record exists before any child starts.
@@ -268,9 +270,9 @@ describe('durash-reliability-loop', () => {
   })
 
   it('passes stored implementation and review routes to the stage children', async () => {
-    const { runtime, manual } = await harness()
+    const { runtime, manual, parent } = await harness()
     await runtime.start({
-      parent: fakeParent(),
+      parent,
       objective: 'ship the widget',
       implementation: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
       review: { provider: 'openai-codex', model: 'gpt-5' },
@@ -283,8 +285,8 @@ describe('durash-reliability-loop', () => {
   })
 
   it('runs exactly one bounded rework when the first review requests changes, then blocks', async () => {
-    const { runtime, manual } = await harness()
-    const handle = await runtime.start({ parent: fakeParent(), objective: 'ship the widget' })
+    const { runtime, manual, parent } = await harness()
+    const handle = await runtime.start({ parent, objective: 'ship the widget' })
 
     await settleAndAwaitStage(runtime, await awaitChild(manual, 1), implementReply('v1 work'), 'reviewing')
     await settleAndAwaitStage(runtime, await awaitChild(manual, 2), reviewReply('changes-requested', 'fix the flaky check'), 'rework-implementing')
@@ -309,8 +311,8 @@ describe('durash-reliability-loop', () => {
   })
 
   it('completes after a rework when the second review approves', async () => {
-    const { runtime, manual } = await harness()
-    const handle = await runtime.start({ parent: fakeParent(), objective: 'ship the widget' })
+    const { runtime, manual, parent } = await harness()
+    const handle = await runtime.start({ parent, objective: 'ship the widget' })
 
     await settleAndAwaitStage(runtime, await awaitChild(manual, 1), implementReply('v1 work'), 'reviewing')
     await settleAndAwaitStage(runtime, await awaitChild(manual, 2), reviewReply('changes-requested', 'rename the export'), 'rework-implementing')
@@ -323,8 +325,8 @@ describe('durash-reliability-loop', () => {
   })
 
   it('fails the loop loud when a child fails or reports an unusable summary', async () => {
-    const { runtime, manual } = await harness()
-    const handle = await runtime.start({ parent: fakeParent(), objective: 'ship the widget' })
+    const { runtime, manual, parent } = await harness()
+    const handle = await runtime.start({ parent, objective: 'ship the widget' })
     // A child that fails resolves agent() null; the fixed script throws; the run ends 'error'.
     await settleAndAwaitStage(runtime, await awaitChild(manual, 1), { output: [], stopReason: 'error' }, 'failed')
     const outcome = await handle.result
@@ -334,25 +336,25 @@ describe('durash-reliability-loop', () => {
 
   it('fails the loop loud when the implement summary is empty or over the handoff bound', async () => {
     const bounded = await harness({ maxHandoffChars: 32 })
-    const over = await bounded.runtime.start({ parent: fakeParent(), objective: 'tight bound' })
+    const over = await bounded.runtime.start({ parent: bounded.parent, objective: 'tight bound' })
     await settleAndAwaitStage(bounded.runtime, await awaitChild(bounded.manual, 1), implementReply('x'.repeat(40)), 'failed')
     const overOutcome = await over.result
     expect(overOutcome.stage).toBe('failed')
     expect(overOutcome.error).toContain('over the 32 handoff bound')
 
-    const empty = await bounded.runtime.start({ parent: fakeParent(), objective: 'empty summary' })
+    const empty = await bounded.runtime.start({ parent: bounded.parent, objective: 'empty summary' })
     await settleAndAwaitStage(bounded.runtime, await awaitChild(bounded.manual, 2), implementReply(''), 'failed')
     expect((await empty.result).error).toContain('empty or missing')
   })
 
   it('fails the loop loud when the review feedback is empty or over the handoff bound', async () => {
     const bounded = await harness({ maxHandoffChars: 32 })
-    const handle = await bounded.runtime.start({ parent: fakeParent(), objective: 'tight bound' })
+    const handle = await bounded.runtime.start({ parent: bounded.parent, objective: 'tight bound' })
     await settleAndAwaitStage(bounded.runtime, await awaitChild(bounded.manual, 1), implementReply('work'), 'reviewing')
     await settleAndAwaitStage(bounded.runtime, await awaitChild(bounded.manual, 2), reviewReply('changes-requested', 'x'.repeat(40)), 'failed')
     expect((await handle.result).error).toContain('over the 32 handoff bound')
 
-    const second = await bounded.runtime.start({ parent: fakeParent(), objective: 'empty feedback' })
+    const second = await bounded.runtime.start({ parent: bounded.parent, objective: 'empty feedback' })
     await settleAndAwaitStage(bounded.runtime, await awaitChild(bounded.manual, 3), implementReply('work'), 'reviewing')
     await settleAndAwaitStage(bounded.runtime, await awaitChild(bounded.manual, 4), reviewReply('approved', ''), 'failed')
     expect((await second.result).error).toContain('empty or missing')
@@ -539,7 +541,7 @@ describe('durash-reliability-loop', () => {
     expect(recovered.stage).toBe('reviewing')
     expect(recovered.implement).toMatchObject({ round: 1, summary: 'migrated tables' })
 
-    const resumed = second.runtime.resume(id, fakeParent())
+    const resumed = second.runtime.resume(id, second.parent)
     // Exactly one child appears — the review; the settled implementation is never re-run.
     const reReview = await awaitChild(second.manual, 1)
     expect(childPrompt(reReview.request)).toContain('migrated tables')
@@ -573,7 +575,7 @@ describe('durash-reliability-loop', () => {
     // Recovery #1 is itself interrupted before recording the rework outcome:
     // the rework attempt re-runs, and the record still names one rework slot.
     const second = await harness({ root: first.root, failPutAt: 1 })
-    const resumedOnce = second.runtime.resume(id, fakeParent())
+    const resumedOnce = second.runtime.resume(id, second.parent)
     const reworkRerun = await awaitChild(second.manual, 1)
     expect(childPrompt(reworkRerun.request)).toContain('add fuzz tests')
     reworkRerun.settle(implementReply('v2 with fuzz'))
@@ -586,7 +588,7 @@ describe('durash-reliability-loop', () => {
 
     // Recovery #2 completes: review round 1 is still settled and never re-created.
     const third = await harness({ root: first.root })
-    const resumedTwice = third.runtime.resume(id, fakeParent())
+    const resumedTwice = third.runtime.resume(id, third.parent)
     const reworkRerun2 = await awaitChild(third.manual, 1)
     expect(childPrompt(reworkRerun2.request)).toContain('add fuzz tests')
     await settleAndAwaitStage(third.runtime, reworkRerun2, implementReply('v2 with fuzz'), 'rework-reviewing')
@@ -604,8 +606,8 @@ describe('durash-reliability-loop', () => {
   })
 
   it('cancellation settles the record, disposes the child, and leaves a quiescent owner', async () => {
-    const { runtime, manual } = await harness()
-    const handle = await runtime.start({ parent: fakeParent(), objective: 'audit the tree' })
+    const { runtime, manual, parent } = await harness()
+    const handle = await runtime.start({ parent, objective: 'audit the tree' })
     await settleAndAwaitStage(runtime, await awaitChild(manual, 1), implementReply('audit plan'), 'reviewing')
     // Wait for the review run to be in flight before cancelling, so the
     // cancel lands on a started stage rather than before it.
@@ -625,14 +627,14 @@ describe('durash-reliability-loop', () => {
     expect(manual.runs).toHaveLength(2)
 
     // The loop is terminal: resume refuses, and a second cancel is a no-op.
-    expect(() => { runtime.resume(outcome.loopId, fakeParent()) }).toThrow(/settled/)
+    expect(() => { runtime.resume(outcome.loopId, parent) }).toThrow(/settled/)
     expect(() => { handle.cancel('again') }).not.toThrow()
     expect(runtime.get(outcome.loopId)).toEqual(frozen)
   })
 
   it('runtime teardown cancels every live loop to quiescence before the runtime closes its domain', async () => {
-    const { ctx, runtime, runtimeFiber, manual } = await harness()
-    const handle = await runtime.start({ parent: fakeParent(), objective: 'audit the tree' })
+    const { runtime, runtimeFiber, manual, parent } = await harness()
+    const handle = await runtime.start({ parent, objective: 'audit the tree' })
     const inFlight = handle.result
     await settleAndAwaitStage(runtime, await awaitChild(manual, 1), implementReply('audit plan'), 'reviewing')
     await awaitChild(manual, 2)
@@ -640,26 +642,25 @@ describe('durash-reliability-loop', () => {
     // Disposing the runtime's own fiber is the ordered teardown: the driver
     // settles `cancelled` durably, then the runtime closes its domain.
     await runtimeFiber.dispose()
-    dropContext(ctx)
     expect((await inFlight).stage).toBe('cancelled')
     expect(manual.runs).toHaveLength(2)
     expect(manual.runs[1]!.disposed).toBe(true)
   })
 
   it('refuses to start with an empty or oversized objective, and refuses double ownership', async () => {
-    const { runtime, manual } = await harness({ maxHandoffChars: 32 })
-    await expect(runtime.start({ parent: fakeParent(), objective: '' })).rejects.toThrow(/empty/)
-    await expect(runtime.start({ parent: fakeParent(), objective: 'y'.repeat(33) })).rejects.toThrow(/handoff bound/)
+    const { runtime, manual, parent } = await harness({ maxHandoffChars: 32 })
+    await expect(runtime.start({ parent, objective: '' })).rejects.toThrow(/empty/)
+    await expect(runtime.start({ parent, objective: 'y'.repeat(33) })).rejects.toThrow(/handoff bound/)
 
-    const handle = await runtime.start({ parent: fakeParent(), objective: 'small objective' })
+    const handle = await runtime.start({ parent, objective: 'small objective' })
     // Let the first stage's child start so the cancel below lands mid-flight.
     await awaitChild(manual, 1)
-    expect(() => { runtime.resume(handle.loopId, fakeParent()) }).toThrow(/live owner/)
+    expect(() => { runtime.resume(handle.loopId, parent) }).toThrow(/live owner/)
 
     handle.cancel()
     await handle.result
-    expect(() => { runtime.resume(handle.loopId, fakeParent()) }).toThrow(/settled/)
-    expect(() => { runtime.resume(ReliabilityLoopId('missing'), fakeParent()) }).toThrow(/unknown/)
+    expect(() => { runtime.resume(handle.loopId, parent) }).toThrow(/settled/)
+    expect(() => { runtime.resume(ReliabilityLoopId('missing'), parent) }).toThrow(/unknown/)
     expect(manual.runs).toHaveLength(1)
   })
 

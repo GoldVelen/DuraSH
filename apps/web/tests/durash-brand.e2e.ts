@@ -10,7 +10,7 @@ const DIST_ROOT = resolve(import.meta.dirname, '../dist')
 installAssembledBootEnv()
 
 it('boots the DuraSH bundle stack and renders only the product identity', async () => {
-  mountAssembledApp('?fixture', { profile: 'durash' })
+  mountAssembledApp({ profile: 'durash' })
 
   await waitFor(() => {
     expect(document.title).toBe('DuraSH')

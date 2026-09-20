@@ -69,6 +69,7 @@ function requireRootHandoff(ctx: Context, exec: ToolRunContext) {
       'RELIABILITY_TOOL_DRIVER_REQUIRED',
     )
   }
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing human-turn guard awaits a Session projection migration.
   const human = agent.session.snapshotEvents().some(event =>
     event.type === 'user/message' && event.data.source.kind === 'user')
   if (!human) {

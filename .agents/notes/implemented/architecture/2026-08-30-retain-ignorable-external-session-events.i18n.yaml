@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-30-retain-ignorable-external-session-events.md
-2026-08-30-retain-ignorable-external-session-events.md: 01fe2857081b20a957ad4c6ad648a01b6ee3b018
-2026-08-30-retain-ignorable-external-session-events.zh.md: cece6b05c1b469e77fb57955c045dd72a4867710
+2026-08-30-retain-ignorable-external-session-events.md: b00d279b2075756911889423c48647dc1000c825
+2026-08-30-retain-ignorable-external-session-events.zh.md: a240d7b0a1324e7ce88ade6bb53e84f0269c31ea
