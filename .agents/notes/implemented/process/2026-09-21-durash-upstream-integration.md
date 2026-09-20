@@ -20,6 +20,8 @@ The [existing conflict classification and deduplication](2026-09-06-durash-sync-
 
 `UPSTREAM_SOURCES.json` retains full commit identifiers in valid GitHub `sources[]` entries’ `baseline` and `snapshotBaseline` fields for machine-driven update comparisons. The repository-reference check exempts those exact JSON fields; ordinary documentation links to that source record. Neither the entire manifest nor ordinary prose receives an exemption.
 
+CI downloads its checksum-pinned Ubuntu bubblewrap payload from an official dated snapshot; rolling archive pools remove superseded package versions. Repository policy checks retain DuraSH’s private security-report entry and exclude upstream-only organization workflows. The floating-panel observer check covers both the panel and its anchor, matching the existing resize behavior.
+
 ## Alternatives considered
 
 **Select either side for all conflicts.** Upstream-only resolution removes downstream ownership, while downstream-only resolution retains deleted APIs and misses new startup behavior. Reconcile source consumers before rebuilding generated outputs.

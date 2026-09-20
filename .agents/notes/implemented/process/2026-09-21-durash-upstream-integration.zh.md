@@ -20,6 +20,8 @@ DuraSH 覆盖层在 base 提供的 Node PTC 运行时之上启用上游 `workflo
 
 `UPSTREAM_SOURCES.json` 在合法 GitHub `sources[]` 条目的 `baseline` 与 `snapshotBaseline` 字段中保留完整提交标识，供机器比较更新。仓库引用检查仅豁免这些精确 JSON 字段；普通文档链接该来源记录。整个 manifest 与普通叙述均不获得豁免。
 
+CI 从 Ubuntu 官方日期快照下载固定校验值的 bubblewrap 包；滚动归档目录会移除被替代的包版本。仓库策略检查保留 DuraSH 的私密安全报告入口，并排除仅适用于上游组织的工作流。浮层观察器检查覆盖面板及其锚点，与已有的尺寸变化处理一致。
+
 ## Alternatives considered
 
 **全部冲突统一选择某一侧。** 全选上游会删除下游所有权，全选下游则会保留已删除的 API 并遗漏新的启动行为。必须先协调源码消费者，再重建生成产物。

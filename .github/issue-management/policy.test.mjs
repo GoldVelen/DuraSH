@@ -156,7 +156,7 @@ const reviewedPull = (labels) => ({
   issues: new Map([[2, { priority: null }]]),
 })
 
-test('keeps only Bug, Feature, and Task Issue templates with used frontmatter', () => {
+test('keeps Bug, Feature, and Task Issue templates with private security reporting', () => {
   const directory = new URL('../ISSUE_TEMPLATE/', import.meta.url)
   assert.deepEqual(readdirSync(directory).sort(), ['bug.md', 'config.yml', 'feature.md', 'task.md'])
 
@@ -175,7 +175,11 @@ test('keeps only Bug, Feature, and Task Issue templates with used frontmatter', 
   }
   assert.equal(
     readFileSync(new URL('config.yml', directory), 'utf8'),
-    'blank_issues_enabled: false\n',
+    'blank_issues_enabled: false\n'
+      + 'contact_links:\n'
+      + '  - name: Security report / 安全漏洞报告\n'
+      + '    url: https://github.com/GoldVelen/DuraSH/security/advisories/new\n'
+      + '    about: Report vulnerabilities and confidential concerns privately. / 私密报告漏洞和保密问题。\n',
   )
 })
 
@@ -891,11 +895,14 @@ test('performs no lifecycle requests for removed signals or title-only edits', a
   assert.deepEqual(fixture.requests, [])
 })
 
-test('keeps trusted preflight before token minting and required policy unconditional', () => {
+test('keeps trusted preflight before token minting and limits policy to the canonical repository', () => {
   const source = readFileSync(new URL('../workflows/issue-policy.yml', import.meta.url), 'utf8')
   const job = source.slice(source.indexOf('  policy:'))
   assert.ok(job.includes('    name: Issue policy'))
-  assert.ok(!job.slice(0, job.indexOf('    steps:')).includes('    if:'))
+  assert.deepEqual(
+    job.slice(0, job.indexOf('    steps:')).split('\n').filter((line) => line.startsWith('    if:')),
+    ["    if: ${{ github.repository == 'deepseek-harness/deepseek-harness' }}"],
+  )
   assert.ok(source.includes('types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review, review_requested]'))
   const steps = job.split('      - name: ').slice(1)
   assert.equal(steps.length, 4)
