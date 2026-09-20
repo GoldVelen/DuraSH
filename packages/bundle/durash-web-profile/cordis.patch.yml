@@ -21,5 +21,5 @@
     - id: ui-reliability
       name: '@durash/dsh-client-ui-reliability'
 
-- id: workflow-worker-thread
+- id: workflow-ptc
   disabled: false

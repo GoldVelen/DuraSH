@@ -48,7 +48,6 @@ describe('source-owned profile templates', () => {
     expect(PROFILE_TEMPLATES.durash).toBeUndefined()
     expect(profileTemplatesForSourceRoot('/source').durash).toEqual({
       bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile'],
-      patchReload: 'live',
     })
   })
 })

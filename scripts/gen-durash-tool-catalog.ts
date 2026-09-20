@@ -58,15 +58,19 @@ export async function collectDurashToolCatalog() {
   return await collectToolCatalog(DURASH_TOOL_PACKAGES, root, DURASH_TOOL_PACKAGE_GLOBS)
 }
 
-function renderDurash(catalog: Awaited<ReturnType<typeof collectDurashToolCatalog>>): string {
+/**
+ * Render the harvested product tools with DuraSH-owned generator and package references.
+ * @param catalog - harvested DuraSH tool packages and schemas.
+ * @returns the generated DuraSH Markdown catalog.
+ */
+export function renderDurash(catalog: Awaited<ReturnType<typeof collectDurashToolCatalog>>): string {
   const generated = render(catalog)
   return generated
     .replaceAll('scripts/gen-tool-catalog.ts', 'scripts/gen-durash-tool-catalog.ts')
     .replaceAll('pnpm run gen-tool-catalog', 'pnpm run gen-durash-tool-catalog')
     .replaceAll('pnpm run verify-tool-catalog', 'pnpm run verify-durash-tool-catalog')
     .replaceAll('# Tool Schema Catalog', '# DuraSH Tool Schema Catalog')
-    .replaceAll('`packages/*/tool-*` packages', '`packages/*/durash-tool-*` packages')
-    .replaceAll('under `packages/*/tool-*`', 'under `packages/*/durash-tool-*`')
+    .replaceAll('`packages/*/tool-*`', '`packages/*/durash-tool-*`')
 }
 
 async function main(): Promise<void> {

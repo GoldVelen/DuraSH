@@ -7,7 +7,7 @@
 
 已发布插件向 `ctx.tools` 提供的所有面向模型的工具：模型通过系统提示词组装获得的 `name`、`description` 和 JSON Schema `parameters`。本目录是[子系统页面](subsystems/core.zh.md)（类型及每页生成的 Cordis API 区域）的补充；本页列出的是向 agent 提供的*工具*。
 
-本文件由系统**生成**，并通过 `pnpm run verify-durash-tool-catalog`（`doc-sync` 的一部分）验证新鲜度；不要手工编辑。与 Cordis 目录（纯源码 AST 处理）不同，生成器会在真实上下文中**启动**每个工具插件并读取 `ctx.tools.schemas()`，因为工具 schema 无法通过静态分析完全确定（运行时展开的枚举、拼接描述、配置驱动的名称、原始 JSON Schema 的 MCP 工具）。完整性守卫会 glob 匹配 `packages/*/durash-tool-*` 包；如果生成器的启动清单遗漏任何包，检查就会失败，因此新工具不会在无人察觉的情况下缺少文档。参见[工具 schema 目录 Agent Note](../.agents/notes/implemented/process/2026-07-02-tool-schema-catalog.zh.md)。
+本文件由系统**生成**，并通过 `pnpm run verify-durash-tool-catalog`（`doc-sync` 的一部分）验证新鲜度；不要手工编辑。与 Cordis 目录（纯源码 AST 处理）不同，生成器会在真实上下文中**启动**每个工具插件并读取 `ctx.tools.schemas()`，因为工具 schema 无法通过静态分析完全确定（运行时展开的枚举、拼接描述、配置驱动的名称、原始 JSON Schema 的 MCP 工具）。完整性守卫会 glob 匹配 `packages/*/durash-tool-*` 包；如果生成器的启动清单遗漏任何包，检查就会失败，因此新工具不会在无人察觉的情况下缺少文档。
 
 范围：`packages/*/durash-tool-*` 下已发布的产品工具，每个工具均使用其默认配置启动；但如果某个 Config 字段是必填且没有默认值，生成器就必须作出选择，对应包的说明会记录本页展示的是哪个分支。注册的工具名称可以是加载时配置（例如 `tool-subagent` 的 `toolName`），因此部署可能以不同或额外名称提供某个包；如果存在随产品发布的别名，对应包的说明会予以记录。`examples/` 中的演示工具（例如 `echo`）不在范围内，这与 Cordis 目录仅涵盖包的范围一致。
 

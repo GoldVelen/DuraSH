@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-reliability-loop` 运行一个有界的可靠性闭环：一个全新的实施子代理、一个全新的审查子代理，以及——当审查者要求修改时——恰好一轮返工与复审，之后循环以 `completed` 或 `blocked` 停止。这是 DuraSH 可靠性引擎的第一个产品自有切片：状态机是 `reliability-loop` storage domain 中的一条持久记录，每个阶段都作为 `ctx.workflowEngine` 上的普通 run 执行，运行时只拥有记录、边界与排序。重启后从记录的第一个未完成阶段恢复，不重跑已完成的尝试；取消后达到静止，留下终态记录且不再有存活的所有者。
+`dsh-reliability-loop` 运行一个全新的实施子代理和独立审查子代理。要求修改时只允许一轮返工与复审，随后以 `completed` 或 `blocked` 停止。`reliability-loop` storage domain 中的一条记录持久保存状态机；阶段在 `ctx.workflowEngine` 上执行，本运行时拥有记录、边界与执行次序。重启会恢复第一个未完成阶段，不重复已完成的尝试。取消会留下终态记录，不遗留活动所有者。
 
 ## 目录
 

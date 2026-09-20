@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-reliability-loop` runs one bounded reliability cycle: a fresh implementation child, a fresh review child, and — when the reviewer requests changes — exactly one rework pass and re-review, after which the loop stops `completed` or `blocked`. The loop is DuraSH's first product-owned reliability-engine slice: its state machine is one durable record in the `reliability-loop` storage domain, every stage executes as an ordinary run on `ctx.workflowEngine`, and the runtime owns only the record, the bounds, and the sequencing. A restart resumes from the record's first unsettled stage without re-running settled attempts; cancellation reaches quiescence, leaving a terminal record and no live owner.
+`dsh-reliability-loop` runs a fresh implementation child and independent review child. A request for changes permits exactly one rework pass and re-review, then stops `completed` or `blocked`. One record in the `reliability-loop` storage domain persists the state machine; stages execute on `ctx.workflowEngine`, while this runtime owns the record, bounds, and sequencing. Restart resumes the first unsettled stage without repeating settled attempts. Cancellation leaves a terminal record and no live owner.
 
 ## Table of Contents
 

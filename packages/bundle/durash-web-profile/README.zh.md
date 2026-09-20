@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-本包是应用在当前上游 `dsh-base` 与 `dsh-web-app` bundle 之后的 DuraSH 产品叠加层。它加入产品自有的浏览器品牌插件、可靠性循环运行时、按会话工作流策略、受门控的交接工具与 composer 工作流开关，并重新启用上游 workflow 引擎 row（web app 默认关闭该行），使闭环可以驱动其阶段 run。上游官方品牌包与保持关闭的 `workflow`/`ralph` 工具不变。这样可以缩小后续合并上游时的冲突，并让所有下游自有 row 都集中显示在一个 patch 层中。
+本包是应用在当前上游 `dsh-base` 与 `dsh-web-app` bundle 之后的 DuraSH 产品叠加层。它加入产品自有的浏览器品牌插件、可靠性循环运行时、按会话工作流策略、受门控的交接工具与 composer 工作流开关，并重新启用上游 `workflow-ptc` 行（web app 默认关闭该行），使闭环通过 base bundle 的 Node PTC 运行时驱动阶段运行。上游官方品牌包与保持关闭的 `workflow`/`ralph` 工具不变。这样可以缩小后续合并上游时的冲突，并让所有下游自有 row 都集中显示在一个 patch 层中。
 
 ## 目录
 

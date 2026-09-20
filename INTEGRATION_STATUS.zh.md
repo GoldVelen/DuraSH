@@ -4,21 +4,21 @@
 
 本文件把当前源码事实与旧 DSH 分叉中曾经验收过的行为分开。历史能力只有在当前上游基线完成融合并通过聚焦回归后，才属于 DuraSH。
 
-## 已验证基线
+## 源码基线
 
 - 主上游：`deepseek-ai/deepseek-harness`
-- 分支/标签：`master` / `dsh-v0.1.5-rc.2`
-- 提交：`c291e7961a515f6d7af9304e7fd1d257929aef26`
-- 2026-09-14 已拉取基线、与 DuraSH 产品叠加层完成协调，并和 `durash-upstream/master` 比对
+- 分支/标签：`master` / `dsh-v0.1.6-alpha.2`
+- 精确版本：[`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json)
+- 2026-09-21 已拉取基线、与 DuraSH 产品叠加层完成协调，并和 `durash-upstream/master` 比对
 
 ## 能力矩阵
 
 | 能力 | 当前状态 | 证据/边界 |
 | --- | --- | --- |
-| 最新 DSH 源码基线 | 已实现 | 当前分支从上面的已验证提交开始 |
+| 最新 DSH 源码基线 | 已实现 | 源码已整合记录的上游基线 |
 | 独立 DuraSH 品牌与 Web profile | 已实现 | 产品自有品牌包与增量 `durash` profile；上游官方品牌包保持不变 |
 | DuraSH 源码构建与浏览器实际组合 | 已实现 | `build:durash`、DuraSH 浏览器组合回归及其 PR workflow 会独立于官方客户端构建验证产品 profile |
-| workflow 脚本、资源上限、取消、成员生命周期事件 | 继承最新 DSH | `@deepseek-ai/dsh-workflow`、worker-thread engine、workflow tool 与 workflow-run UI |
+| workflow 脚本、资源上限、取消、成员生命周期事件 | 继承最新 DSH | `@deepseek-ai/dsh-workflow` 及其 Node PTC 引擎；DuraSH 为可靠性闭环启用引擎，通用 workflow 与 Ralph 工具保持禁用 |
 | 主上游与依赖漂移检测 | 已运行 | 定时 workflow 检测到本次上游发布、创建了冲突 Issue，并持续审计 vendored 与 registry 依赖 |
 | 受 CI 门禁保护的上游自动合并 | 已运行，冲突需人工门禁 | 无冲突的上游变更会准备同步 PR；产品叠加层冲突会停止而不覆盖 DuraSH 行为，并要求执行本次基线采用的协调流程 |
 | 旧分叉中的独立持久化 Run store | 有界闭环已实现 | `@durash/dsh-reliability-loop` 在 `reliability-loop` storage domain 中为每个循环保留一条持久记录；旧分叉的通用 RunStore 控制面仍未对齐 |
@@ -30,7 +30,7 @@
 
 ## 当前上游漂移
 
-2026-09-14 实时审计确认本次协调后主 DSH 分支已是最新，同时检测到五个更高版本的公共 vendored 包：Cordis `4.0.0-rc.10`、Cordis Loader `1.0.0-rc.7`、Cordis Include `1.1.0`、Cordis Timer `1.1.3` 与 Cordis HMR `1.1.0`。最新官方 DSH 基线仍携带已记录的旧 snapshot 与本地修改。DuraSH 会暴露这项漂移，并要求先执行 vendored 兼容性 runbook 才能接受；检测到新版本不等于这些版本已经完成融合。
+主源码版本与 vendored snapshot 记录在 [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) 中。定时审计报告相对于这些记录的变化。Vendored 包更新必须遵循 [`vendor/README.md`](vendor/README.md) 中的兼容性流程；存在更新的公共包发行版，不代表其源码已经完成整合。
 
 ## 融合结论
 

@@ -6,7 +6,7 @@
 
 DuraSH 是构建在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)之上的独立下游发行版。它不是 DeepSeek 官方发行版，也未获得 DeepSeek 背书。DuraSH 名称与几何品牌资产属于下游；DeepSeek Harness 名称与官方资产仍归其各自权利人所有。
 
-当前已验证的主基线是 DeepSeek Harness `dsh-v0.1.2-alpha.1`，提交 `cd5ef8148158c3a752a658978873241fdf8e2bbc`，采用 [MIT License](LICENSE)。
+当前主基线是 DeepSeek Harness `dsh-v0.1.6-alpha.2`，采用 [MIT License](LICENSE)；[`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) 记录其精确版本。
 
 ## 源码级上游
 

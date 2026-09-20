@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package is the DuraSH product overlay applied after the current upstream `dsh-base` and `dsh-web-app` bundles. It adds the product-owned browser-brand plugin, the reliability-loop runtime, the per-session workflow policy, the gated handoff tool, and the composer workflow switch, and re-enables the upstream workflow-engine row (the web app ships it disabled) so the loop can drive its stage runs. The upstream official-brand package and the disabled `workflow`/`ralph` tools are unchanged. That separation keeps upstream merges small and makes every downstream-owned row visible in one patch layer.
+This package is the DuraSH product overlay applied after the current upstream `dsh-base` and `dsh-web-app` bundles. It adds the product-owned browser-brand plugin, the reliability-loop runtime, the per-session workflow policy, the gated handoff tool, and the composer workflow switch, and re-enables the upstream `workflow-ptc` row (the web app ships it disabled) so the loop can drive its stage runs through the base bundle’s Node PTC runtime. The upstream official-brand package and the disabled `workflow`/`ralph` tools are unchanged. That separation keeps upstream merges small and makes every downstream-owned row visible in one patch layer.
 
 ## Table of Contents
 

@@ -4,7 +4,7 @@
 // reach a surface only the built bundles expose; this one asserts that the
 // graph assembles at all — staged activation across the immediately tier and
 // the inject layers, per-plugin CSS injection, and a rendered journey reaching
-// chat content from the keyless fixture Connection RPC.
+// chat content from the keyless RemoteMock scenario.
 //
 // Component behavior remains owned by per-package suites (SlotTestRuntime
 // benches over src). This smoke additionally pins the resident interaction
@@ -23,7 +23,7 @@ const clientBuildEnvironment = readVerifiedClientBuildEnvironment(resolve(import
 const assembledProfile = clientBuildEnvironment.DSH_CLIENT_BUILD_PROFILE === 'durash' ? 'durash' : 'web'
 
 it('boots the built plugin graph and renders a fixture session end to end', async () => {
-  mountAssembledApp('?fixture', { profile: assembledProfile })
+  mountAssembledApp({ profile: assembledProfile })
 
   // The sidebar renders from the boot graph: every inject layer activated.
   const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
@@ -55,7 +55,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   expect(waitingRow.querySelector('[data-state="ongoing"]')).toBeNull()
   within(waitingRow).getByText('Waiting for answer')
 
-  // Opening a session reaches chat content through the fixture transport.
+  // Opening a session reaches chat content through the RemoteMock transport.
   fireEvent.click(waitingTitle)
   await waitFor(() => {
     expect(document.querySelector('[data-sample="bash"]')).not.toBeNull()
@@ -64,7 +64,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   // Skip the resident fixture's three questions, then resolve its approval so
   // the ordinary composer bar (which owns ContextMeter) resumes.
   for (let index = 0; index < 3; index += 1) {
-    fireEvent.click(await screen.findByRole('button', { name: 'Skip this question' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
   }
   fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }))
 
@@ -125,7 +125,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
 })
 
 it('boots without ui-chat and does not select another conversation view implicitly', async () => {
-  mountAssembledApp('?fixture', {
+  mountAssembledApp({
     exclude: ['@deepseek-ai/dsh-client-ui-chat'],
     profile: assembledProfile,
   })

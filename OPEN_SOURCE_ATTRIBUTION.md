@@ -6,7 +6,7 @@ English | [中文](OPEN_SOURCE_ATTRIBUTION.zh.md)
 
 DuraSH is an independent downstream distribution built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It is not an official DeepSeek distribution and is not endorsed by DeepSeek. The DuraSH name and geometric brand assets are downstream-owned; the DeepSeek Harness name and official assets remain the property of their respective owners.
 
-The current verified primary baseline is DeepSeek Harness `dsh-v0.1.2-alpha.1`, commit `cd5ef8148158c3a752a658978873241fdf8e2bbc`, licensed under the [MIT License](LICENSE).
+The current primary baseline is DeepSeek Harness `dsh-v0.1.6-alpha.2`, licensed under the [MIT License](LICENSE); [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) records its exact revision.
 
 ## Source-level upstreams
 
@@ -17,7 +17,7 @@ The current verified primary baseline is DeepSeek Harness `dsh-v0.1.2-alpha.1`, 
 | [Cosmokit](https://github.com/shigma/cosmokit) | Vendored utility foundation | [`vendor/README.md`](vendor/README.md) and [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) | Same vendored-package boundary |
 | [Schemastery](https://github.com/shigma/schemastery) | Vendored schema foundation | [`vendor/README.md`](vendor/README.md) and [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) | Same vendored-package boundary |
 
-The inherited vendor manifest records exact snapshot commits from DSH forks. Some historical fork repositories are no longer public, so DuraSH preserves those commit identifiers as provenance while update detection uses the current public package and repository owners above.
+The inherited vendor manifest records exact snapshot commits from DSH forks. Some historical fork repositories are no longer public, so DuraSH preserves those commit identifiers as source evidence while update detection uses the current public package and repository owners above.
 
 The latest DSH baseline also uses [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi) through the registry. Its version is owned by the relevant package manifest and lockfile, and Dependabot monitors it with the rest of the registry dependency graph.
 
