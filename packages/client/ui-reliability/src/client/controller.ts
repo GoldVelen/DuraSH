@@ -6,8 +6,10 @@
 
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { SessionEventSource } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
+  AcceptanceView,
   ReliabilityPolicyConfigureRequest,
   ReliabilityPolicySnapshot,
   ReliabilityThinking,
@@ -15,6 +17,8 @@ import type {
 
 /** Host RPC methods used to read and replace one Session's reliability policy. */
 export interface ReliabilityPolicyRemote {
+  /** Older Remote carriers may not expose acceptance yet. */
+  acceptance?: (request: { sessionId: SessionId }) => Promise<RemoteResult<AcceptanceView | null>>
   policy: (request: { sessionId: SessionId }) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
   ensurePolicy: (request: { sessionId: SessionId }) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
   configure: (request: ReliabilityPolicyConfigureRequest) => Promise<RemoteResult<ReliabilityPolicySnapshot>>
@@ -28,6 +32,8 @@ export interface ReliabilitySessionState {
   readonly status: ReliabilityLoadStatus
   readonly error: string | null
   readonly policy: ReliabilityPolicySnapshot
+  readonly acceptance?: AcceptanceView | null
+  readonly acceptanceError?: string | null
 }
 
 /** Immutable per-Session policy view published to renderer subscribers. */
@@ -41,6 +47,8 @@ export type ReliabilityActionResult =
   | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
 
 type ReliabilityActionFailure = Extract<ReliabilityActionResult, { readonly ok: false }>
+
+const ACCEPTANCE_EVENTS = new Set<string>(['tool/result', 'tool/ptc-dispatch', 'user/message', 'turn/end'])
 
 const EMPTY_SESSIONS: ReadonlyMap<SessionId, ReliabilitySessionState> = new Map()
 const INITIAL: ReliabilityControllerView = Object.freeze({ sessions: EMPTY_SESSIONS })
@@ -89,6 +97,9 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
   private readonly loadPromises = new Map<SessionId, Promise<ReliabilityActionResult>>()
   private readonly ensurePromises = new Map<SessionId, Promise<ReliabilityActionResult>>()
   private readonly configurePromises = new Map<SessionId, Promise<ReliabilityActionResult>>()
+  private readonly acceptanceReads = new Map<SessionId, Promise<ReliabilityActionResult>>()
+  private readonly acceptanceDirty = new Set<SessionId>()
+  private readonly acceptanceSubscriptions = new Map<SessionId, { source: SessionEventSource; stop: () => void }>()
   private disposed = false
 
   constructor(private readonly remote: ReliabilityPolicyRemote) {}
@@ -125,6 +136,56 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     const request = this.readPolicy(sessionId, 'policy')
     this.loadPromises.set(sessionId, request)
     return request.finally(() => { this.loadPromises.delete(sessionId) })
+  }
+
+  /**
+   * Refresh recorded acceptance even when the workflow switch is off.
+   * Concurrent invalidations schedule one further read so an older response
+   * cannot hide a tool settlement that arrived while the request was pending.
+   * @param sessionId - Session whose task to read.
+   * @returns read success or the displayed failure; no model is invoked.
+   */
+  refreshAcceptance(sessionId: SessionId): Promise<ReliabilityActionResult> {
+    if (this.disposed) return Promise.resolve(DISPOSED)
+    const read = this.remote.acceptance
+    if (read === undefined) return Promise.resolve(OK)
+    const pending = this.acceptanceReads.get(sessionId)
+    if (pending !== undefined) {
+      this.acceptanceDirty.add(sessionId)
+      return pending
+    }
+    const work = async (): Promise<ReliabilityActionResult> => {
+      let result: ReliabilityActionResult
+      do {
+        this.acceptanceDirty.delete(sessionId)
+        result = await this.readAcceptance(sessionId, read)
+      } while (!this.disposed && this.acceptanceDirty.has(sessionId))
+      return result
+    }
+    const request = work().finally(() => { this.acceptanceReads.delete(sessionId) })
+    this.acceptanceReads.set(sessionId, request)
+    return request
+  }
+
+  /**
+   * Follow durable task-affecting events for one displayed Session.
+   * @param sessionId - Session whose evidence changes.
+   * @param source - its existing event-window observable.
+   */
+  observeAcceptance(sessionId: SessionId, source: SessionEventSource): void {
+    if (this.disposed || this.remote.acceptance === undefined) return
+    const current = this.acceptanceSubscriptions.get(sessionId)
+    if (current?.source === source) return
+    current?.stop()
+    const stop = source.subscribe(() => {
+      const change = source.getSnapshot().change
+      if (change.kind === 'settle-assistant') return
+      if (change.kind === 'replace' || change.entries.some(({ event }) =>
+        ACCEPTANCE_EVENTS.has(event.type))) {
+        void this.refreshAcceptance(sessionId)
+      }
+    })
+    this.acceptanceSubscriptions.set(sessionId, { source, stop })
   }
 
   /**
@@ -184,6 +245,35 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
     this.loadPromises.clear()
     this.ensurePromises.clear()
     this.configurePromises.clear()
+    this.acceptanceDirty.clear()
+    for (const subscription of this.acceptanceSubscriptions.values()) subscription.stop()
+    this.acceptanceSubscriptions.clear()
+  }
+
+  private async readAcceptance(
+    sessionId: SessionId,
+    read: NonNullable<ReliabilityPolicyRemote['acceptance']>,
+  ): Promise<ReliabilityActionResult> {
+    try {
+      const response = await read.call(this.remote, { sessionId })
+      if (this.acceptanceDirty.has(sessionId)) return response.ok ? OK : response
+      if (!response.ok) {
+        this.publishSession(sessionId, {
+          ...this.sessionState(sessionId), acceptance: null, acceptanceError: response.error.message,
+        })
+        return response
+      }
+      this.publishSession(sessionId, {
+        ...this.sessionState(sessionId), acceptance: response.value, acceptanceError: null,
+      })
+      return OK
+    } catch (error) {
+      const result = transportFailure(error, 'Acceptance read failed')
+      this.publishSession(sessionId, {
+        ...this.sessionState(sessionId), acceptance: null, acceptanceError: result.error.message,
+      })
+      return result
+    }
   }
 
   private async readPolicy(sessionId: SessionId, method: 'policy' | 'ensurePolicy'): Promise<ReliabilityActionResult> {
@@ -244,7 +334,7 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
       || (snapshot.revision === current.policy.revision && snapshot.updatedAt < current.policy.updatedAt)
     this.publishSession(sessionId, older
       ? { ...current, status: 'ready', error: null }
-      : { status: 'ready', error: null, policy: snapshot })
+      : { ...current, status: 'ready', error: null, policy: snapshot })
   }
 
   private publishSession(sessionId: SessionId, state: ReliabilitySessionState): void {

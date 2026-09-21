@@ -3,6 +3,16 @@ export const NS = 'reliability'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'acceptance.pending': '未满足验收',
+  'acceptance.checksPassed': '检查通过',
+  'acceptance.accepted': '已验收',
+  'acceptance.notReviewed': '未独立审查',
+  'acceptance.approved': '独立审查通过',
+  'acceptance.changesRequested': '独立审查要求修改',
+  'acceptance.reasons': '未完成原因',
+  'acceptance.risks': '测试变化风险',
+  'acceptance.unavailable': '验收状态未核验',
+
   'workflow.label': '工作流',
   'workflow.on': '开',
   'workflow.off': '关',
@@ -41,6 +51,16 @@ export type ReliabilityKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'acceptance.pending': 'Acceptance pending',
+  'acceptance.checksPassed': 'Checks passed',
+  'acceptance.accepted': 'Accepted',
+  'acceptance.notReviewed': 'Not independently reviewed',
+  'acceptance.approved': 'Independent review passed',
+  'acceptance.changesRequested': 'Independent review requested changes',
+  'acceptance.reasons': 'Unmet requirements',
+  'acceptance.risks': 'Test-change risks',
+  'acceptance.unavailable': 'Acceptance status unverified',
+
   'workflow.label': 'Workflow',
   'workflow.on': 'On',
   'workflow.off': 'Off',

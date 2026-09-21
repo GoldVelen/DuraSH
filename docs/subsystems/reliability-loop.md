@@ -2,9 +2,11 @@
 
 English | [中文](reliability-loop.zh.md)
 
-[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) owns DuraSH's first reliability-engine slice: one bounded implement-review-rework cycle driven over the workflow seam, with the loop's whole state machine held as one durable record in the `reliability_loop` storage domain. It composes only into the `durash` profile, registers no tools or prompt sections, and contributes no model context of its own.
+[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) owns DuraSH's reliability workflow and task evidence: one bounded implement-review-rework cycle driven over the workflow seam, with the loop's whole state machine held as one durable record in the `reliability_loop` storage domain. It composes only into the `durash` profile, registers no tools or prompt sections, and contributes no model context of its own.
 
 Source: [`packages/reliability/durash-reliability-loop/src/types.ts`](../../packages/reliability/durash-reliability-loop/src/types.ts)
+
+`AcceptanceView` distinguishes `pending`, `checks-passed` and `accepted`, carries the independent-review verdict, and lists mechanical blockers and unreviewed test-change risks. `EvidenceIO` supplies policy-aware command execution and exact byte reads in one execution world. `TargetProbe` is a trusted adapter receiving those capabilities, cwd, selectors and cancellation; it returns an observed adapter id, content digest and detail. [Task acceptance evidence](../../packages/reliability/durash-reliability-loop/README.md#task-acceptance-evidence) defines the persisted requirements and receipt semantics.
 
 ## Public types
 
@@ -61,6 +63,8 @@ interface ReviewAttempt {
   readonly round: LoopRound
   /** The reviewer's decision. */
   readonly verdict: ReviewVerdict
+  /** The model's verdict before required-check enforcement, when acceptance is attached. */
+  readonly modelVerdict?: ReviewVerdict | undefined
   /** The reviewer's evidence; a `changes-requested` verdict names the required modifications. */
   readonly feedback: string
   /** How many `agent()` calls the stage run accepted. */
@@ -81,6 +85,10 @@ interface ReliabilityLoopRecord {
   readonly loopId: ReliabilityLoopId
   /** What the implementation must achieve, verbatim from the caller. */
   readonly objective: string
+  /** Optional task whose execution evidence must pass before completion. */
+  readonly acceptanceTaskId?: AcceptanceTaskId | undefined
+  /** Bounded diagnostic handoff when the single rework remains blocked. */
+  readonly diagnostic?: string | undefined
   /** Creation instant, ISO-8601. */
   readonly createdAt: string
   /** Current stage. */
@@ -111,6 +119,8 @@ interface ReliabilityLoopStartRequest {
   parent: Agent
   /** What the implementation must achieve; bounded by `maxHandoffChars`. */
   objective: string
+  /** Optional persistent acceptance task; omission preserves ordinary workflow behavior. */
+  acceptanceTaskId?: AcceptanceTaskId | undefined
   /** Implementation-stage child route; omitted children inherit the parent. */
   implementation?: ReliabilityLoopLane
   /** Review-stage child route; omitted children inherit the parent. */
@@ -296,9 +306,28 @@ list(): ReliabilityLoopRecord[]
  * @returns the record, or `undefined` when unknown.
  */
 get(loopId: ReliabilityLoopId): ReliabilityLoopRecord | undefined
+
+/** Read current host acceptance without starting a model.
+ * @param sessionId - root session identifier.
+ * @returns current acceptance status, or null for an undeclared task.
+ */
+async acceptanceView(sessionId: string): Promise<AcceptanceView | null>
+
+/** Register a trusted target probe; model tools cannot register adapters.
+ * @param name - deployment-owned adapter identifier.
+ * @param probe - observer using the task execution world.
+ * @returns disposer restoring the registry.
+ */
+registerTargetAdapter(name: string, probe: TargetProbe): () => void
+
+/** Create policy-aware command and file capabilities in the current execution world.
+ * @param session - calling session; absent probes use read-only policy.
+ * @returns capabilities; missing tools remain explicit failures.
+ */
+evidenceIO(session?: Session): EvidenceIO
 ```
 
-Types: [Agent](core.md)
+Types: [Agent](core.md) · [Session](session.md)
 
 Source: [`packages/reliability/durash-reliability-loop/src/index.ts`](../../packages/reliability/durash-reliability-loop/src/index.ts)
 
@@ -329,6 +358,13 @@ enabledRoutes(sessionId: SessionId): { readonly implementation: ReliabilityLaneR
  * @returns the snapshot the composer switch renders.
  */
 @Remote('policy') policy(request: ReliabilityPolicyRequest): Promise<ReliabilityPolicySnapshot>
+
+/**
+ * Read current task acceptance without starting a workflow or model call.
+ * @param request - Session whose recorded checks to inspect.
+ * @returns the evaluated task, or null when the runtime or task is absent.
+ */
+@Remote('acceptance') acceptance(request: ReliabilityPolicyRequest): Promise<AcceptanceView | null>
 
 /**
  * Ensure a durable row exists, then return it with the current catalog.

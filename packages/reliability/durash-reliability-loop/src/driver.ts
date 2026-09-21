@@ -26,7 +26,7 @@ import {
 import type { ImplementReport, ReviewReport } from './scripts.ts'
 import { isTerminalStage } from './types.ts'
 import type {
-  ImplementAttempt, LoopRound, ReliabilityLoopId, ReliabilityLoopRecord, ReviewAttempt,
+  ImplementAttempt, LoopRound, ReliabilityLoopId, ReliabilityLoopRecord, ReviewAttempt, RuntimeAcceptanceGate, RuntimeAcceptanceStatus,
 } from './types.ts'
 
 /** Render a thrown value without trusting it. */
@@ -62,10 +62,12 @@ export class LoopDriver {
   private settleResolve!: (record: ReliabilityLoopRecord) => void
   private settleReject!: (error: unknown) => void
   private settled = false
+  private readonly acceptanceCancellation = new AbortController()
   private cancelRequested = false
   private cancelReason: string | undefined
   private currentRun: WorkflowRun | undefined
   private disposePromise: Promise<void> | undefined
+  private acceptanceStatus: RuntimeAcceptanceStatus | undefined
 
   constructor(
     private readonly engine: WorkflowEngine,
@@ -73,6 +75,7 @@ export class LoopDriver {
     private readonly parent: Agent,
     private readonly maxHandoffChars: number,
     loopId: ReliabilityLoopId,
+    private readonly acceptance?: RuntimeAcceptanceGate,
   ) {
     this.loopId = loopId
     this.result = new Promise<ReliabilityLoopRecord>((resolve, reject) => {
@@ -89,6 +92,7 @@ export class LoopDriver {
   cancel(reason?: string): void {
     if (this.cancelRequested) return
     this.cancelRequested = true
+    this.acceptanceCancellation.abort(reason)
     this.cancelReason = reason ?? 'reliability loop cancelled'
     this.currentRun?.cancel(this.cancelReason)
   }
@@ -155,9 +159,21 @@ export class LoopDriver {
   /** Execute one stage: start its run, await settlement, dispose, apply the transition. */
   private async runStage(kind: 'implement' | 'review', round: LoopRound): Promise<void> {
     const record = this.requireRecord()
-    const request = this.stageRequest(kind, round, record)
     let run: WorkflowRun
     try {
+      const request = this.stageRequest(kind, round, record)
+      if (record.acceptanceTaskId !== undefined) {
+        if (this.acceptance === undefined) throw new Error('Acceptance evidence is unverified: acceptance service unavailable')
+        if (kind === 'review') {
+          this.acceptanceStatus = await this.acceptance.inspect(record.acceptanceTaskId, this.acceptanceCancellation.signal)
+          request.prompt += `\n\nCandidate: ${this.acceptanceStatus.candidateKey}\n${this.acceptanceStatus.index}`
+        }
+        request.prompt += `\n\nAcceptance task: ${record.acceptanceTaskId}. Use dsh_acceptance status for this task to open the original diff, execution records, and attachments. Required checks cannot be replaced by summaries.`
+        if (request.prompt.length > this.maxHandoffChars) {
+          throw new Error(`complete ${kind} prompt exceeds the ${this.maxHandoffChars} handoff bound; use a smaller evidence index`)
+        }
+      }
+      if (this.cancelRequested) return
       run = this.engine.start({
         script: request.script,
         meta: { name: request.metaName, description: STAGE_DESCRIPTIONS[kind] },
@@ -170,6 +186,7 @@ export class LoopDriver {
         parent: this.parent,
       })
     } catch (error) {
+      if (this.cancelRequested) return
       await this.writeRecord({ ...this.requireRecord(), stage: 'failed', settledAt: new Date().toISOString(), error: `${kind} stage run could not start: ${renderThrown(error)}` })
       return
     }
@@ -188,6 +205,7 @@ export class LoopDriver {
 
   /** Map one settled run to its durable transition. */
   private async applySettled(kind: 'implement' | 'review', round: LoopRound, result: WorkflowResult): Promise<void> {
+    if (this.cancelRequested) return
     switch (result.stopReason) {
       case 'completed': {
         const record = this.requireRecord()
@@ -207,18 +225,12 @@ export class LoopDriver {
         return
       }
       case 'cancelled':
-        // A run settles cancelled only through this driver's cancel request,
-        // which sets the flag first; without the flag this is unreachable.
-        if (!this.cancelRequested) {
-          /* v8 ignore next -- unreachable: the engine settles cancelled only via cancel(), and this driver is the only canceller */
-          await this.writeRecord({
-            ...this.requireRecord(),
-            stage: 'failed',
-            settledAt: new Date().toISOString(),
-            error: `${kind} stage run settled cancelled without a local cancel request${result.error === undefined ? '' : `: ${result.error}`}`,
-          })
-        }
-        // With a local cancel request the stage loop writes the terminal stage.
+        await this.writeRecord({
+          ...this.requireRecord(),
+          stage: 'failed',
+          settledAt: new Date().toISOString(),
+          error: `${kind} stage run settled cancelled without a local cancel request${result.error === undefined ? '' : `: ${result.error}`}`,
+        })
         return
       case 'error':
         await this.writeRecord({ ...this.requireRecord(), stage: 'failed', settledAt: new Date().toISOString(), error: result.error ?? `${kind} stage run failed` })
@@ -246,8 +258,38 @@ export class LoopDriver {
       await this.writeRecord({ ...record, implement, stage: round === 1 ? 'reviewing' : 'rework-reviewing' })
       return
     }
-    const { verdict, feedback } = report as ReviewReport
-    const review: ReviewAttempt = { round, verdict, feedback, agentsStarted }
+    const modelReport = report as ReviewReport
+    let { verdict, feedback } = modelReport
+    if (record.acceptanceTaskId !== undefined) {
+      try {
+        if (this.acceptance === undefined || this.acceptanceStatus === undefined) {
+          throw new Error('Acceptance evidence is unverified: no reviewed candidate')
+        }
+        const reviewedCandidate = this.acceptanceStatus.candidateKey
+        this.acceptanceStatus = await this.acceptance.review(
+          record.acceptanceTaskId, verdict, feedback, reviewedCandidate, this.acceptanceCancellation.signal,
+        )
+        if (this.acceptanceStatus.candidateKey !== reviewedCandidate) {
+          this.acceptanceStatus = {
+            ...this.acceptanceStatus, checksPassed: false,
+            reasons: [...this.acceptanceStatus.reasons, 'Candidate identity changed during independent review'],
+          }
+        }
+      } catch (error) {
+        if (this.cancelRequested) return
+        await this.writeRecord({ ...record, stage: 'failed', settledAt: new Date().toISOString(), error: `Acceptance evidence is unverified: ${renderThrown(error)}` })
+        return
+      }
+      if (this.cancelRequested) return
+      if (!this.acceptanceStatus.checksPassed) {
+        verdict = 'changes-requested'
+        feedback = `Host required checks rejected acceptance: ${this.acceptanceStatus.reasons.join('; ')}\nModel review: ${feedback}`.slice(0, this.maxHandoffChars)
+      }
+    }
+    const review: ReviewAttempt = {
+      round, verdict, feedback, agentsStarted,
+      ...record.acceptanceTaskId === undefined ? {} : { modelVerdict: modelReport.verdict },
+    }
     if (verdict === 'approved') {
       await this.writeRecord({ ...record, review, stage: 'completed', settledAt: new Date().toISOString() })
       return
@@ -258,7 +300,23 @@ export class LoopDriver {
     }
     // The single bounded rework still drew changes-requested: stop with the
     // reviewer's feedback as the durable blocker.
-    await this.writeRecord({ ...record, review, stage: 'blocked', settledAt: new Date().toISOString() })
+    await this.writeRecord({ ...record, review, stage: 'blocked', diagnostic: this.diagnostic(record, feedback), settledAt: new Date().toISOString() })
+  }
+
+  /** Bounded handoff after the single rework; model claims remain attributed. */
+  private diagnostic(record: ReliabilityLoopRecord, feedback: string): string {
+    const sections: [string, string][] = [
+      ['Original requirement', record.objective],
+      ['Candidate', this.acceptanceStatus?.candidateKey ?? 'Unknown: no acceptance identity recorded'],
+      ['Confirmed facts', this.acceptanceStatus === undefined ? 'Two implementation and review rounds settled' : `Required checks passed: ${String(this.acceptanceStatus.checksPassed)}`],
+      ['Unconfirmed hypotheses', 'Unknown: no environmental cause independently established'],
+      ['Failure evidence', this.acceptanceStatus?.index ?? 'Unknown: no execution evidence index recorded'],
+      ['Attempted actions (implementer report)', record.implement?.summary ?? 'Unknown'],
+      ['Question for next reviewer', feedback],
+    ]
+    const overhead = sections.map(([label]) => `${label}: \n`).join('').length
+    const share = Math.max(0, Math.floor((this.maxHandoffChars - overhead) / sections.length))
+    return sections.map(([label, value]) => `${label}: ${value.slice(0, share)}`).join('\n').slice(0, this.maxHandoffChars)
   }
 
   /** Build one stage's fixed script, meta name, and prompt from the durable record alone. */

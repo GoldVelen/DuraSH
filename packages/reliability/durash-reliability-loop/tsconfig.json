@@ -4,14 +4,42 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../core/agent" },
-    { "path": "../../util/brand" },
-    { "path": "../../runtime-diagnostics/invariants" },
-    { "path": "../../storage/storage-domain" },
-    { "path": "../../workflow/workflow" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../runtime-diagnostics/invariants"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../workflow/workflow"
+    },
+    {
+      "path": "../../fs/fs"
+    },
+    {
+      "path": "../../shell/shell"
+    },
+    {
+      "path": "../../sandbox/sandbox-policy"
+    },
+    {
+      "path": "../../core/session"
+    }
   ]
 }

@@ -1,0 +1,9 @@
+version: 1
+scenario: durash-acceptance
+profile: headless
+composition: durash-acceptance
+recording: authored
+header:
+  class: durash-acceptance
+  pin: true
+platform: posix

@@ -78,6 +78,32 @@ function setup(session = state(), container?: HTMLElement) {
 }
 
 describe('WorkflowPolicyDock', () => {
+  it('shows unresolved checks and test risks even when the workflow is off', () => {
+    setup({ ...state(), acceptance: {
+      taskId: 'task-direct', status: 'pending', checksPassed: false,
+      independentReview: 'not-reviewed',
+      reasons: ['Final full suite failed'], risks: ['A test assertion was removed'],
+    } })
+    expect(screen.getByText('未满足验收')).toBeTruthy()
+    expect(screen.getByText('未独立审查')).toBeTruthy()
+    expect(screen.getByText('Final full suite failed')).toBeTruthy()
+    expect(screen.getByText('A test assertion was removed')).toBeTruthy()
+    expect(screen.queryByText('已验收')).toBeNull()
+  })
+
+  it('separates checks passed from independent review and hides status without a task', () => {
+    const view = setup({ ...state(), acceptance: {
+      taskId: 'task-direct', status: 'checks-passed', checksPassed: true,
+      independentReview: 'not-reviewed', reasons: [], risks: [],
+    } })
+    expect(screen.getByText('检查通过')).toBeTruthy()
+    expect(screen.getByText('未独立审查')).toBeTruthy()
+    expect(screen.queryByText('已验收')).toBeNull()
+    view.unmount()
+    setup()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
   it('renders the composer chip off by default and loads policy', () => {
     const { loadPolicy } = setup()
     expect(screen.getByRole('button', { name: '工作流设置' }).textContent).toContain('工作流')

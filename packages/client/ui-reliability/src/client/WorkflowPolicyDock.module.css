@@ -495,3 +495,25 @@
   cursor: default;
   opacity: 0.6;
 }
+
+.acceptance {
+  max-width: 360px;
+  margin-inline-start: 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.acceptance summary {
+  cursor: pointer;
+}
+
+.acceptance summary span + span {
+  margin-inline-start: 8px;
+}
+
+.acceptance ul {
+  margin: 4px 0;
+  padding-inline-start: 18px;
+}

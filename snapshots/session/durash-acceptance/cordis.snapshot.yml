@@ -1,0 +1,23 @@
+# Only model responses and the UUID entropy source are controlled; checks use real Git and shell.
+- id: llm-deepseek
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- insert:
+    - id: llm-replay
+      name: '@deepseek-ai/dsh-llm-replay'
+      config:
+        providers:
+          - id: deepseek-official
+            name: DeepSeek
+            models:
+              - id: deepseek-v4-flash
+              - id: deepseek-v4-pro
+    - id: durash-reliability-loop
+      name: '@durash/dsh-reliability-loop'
+    - id: durash-reliability-policy
+      name: '@durash/dsh-reliability-policy'
+    - id: durash-tool-reliability
+      name: '@durash/dsh-tool-reliability'
+    - id: acceptance-fixture
+      name: './acceptance-fixture.mjs'

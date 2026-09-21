@@ -71,12 +71,24 @@ describe('reliability loop change-event invariants', () => {
     }) }).toThrow(invariantViolation)
   })
 
+  it('accepts the completed rework record emitted by the production driver', async () => {
+    const { ctx } = await setup()
+    const value = { ...validRecord, stage: 'completed' as const,
+      implement: { round: 2 as const, summary: 'fixed original failure', agentsStarted: 1 },
+      review: { round: 2 as const, verdict: 'approved' as const, feedback: 'reviewed', agentsStarted: 1 },
+      settledAt: new Date().toISOString() }
+    expect(() => { assertReliabilityLoopRecord(value) }).not.toThrow()
+    expect(() => { ctx.emit('domain/changed', {
+      domain: 'reliability_loop', table: 'loops', key: 'loop-1', operation: 'put', value,
+    }) }).not.toThrow()
+  })
+
   it('rejects unknown stages, orphan reviews, and round-two work without rework', async () => {
     const { ctx } = await setup()
     for (const value of [
       { ...validRecord, stage: 'unknown' },
       { ...validRecord, stage: 'reviewing', review: { round: 1, verdict: 'approved' } },
-      { ...validRecord, stage: 'completed', implement: { round: 2 }, review: { round: 2, verdict: 'approved' } },
+      { ...validRecord, stage: 'completed', implement: { round: 2 }, review: { round: 1, verdict: 'approved' } },
     ]) {
       expect(() => { ctx.emit('domain/changed', {
         domain: 'reliability_loop', table: 'loops', key: 'loop-1', operation: 'put', value,

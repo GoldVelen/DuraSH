@@ -37,6 +37,9 @@
     },
     {
       "path": "../../reliability/durash-reliability-policy"
+    },
+    {
+      "path": "../../api/session-controller/tsconfig.client.json"
     }
   ]
 }

@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { ReliabilityLoopId } from './types.ts'
 import type { ReliabilityLoopRecord } from './types.ts'
+import type { AcceptanceTaskId } from './acceptance-schema.ts'
 
 /** Loop id schema at the durable boundary; branding has no runtime representation. */
 const loopId = z.string().transform(ReliabilityLoopId)
@@ -43,6 +44,7 @@ export const implementAttempt = z.object({
 export const reviewAttempt = z.object({
   round: loopRound,
   verdict: reviewVerdict,
+  modelVerdict: reviewVerdict.optional(),
   feedback: z.string(),
   agentsStarted: z.number().int().nonnegative(),
 })
@@ -51,6 +53,8 @@ export const reviewAttempt = z.object({
 export const reliabilityLoopRecord = z.object({
   loopId,
   objective: z.string(),
+  acceptanceTaskId: z.string().transform(value => value as AcceptanceTaskId).optional(),
+  diagnostic: z.string().optional(),
   createdAt: z.string(),
   stage: loopStage,
   implement: implementAttempt.optional(),

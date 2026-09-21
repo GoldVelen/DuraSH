@@ -380,7 +380,7 @@ export function WorkflowPolicyDock({
   usePolicy, readPolicy, loadPolicy, ensurePolicy, configure, sessionId, t,
 }: WorkflowPolicyDockProps) {
   const workflow = usePolicy(snapshot => snapshot.sessions.get(sessionId))
-  const state = workflow ?? {
+  const state: ReliabilitySessionState = workflow ?? {
     status: 'cold' as const,
     error: null,
     policy: {
@@ -673,6 +673,36 @@ export function WorkflowPolicyDock({
           <IconChevronDownOutline14 />
         </span>
       </button>
+      {state.acceptanceError == null ? null : (
+        <span className={css.acceptance} role="status" title={state.acceptanceError}>
+          {t('acceptance.unavailable')}
+        </span>
+      )}
+      {state.acceptance == null ? null : (
+        <details className={css.acceptance} data-acceptance-status={state.acceptance.status}>
+          <summary role="status">
+            <span>{t(state.acceptance.status === 'accepted'
+              ? 'acceptance.accepted'
+              : state.acceptance.checksPassed ? 'acceptance.checksPassed' : 'acceptance.pending')}</span>
+            <span>{t(state.acceptance.independentReview === 'approved'
+              ? 'acceptance.approved'
+              : state.acceptance.independentReview === 'changes-requested'
+                ? 'acceptance.changesRequested' : 'acceptance.notReviewed')}</span>
+          </summary>
+          {state.acceptance.reasons.length === 0 ? null : (
+            <div>
+              <strong>{t('acceptance.reasons')}</strong>
+              <ul>{state.acceptance.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul>
+            </div>
+          )}
+          {state.acceptance.risks.length === 0 ? null : (
+            <div>
+              <strong>{t('acceptance.risks')}</strong>
+              <ul>{state.acceptance.risks.map((risk, index) => <li key={index}>{risk}</li>)}</ul>
+            </div>
+          )}
+        </details>
+      )}
       {panel === null ? null : createPortal(panel, document.body)}
     </div>
   )

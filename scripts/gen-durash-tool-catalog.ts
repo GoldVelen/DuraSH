@@ -31,9 +31,9 @@ export const DURASH_TOOL_PACKAGES: ToolPackage[] = [
       'ctx.agents',
       'ctx.reliabilityPolicy',
       'ctx.reliabilityLoopRuntime',
-      'a live enabled root Agent at execution time',
+      'a calling Agent; enabled root policy for handoff only',
     ],
-    writes: ['tool/call', 'reliability-loop durable state and child Session events', 'tool/result'],
+    writes: ['tool/call', 'reliability-loop and acceptance durable state', 'child Session events for handoff', 'tool/result'],
     async mount(ctx) {
       // Registration only needs the service identities. Execution is
       // unreachable while harvesting schemas, so inert doubles keep the
@@ -49,7 +49,7 @@ export const DURASH_TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolReliability)
     },
     note:
-      'Shipped only by the `durash` profile. Its schema is process-wide; execution fails closed unless the current Session policy is enabled with both implementation and review routes.',
+      'Shipped by the `durash` profile. Evidence tools work without workflow enablement or additional model calls; only handoff requires enabled implementation and review routes.',
   },
 ]
 

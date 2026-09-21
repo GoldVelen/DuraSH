@@ -65,7 +65,9 @@ async function setup(options: {
       }
       : undefined,
   })
-  ctx.provide('reliabilityLoopRuntime', { start })
+  ctx.provide('reliabilityLoopRuntime', {
+    start, acceptance: { activeTask: () => undefined }, acceptanceView: () => Promise.resolve(null),
+  })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(tool)

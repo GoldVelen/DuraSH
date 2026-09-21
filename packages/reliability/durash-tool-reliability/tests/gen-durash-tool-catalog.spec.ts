@@ -21,7 +21,7 @@ describe('DuraSH tool catalog', () => {
   it('harvests the authored DuraSH tool names', async () => {
     const catalog = await collectDurashToolCatalog()
     const names = catalog.flatMap(entry => entry.schemas.map(schema => schema.name)).sort()
-    expect(names).toEqual(['dsh_reliability_handoff'])
+    expect(names).toEqual(['dsh_acceptance', 'dsh_reliability_handoff'])
     expect(catalog.map(entry => entry.pkg)).toEqual(['@durash/dsh-tool-reliability'])
     const markdown = renderDurash(catalog)
     expect(markdown).toContain('A completeness guard globs `packages/*/durash-tool-*`')

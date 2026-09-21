@@ -5,6 +5,7 @@
  * @module @durash/dsh-tool-reliability
  */
 
+import { registerAcceptanceTool } from './acceptance.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -53,6 +54,7 @@ function compactRecord(record: ReliabilityLoopRecord) {
   return {
     status: record.stage,
     summary: compactText(summary, COMPACT_SUMMARY_CHARS),
+    ...record.diagnostic === undefined ? {} : { diagnostic: record.diagnostic },
     ...record.review === undefined ? {} : { verdict: record.review.verdict },
   }
 }
@@ -80,6 +82,11 @@ function requireRootHandoff(ctx: Context, exec: ToolRunContext) {
 
 /** Loader entrypoint: contribute the gated reliability handoff tool. */
 export function apply(ctx: Context): void {
+  registerAcceptanceTool(ctx)
+  ctx.systemPrompt.section({
+    name: 'tool:acceptance-evidence', order: SECTION_ORDER + 1,
+    text: 'For implementation tasks with required validation, declare requirements with dsh_acceptance before running checks. Preserve user requirements with verbatim quotations; distinguish model plans. Confirm the failing target identity before diagnosing. Separate facts, inferences, and unknowns. Fix the original failure path without lowering the pass criteria. Run focused checks first, then required full checks on the stable candidate. Inspect status and test-standard risks before claiming acceptance. A passed command is not independent review or UI evidence. Ordinary questions need no acceptance plan.',
+  })
   ctx.systemPrompt.section({
     name: 'tool:reliability-handoff',
     order: SECTION_ORDER,
@@ -109,6 +116,7 @@ export function apply(ctx: Context): void {
           status: { type: 'string', required: true },
           summary: { type: 'string', required: true },
           verdict: { type: 'string' },
+          diagnostic: { type: 'string' },
         },
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -126,9 +134,11 @@ export function apply(ctx: Context): void {
           'RELIABILITY_TOOL_DISABLED',
         )
       }
+      const acceptanceTaskId = ctx.reliabilityLoopRuntime.acceptance.activeTask(agent.id)
       const handle = await ctx.reliabilityLoopRuntime.start({
         parent: agent,
         objective,
+        ...acceptanceTaskId ? { acceptanceTaskId } : {},
         implementation: routes.implementation,
         review: routes.review,
       })

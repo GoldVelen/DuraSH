@@ -7,6 +7,7 @@
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { AcceptanceTaskId } from './acceptance-schema.ts'
 
 /** Identifies one reliability loop across restarts (runtime-minted UUID). */
 export type ReliabilityLoopId = Branded<'ReliabilityLoopId'>
@@ -79,6 +80,8 @@ export interface ReviewAttempt {
   readonly round: LoopRound
   /** The reviewer's decision. */
   readonly verdict: ReviewVerdict
+  /** The model's verdict before required-check enforcement, when acceptance is attached. */
+  readonly modelVerdict?: ReviewVerdict | undefined
   /** The reviewer's evidence; a `changes-requested` verdict names the required modifications. */
   readonly feedback: string
   /** How many `agent()` calls the stage run accepted. */
@@ -97,6 +100,10 @@ export interface ReliabilityLoopRecord {
   readonly loopId: ReliabilityLoopId
   /** What the implementation must achieve, verbatim from the caller. */
   readonly objective: string
+  /** Optional task whose execution evidence must pass before completion. */
+  readonly acceptanceTaskId?: AcceptanceTaskId | undefined
+  /** Bounded diagnostic handoff when the single rework remains blocked. */
+  readonly diagnostic?: string | undefined
   /** Creation instant, ISO-8601. */
   readonly createdAt: string
   /** Current stage. */
@@ -162,8 +169,44 @@ export interface ReliabilityLoopStartRequest {
   parent: Agent
   /** What the implementation must achieve; bounded by `maxHandoffChars`. */
   objective: string
+  /** Optional persistent acceptance task; omission preserves ordinary workflow behavior. */
+  acceptanceTaskId?: AcceptanceTaskId | undefined
   /** Implementation-stage child route; omitted children inherit the parent. */
   implementation?: ReliabilityLoopLane
   /** Review-stage child route; omitted children inherit the parent. */
   review?: ReliabilityLoopLane
+}
+
+/** Runtime observations supplied to the loop before and after independent review. */
+export interface RuntimeAcceptanceStatus {
+  /** Whether required evidence currently satisfies the declared checks. */
+  checksPassed: boolean
+  /** Source and target identity reviewed; revalidated after the reviewer settles. */
+  candidateKey: string
+  /** Mechanical blockers, distinct from the reviewer's semantic assessment. */
+  reasons: string[]
+  /** Bounded index of original diff, execution records, attachments, and test-change risks. */
+  index: string
+}
+
+/** Task acceptance operations consumed by the existing workflow driver. */
+export interface RuntimeAcceptanceGate {
+  /**
+   * Inspect evidence and current candidate before giving the reviewer its index.
+   * @param taskId - the persistent acceptance task.
+   * @param signal - cancels source, artifact, and target inspection.
+   * @returns current observations without accepting the task.
+   */
+  inspect(taskId: AcceptanceTaskId, signal?: AbortSignal): Promise<RuntimeAcceptanceStatus>
+  /**
+   * Record independent review and recheck evidence against the reviewed candidate.
+   * @param taskId - the persistent acceptance task.
+   * @param verdict - the independent model's decision.
+   * @param feedback - its bounded explanation.
+   * @param candidateKey - the identity handed to that reviewer.
+   * @returns current observations; changed identity or missing evidence cannot pass.
+   */
+  review(
+    taskId: AcceptanceTaskId, verdict: ReviewVerdict, feedback: string, candidateKey: string, signal?: AbortSignal,
+  ): Promise<RuntimeAcceptanceStatus>
 }

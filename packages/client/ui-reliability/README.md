@@ -27,6 +27,8 @@ This package renders the composer **Workflow** on/off chip. Opening it shows the
 
 Mount this plugin with the conversation input-left list and the reliability-policy Remote. The chip is always visible in a Session composer. Off is the default; turning it on requires both lanes to name catalog models.
 
+Recorded task acceptance stays visible beside the chip even when the workflow is off. It separates checks passed, independent review, and acceptance; expanding it shows unmet requirements and test-change risks. The controller refreshes after tool results and turn settlement, and displays an unverified state when the Host read fails. Sessions without an acceptance task show no acceptance indicator. Reading this state never invokes another model.
+
 -----
 
 <a id="understand-the-implementation"></a>

@@ -3789,10 +3789,18 @@ export interface Config {
    * artifact fails the stage loud (default 16384).
    */
   maxHandoffChars?: number
+  /** Maximum retained command attempts per task. */
+  maxEvidenceAttempts?: number
+  /** Maximum recorded plan revisions per task. */
+  maxAcceptanceRevisions?: number
+  /** Maximum raw command receipt characters. */
+  maxEvidenceChars?: number
+  /** Maximum bytes read from any evidence input file. */
+  maxEvidenceFileBytes?: number
 }
 ```
 
-来源：[`packages/reliability/durash-reliability-loop/src/index.ts:36`](../packages/reliability/durash-reliability-loop/src/index.ts)
+来源：[`packages/reliability/durash-reliability-loop/src/index.ts:49`](../packages/reliability/durash-reliability-loop/src/index.ts)
 
 ## 无配置的可加载插件
 

@@ -6,6 +6,7 @@
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -40,14 +41,23 @@ function registerUi(ctx: ClientContext): void {
     id: 'workflow',
     order: 20,
     locale: NS,
-    inject: (sessionId): WorkflowPolicyDockInjected => ({
-      hooks: { policy: controller },
-      readPolicy: () => controller.sessionState(sessionId),
-      loadPolicy: () => controller.loadPolicy(sessionId),
-      ensurePolicy: () => controller.ensurePolicy(sessionId),
-      configure: request => controller.configure(request),
-      sessionId,
-    }),
+    inject: (sessionId): WorkflowPolicyDockInjected => {
+      const binding = ctx.get('sessions')?.binding(sessionId)
+      if (binding !== undefined) controller.observeAcceptance(sessionId, binding.eventSource)
+      return {
+        hooks: { policy: controller },
+        readPolicy: () => controller.sessionState(sessionId),
+        loadPolicy: async () => {
+          const [policy] = await Promise.all([
+            controller.loadPolicy(sessionId), controller.refreshAcceptance(sessionId),
+          ])
+          return policy
+        },
+        ensurePolicy: () => controller.ensurePolicy(sessionId),
+        configure: request => controller.configure(request),
+        sessionId,
+      }
+    },
   }, WorkflowPolicyDock))
 }
 

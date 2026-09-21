@@ -1681,6 +1681,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'loopId', description: 'the loop\'s id.' }],
         returns: 'the record, or `undefined` when unknown.',
       },
+      {
+        signature: 'async acceptanceView(sessionId: string): Promise<AcceptanceView | null>',
+        description: 'Read current host acceptance without starting a model.',
+        parameters: [{ name: 'sessionId', description: 'root session identifier.' }],
+        returns: 'current acceptance status, or null for an undeclared task.',
+      },
+      {
+        signature: 'registerTargetAdapter(name: string, probe: TargetProbe): () => void',
+        description: 'Register a trusted target probe; model tools cannot register adapters.',
+        parameters: [{ name: 'name', description: 'deployment-owned adapter identifier.' }, { name: 'probe', description: 'observer using the task execution world.' }],
+        returns: 'disposer restoring the registry.',
+      },
+      {
+        signature: 'evidenceIO(session?: Session): EvidenceIO',
+        description: 'Create policy-aware command and file capabilities in the current execution world.',
+        parameters: [{ name: 'session', description: 'calling session; absent probes use read-only policy.' }],
+        returns: 'capabilities; missing tools remain explicit failures.',
+      },
     ],
   },
   {
@@ -1705,6 +1723,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Read the Session policy and the current LLM catalog.',
         parameters: [{ name: 'request', description: 'Session identity.' }],
         returns: 'the snapshot the composer switch renders.',
+      },
+      {
+        signature: '@Remote(\'acceptance\') acceptance(request: ReliabilityPolicyRequest): Promise<AcceptanceView | null>',
+        description: 'Read current task acceptance without starting a workflow or model call.',
+        parameters: [{ name: 'request', description: 'Session whose recorded checks to inspect.' }],
+        returns: 'the evaluated task, or null when the runtime or task is absent.',
       },
       {
         signature: '@Remote(\'ensurePolicy\') ensurePolicy(request: ReliabilityPolicyRequest): Promise<ReliabilityPolicySnapshot>',
@@ -4092,6 +4116,10 @@ export const EVENT_API: readonly EventApiEntry[] = [
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
+    name: 'AcceptanceTaskId',
+    declaration: 'export type AcceptanceTaskId = Branded<\'AcceptanceTaskId\'>;',
+  },
+  {
     name: 'AdapterRegistrationHandle',
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
@@ -4786,6 +4814,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'EvidenceIO',
+    declaration: 'export interface EvidenceIO {\n    run(command: string, cwd: string, signal: AbortSignal): Promise<{\n        exitCode: number | null;\n        stdout: string;\n        stderr: string;\n        incomplete: boolean;\n        raw?: unknown;\n    }>;\n    read(path: string, signal: AbortSignal): Promise<Uint8Array>;\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -5645,7 +5677,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReliabilityLoopRecord',
-    declaration: 'export interface ReliabilityLoopRecord {\n    readonly loopId: ReliabilityLoopId;\n    readonly objective: string;\n    readonly createdAt: string;\n    readonly stage: ReliabilityLoopStage;\n    readonly implement?: ImplementAttempt | undefined;\n    readonly review?: ReviewAttempt | undefined;\n    readonly settledAt?: string | undefined;\n    readonly error?: string | undefined;\n    readonly implementationProvider?: string | undefined;\n    readonly implementationModel?: string | undefined;\n    readonly reviewProvider?: string | undefined;\n    readonly reviewModel?: string | undefined;\n}',
+    declaration: 'export interface ReliabilityLoopRecord {\n    readonly loopId: ReliabilityLoopId;\n    readonly objective: string;\n    readonly acceptanceTaskId?: AcceptanceTaskId | undefined;\n    readonly diagnostic?: string | undefined;\n    readonly createdAt: string;\n    readonly stage: ReliabilityLoopStage;\n    readonly implement?: ImplementAttempt | undefined;\n    readonly review?: ReviewAttempt | undefined;\n    readonly settledAt?: string | undefined;\n    readonly error?: string | undefined;\n    readonly implementationProvider?: string | undefined;\n    readonly implementationModel?: string | undefined;\n    readonly reviewProvider?: string | undefined;\n    readonly reviewModel?: string | undefined;\n}',
   },
   {
     name: 'ReliabilityLoopStage',
@@ -5653,7 +5685,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReliabilityLoopStartRequest',
-    declaration: 'export interface ReliabilityLoopStartRequest {\n    parent: Agent;\n    objective: string;\n    implementation?: ReliabilityLoopLane;\n    review?: ReliabilityLoopLane;\n}',
+    declaration: 'export interface ReliabilityLoopStartRequest {\n    parent: Agent;\n    objective: string;\n    acceptanceTaskId?: AcceptanceTaskId | undefined;\n    implementation?: ReliabilityLoopLane;\n    review?: ReliabilityLoopLane;\n}',
   },
   {
     name: 'ReliabilityModelBadge',
@@ -5761,7 +5793,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReviewAttempt',
-    declaration: 'export interface ReviewAttempt {\n    readonly round: LoopRound;\n    readonly verdict: ReviewVerdict;\n    readonly feedback: string;\n    readonly agentsStarted: number;\n}',
+    declaration: 'export interface ReviewAttempt {\n    readonly round: LoopRound;\n    readonly verdict: ReviewVerdict;\n    readonly modelVerdict?: ReviewVerdict | undefined;\n    readonly feedback: string;\n    readonly agentsStarted: number;\n}',
   },
   {
     name: 'ReviewVerdict',
@@ -6722,6 +6754,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TableValueOf',
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
+  },
+  {
+    name: 'TargetObservation',
+    declaration: 'export interface TargetObservation {\n    adapter: string;\n    digest: string;\n    detail: string;\n    identity?: Record<string, string>;\n}',
+  },
+  {
+    name: 'TargetProbe',
+    declaration: 'export type TargetProbe = (io: EvidenceIO, cwd: string, options: Record<string, string>, signal: AbortSignal) => Promise<TargetObservation>;',
   },
   {
     name: 'TeamId',

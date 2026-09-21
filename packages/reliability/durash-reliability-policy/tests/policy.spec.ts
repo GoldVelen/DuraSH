@@ -82,6 +82,22 @@ async function seededHarness(
 const SESSION = SessionId('session-workflow')
 
 describe('durash-reliability-policy', () => {
+  it('reads acceptance while workflow is disabled and preserves missing runtime as no task', async () => {
+    const { ctx, policy } = await harness()
+    await expect(policy.acceptance({ sessionId: SESSION })).resolves.toBeNull()
+    const view = {
+      taskId: 'task-direct', status: 'pending' as const, checksPassed: false,
+      independentReview: 'not-reviewed' as const,
+      reasons: ['Required full suite failed'], risks: ['Assertion removed'],
+    }
+    ctx.provide('reliabilityLoopRuntime', { acceptanceView: async (sessionId: string) => {
+      expect(sessionId).toBe(SESSION)
+      return view
+    } })
+    expect(policy.workflowEnabled(SESSION)).toBe(false)
+    await expect(policy.acceptance({ sessionId: SESSION })).resolves.toEqual(view)
+  })
+
   it('starts disabled with an empty catalog snapshot', async () => {
     const { policy } = await harness()
     const snapshot = await policy.policy({ sessionId: SESSION })

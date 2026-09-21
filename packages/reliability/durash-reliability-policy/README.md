@@ -29,6 +29,8 @@ Mount this plugin with `ctx.storageDomain` and `ctx.llm`. The composer switch ca
 
 Enabling a Session requires both lanes to name catalog models. A missing or invalid selector cannot stay enabled: the next read turns the row off.
 
+The `acceptance` Remote reads the current task from the optional reliability-loop runtime regardless of workflow enablement. It returns `null` when the runtime or task is absent, forwards evidence-read failures, and never starts a workflow or model call. Acceptance records remain owned by the runtime; the policy service does not duplicate them.
+
 -----
 
 <a id="understand-the-implementation"></a>

@@ -43,6 +43,19 @@ Each stage is one workflow run with a fixed script and one fresh child. The impl
 
 `maxHandoffChars` (default 16384) bounds every artifact crossing a stage boundary — the objective, an implementation summary, reviewer feedback. An oversized artifact fails the stage loud instead of being truncated or accumulated into the next stage's context: each stage child starts fresh and receives only the bounded handoff, never the parent conversation or prior stage transcripts.
 
+<a id="task-acceptance-evidence"></a>
+### Task acceptance evidence
+
+Declare requirements through [`dsh_acceptance`](../durash-tool-reliability/README.md) before validation. User requirements cite actual human messages; their promised outcome, evidence level, required flag, skip preconditions, logical target constraints and external boundary cannot silently change. Commands, source scopes, per-test skip bindings and target build digests/selectors remain adjustable validation plans: revisions preserve the previous definition and factual reason, invalidate affected receipts, and enter semantic review.
+
+The executor records command, cwd, start/end times, exit status, raw results and artifact hashes. Git identity includes scoped tracked/untracked bytes, deletions and executable modes; HEAD is diagnostic only. Before/after identities must agree. Documentation outside the declared inputs does not invalidate check evidence. Tests can require a build check with `buildCheckId`; its source and `produces` artifact bytes must remain current. A focused pass cannot replace the latest failed required full-suite check.
+
+Pytest JUnit and xcresult summary/test-tree results must parse completely. Commands and report paths contain `{run}` for fresh reports, outside source inputs. Every skip needs a `skipBindings` entry matching its exact observed `testId` and `reason`, linked by `prerequisite` to a check in `allowSkipIf` with current non-skipped passing evidence. Unmatched skips and old totals-only receipts remain unverified. JUnit skip ids encode `[classname || suiteName || "", testcaseName]` as JSON; XCTest uses its test node identifier. Missing or ambiguous identities/reasons remain unverified. UI checks need test results and observable-result attachments; logs and file existence do not qualify. Attachments are rehashed before acceptance. Independent review decides whether the tests and attachments actually establish the user outcome.
+
+Trusted target adapters register through `registerTargetAdapter`; models cannot submit successful observations. `ios-local-bundle` reads the `appPath` and embedded `widgetPath` metadata, signed identifiers, shared App Groups, version and content identity. Use `dsh_acceptance` action `target` to observe both `identity` and the content digest. Pin stable `target.constraints` such as `appBundleId`, `widgetBundleId` and `appGroups` (a JSON array string); every constraint must match adapter observations. User constraints and adapter stay fixed. After a rebuild, revise `target.expected` and artifact-path `options` with a reason, then rerun affected checks and review; old evidence cannot pass the new plan. Missing tools, metadata, adapters or unsupported files remain unverified.
+
+Reviewers receive a bounded candidate/diff/receipt index including untracked files and test-standard risks. Added skips, removed assertions, early returns, ambiguous matches and internal-state substitutes are hints requiring semantic judgment. Implementers must give old-test failure evidence, the preserved visible outcome and a negative control with the original defect. Bound workflows require both program checks and independent approval on the same candidate; one unsuccessful rework yields a diagnostic handoff without an automatic escalation model.
+
 ### Config
 
 | Field | Default | Meaning |
@@ -102,7 +115,7 @@ One live driver owns one loop; the runtime enforces it and refuses double owners
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the workflow engine and subagent providers that assemble every stage child request; the runtime contributes no prompt, schema, or result rendering of its own.
+Indirectly, through stage prompts carrying short evidence rules and a bounded task index, with raw receipts opened on demand and no model calls during direct evidence collection.
 
 #### KV Cache effect
 
@@ -113,6 +126,9 @@ No direct invalidation; the workflow engine and the subagent providers own any r
 <a id="known-limitations-and-deferred-work"></a>
 
 - **No model-facing entry in this package** — the composer switch, Session policy, and `dsh_reliability_handoff` tool live in sibling packages in this group.
+- **Semantic scope** — omitted requirements, misleading commands or incomplete input scopes still need independent review; executor receipts are not a sandbox against malicious writers.
+- **Platform and device limits** — probes use POSIX and reject symlinks/submodules. Directory scopes exclude ignored files; declare each ignored configuration input explicitly. Before/after sampling cannot detect a file modified and restored during execution. The iOS adapter verifies local artifacts, not installed-device behavior, permissions or rendered UI; those require a suitable target adapter and observations.
+- **Task lifetime** — one active task per Session; a different objective uses a new Session. Persisted unfinished work is never renamed a human prerequisite.
 - **No member-level durable progress** — the record persists stage transitions, not per-child progress inside a stage run; the workflow engine journals nothing, so a crash mid-stage re-runs that stage.
 - **One implementer, one reviewer** — no coordination stage, three-way review, or per-stage fan-out; those pipeline shapes remain old-fork history on this baseline.
 - **Blocked is final** — a `blocked` loop needs a new loop; there is no durable `needs_replan` round vocabulary yet.

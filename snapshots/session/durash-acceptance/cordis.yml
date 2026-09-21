@@ -1,0 +1,10 @@
+# The headless profile owns execution; the scenario adds the real DuraSH services.
+- insert:
+    - id: durash-reliability-loop
+      name: '@durash/dsh-reliability-loop'
+    - id: durash-reliability-policy
+      name: '@durash/dsh-reliability-policy'
+    - id: durash-tool-reliability
+      name: '@durash/dsh-tool-reliability'
+    - id: acceptance-fixture
+      name: './acceptance-fixture.mjs'

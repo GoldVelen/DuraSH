@@ -14,6 +14,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { reliabilityPolicyDomainSpec } from './spec.ts'
 import type { ReliabilityPolicyRow } from './spec.ts'
 import type {
+  AcceptanceView,
   ReliabilityLaneRoute,
   ReliabilityModelOption,
   ReliabilityPolicyConfigureRequest,
@@ -153,6 +154,19 @@ export class ReliabilityPolicyService extends TypertRemoteService {
   @Remote('policy')
   policy(request: ReliabilityPolicyRequest): Promise<ReliabilityPolicySnapshot> {
     return this.snapshot(request.sessionId, false)
+  }
+
+  /**
+   * Read current task acceptance without starting a workflow or model call.
+   * @param request - Session whose recorded checks to inspect.
+   * @returns the evaluated task, or null when the runtime or task is absent.
+   */
+  @Remote('acceptance')
+  acceptance(request: ReliabilityPolicyRequest): Promise<AcceptanceView | null> {
+    const runtime = this.ctx.get('reliabilityLoopRuntime') as {
+      acceptanceView(sessionId: SessionId): Promise<AcceptanceView | null>
+    } | undefined
+    return runtime === undefined ? Promise.resolve(null) : runtime.acceptanceView(request.sessionId)
   }
 
   /**

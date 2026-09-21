@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/reliability-loop.md
-reliability-loop.md: 8ac29b54d0ff5e877ea25dc7ff9476f46b8d6140
-reliability-loop.zh.md: c8035338565dbcdba75a9755c6147ad4e51bdf93
+reliability-loop.md: 28b26874b455a2c43cbcb6019f3a229da3b1ae62
+reliability-loop.zh.md: fc0bca4df13730cf3c96e4c7d8ccbc806c3f6fad

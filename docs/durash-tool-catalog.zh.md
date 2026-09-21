@@ -17,11 +17,66 @@
 
 | 工具包 | 模型可见名称 | 依赖 | 写入 / 影响 | 随产品发布的别名 | 部署说明 |
 | --- | --- | --- | --- | --- | --- |
-| `@durash/dsh-tool-reliability` | `dsh_reliability_handoff` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agents`, `ctx.reliabilityPolicy`, `ctx.reliabilityLoopRuntime`, `a live enabled root Agent at execution time` | `tool/call`, `reliability-loop durable state and child Session events`, `tool/result` | - | 仅由 `durash` profile 随产品发布。schema 在进程内始终注册；只有当前会话策略已启用并选定实施与审查路由时才允许执行，否则闭门失败。 |
+| `@durash/dsh-tool-reliability` | `dsh_acceptance`, `dsh_reliability_handoff` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agents`, `ctx.reliabilityPolicy`, `ctx.reliabilityLoopRuntime`, `a calling Agent; enabled root policy for handoff only` | `tool/call`, `reliability-loop and acceptance durable state`, `child Session events for handoff`, `tool/result` | - | 由 `durash` profile 提供。证据工具无需开启工作流，也不产生额外模型调用；仅交接工具要求启用实施与审查路由。 |
 
 <a id="durashdsh-tool-reliability"></a>
 
 ## `@durash/dsh-tool-reliability`
+
+### `dsh_acceptance`
+
+Declare acceptance requirements, run a declared check, or read executor evidence. No second model is called. Use plan with JSON requirements before validation; origin=user requires a verbatim quote from the human request and cannot later be weakened. Each requirement has id, origin(user|plan), description, command, scope(relative Git input paths), kind(command|pytest-junit|xcresult), level(process|test|ui), required(boolean), attachments(paths), produces(build output paths), allowSkipIf(check ids). Optional fields: userQuote, reportPath, buildCheckId, externalBoundary, skipBindings([{testId,reason,prerequisite}]), target({adapter,constraints,expected,options}). Each skipped test needs an exact observed testId and reason binding to a check listed in allowSkipIf; a suite-wide prerequisite is insufficient. Target constraints fix logical identity; expected digest and selector options may change with a recorded plan revision, invalidating old evidence. Use action=target to observe identity before pinning constraints and expected. Test reportPath and command must include {run} for fresh unique reports. UI requires observable-result attachments plus semantic review; logs are insufficient. Run accepts only an existing checkId; the host executes its stored command and captures source before execution. Status with checkId opens raw receipts and attachment indexes; status without it gives a bounded overview. TaskId is required for stage children. Plan revisions require a factual reason. Do not convert unresolved work into a human prerequisite or lower success criteria.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "Declare/revise requirements, execute a stored check, or inspect evidence.",
+      "enum": [
+        "plan",
+        "run",
+        "status",
+        "target"
+      ]
+    },
+    "adapter": {
+      "type": "string",
+      "description": "Trusted target adapter to observe before pinning its expected digest, e.g. ios-local-bundle."
+    },
+    "options": {
+      "type": "string",
+      "description": "JSON string map of adapter selectors, e.g. appPath and widgetPath; never a result."
+    },
+    "taskId": {
+      "type": "string",
+      "description": "Task id from the host, especially when working as a workflow child."
+    },
+    "checkId": {
+      "type": "string",
+      "description": "Exact declared check to run or inspect."
+    },
+    "objective": {
+      "type": "string",
+      "description": "Stable task objective when declaring a plan."
+    },
+    "requirements": {
+      "type": "string",
+      "description": "JSON array of task-specific requirements described above; only used by plan."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Facts explaining the initial plan or its revision."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源： [`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts)
 
 ### `dsh_reliability_handoff`
 
@@ -44,4 +99,4 @@ After presenting the implementation plan in the ordinary assistant response, han
 
 来源：[`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts)
 
-仅由 `durash` profile 随产品发布。schema 在进程内始终注册；只有当前会话策略已启用并选定实施与审查路由时才允许执行，否则闭门失败。
+由 `durash` profile 提供。证据工具无需开启工作流，也不产生额外模型调用；仅交接工具要求启用实施与审查路由。

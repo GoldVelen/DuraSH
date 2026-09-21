@@ -1,5 +1,5 @@
 ---
-description: "面向模型的可靠性闭环交接工具，由会话级 composer 工作流开关门控。"
+description: "面向模型的验收证据工具，以及受策略门控的可靠性闭环交接工具。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-reliability` 注册 `dsh_reliability_handoff`。工具在进程内始终存在，但除非本会话的 composer 开关打开，否则会闭门失败。启用后，它用该会话的实施与审查路由启动一次可靠性闭环，并等待终态记录。
+`dsh-tool-reliability` 注册直接验收证据工具 `dsh_acceptance` 和工作流交接工具 `dsh_reliability_handoff`。交接工具在进程内始终存在，但除非本会话的 composer 开关打开，否则会闭门失败。启用后，它用该会话的实施与审查路由启动一次可靠性闭环，并等待终态记录。
 
 ## 目录
 
@@ -25,9 +25,17 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `durash` profile 中与 `ctx.reliabilityPolicy`、`ctx.reliabilityLoopRuntime` 一起组合。指导段落只为策略已启用的根代理组装。
+在 `durash` profile 中与 `ctx.reliabilityPolicy`、`ctx.reliabilityLoopRuntime` 一起组合。交接指导只为策略已启用的根代理组装；证据指导始终可用。
 
 -----
+
+### 直接证据与工作流模式
+
+工作流开关关闭时，请当前模型使用 `dsh_acceptance` 的 `plan` 声明必需检查，以 `run` 执行，再用 `status` 查看。它保留当前模型，包括 Grok，不发起独立模型调用。即使助手文字不同，输入区仍显示宿主检查状态和“未独立审查”。普通问答不需要计划。
+
+工作流开关开启时，选择实施和审查模型，声明同样的任务要求，然后使用 `dsh_reliability_handoff`。它自动绑定活动验收任务。即使模型批准，只要检查或候选、目标身份不符，宿主仍拒绝完成。[运行时参考](../durash-reliability-loop/README.zh.md#task-acceptance-evidence)负责说明收据语义与限制。
+
+使用带 `taskId`、`checkId` 的 `status` 查看检查的已保存定义与原始收据。根会话拥有计划修订权；只有所属根会话及其活动后代能执行或读取任务。变化后的宿主状态会在下一次模型请求前进入已记录的插件上下文。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
@@ -35,7 +43,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-工具要求存活的根代理、该会话上的直接人类用户消息，以及已启用的策略路由。取消工具信号会取消存活闭环。压缩结果是闭环终态、有界摘要，以及存在时的审查裁决。
+交接工具要求存活的根代理、该会话上的直接人类用户消息，以及已启用的策略路由。取消工具信号会取消存活闭环。压缩结果是闭环终态、有界摘要，以及存在时的审查裁决。
 
 本工具不发布运行时 invariant companion，因为它不拥有独立状态或事件流；策略与闭环 companion 负责它所消费的关系。
 

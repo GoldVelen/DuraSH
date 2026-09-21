@@ -79,6 +79,10 @@ export class StageReportError extends Error {
   }
 }
 
+const IMPLEMENT_PRINCIPLES = 'Confirm the failing source, build, and target identity before explaining causes. Separate facts, inference, and unknowns. Fix the original failure path without lowering success criteria. Match evidence to user-visible behavior; logs alone do not show usable UI. Verify narrowly first, then run required full checks once the candidate is stable. If tests change, explain the direct evidence the old test was invalid, the observable outcome retained, and how the replacement fails while the original defect remains.'
+
+const REVIEW_PRINCIPLES = 'Open the original diff, execution results, and necessary attachments; do not rely on the implementation summary. Review skip, assertion, early-return, matching, and observable-behavior changes semantically. Check the implementer explains old-test invalidity, retained user outcomes, and failure with the original defect. Distinguish facts, inference, and unknowns; do not infer an environmental limit until installation, permissions, and configuration differences are excluded.'
+
 /**
  * Compose the round-1 implementation prompt: the objective alone.
  * @param objective - the caller's objective, verbatim.
@@ -89,6 +93,8 @@ export function implementPrompt(objective: string): string {
     'Implement the following objective. Work in the shared workspace and finish with a concise summary of what you changed and how it was verified.',
     '',
     `Objective: ${objective}`,
+    '',
+    IMPLEMENT_PRINCIPLES,
   ].join('\n')
 }
 
@@ -104,6 +110,8 @@ export function implementReworkPrompt(objective: string, feedback: string): stri
     'A previous implementation of the objective below was reviewed and needs modifications. Apply exactly the requested modifications in the shared workspace, keeping the rest of the work intact, and finish with a concise summary of what you changed and how it was verified.',
     '',
     `Objective: ${objective}`,
+    '',
+    IMPLEMENT_PRINCIPLES,
     '',
     `Reviewer feedback to address: ${feedback}`,
   ].join('\n')
@@ -122,6 +130,8 @@ export function reviewPrompt(objective: string, summary: string): string {
     '',
     `Objective: ${objective}`,
     '',
+    REVIEW_PRINCIPLES,
+    '',
     `Implementation summary: ${summary}`,
   ].join('\n')
 }
@@ -139,6 +149,8 @@ export function reworkReviewPrompt(objective: string, summary: string, priorFeed
     'A rework of the objective below was applied to address specific reviewer feedback. Verify the shared workspace yourself, then reply with a verdict: approved only when the requested modifications are correctly applied and the objective is met, otherwise changes-requested with what still fails.',
     '',
     `Objective: ${objective}`,
+    '',
+    REVIEW_PRINCIPLES,
     '',
     `Prior reviewer feedback that the rework had to address: ${priorFeedback}`,
     '',

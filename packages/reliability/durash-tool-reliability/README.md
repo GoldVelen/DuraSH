@@ -1,5 +1,5 @@
 ---
-description: "Model-facing reliability-loop handoff tool, gated by the per-session composer workflow switch."
+description: "Model-facing acceptance evidence and policy-gated reliability-loop handoff tools."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-reliability` registers `dsh_reliability_handoff`. The tool is present process-wide and fails closed unless this Session's composer switch is on. When enabled, it starts one reliability loop with the Session's implementation and review routes and waits for a terminal record.
+`dsh-tool-reliability` registers direct acceptance evidence through `dsh_acceptance` and workflow dispatch through `dsh_reliability_handoff`. The handoff tool is present process-wide and fails closed unless this Session's composer switch is on. When enabled, it starts one reliability loop with the Session's implementation and review routes and waits for a terminal record.
 
 ## Table of Contents
 
@@ -25,9 +25,17 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Compose this plugin in the `durash` profile with `ctx.reliabilityPolicy` and `ctx.reliabilityLoopRuntime`. The guidance section is assembled only for a root agent whose Session policy is enabled.
+Compose this plugin in the `durash` profile with `ctx.reliabilityPolicy` and `ctx.reliabilityLoopRuntime`. Handoff guidance is assembled only for a root agent whose Session policy is enabled; evidence guidance is always available.
 
 -----
+
+### Direct evidence and workflow mode
+
+With the workflow switch off, ask the current model to declare the required checks with `dsh_acceptance` action `plan`, execute them with `run`, and inspect `status`. It keeps the current model, including Grok, and makes no independent model call. The composer displays host checks and “not independently reviewed” even when assistant prose differs. Ordinary questions need no plan.
+
+With the switch on, select implementation and review models, declare the same task requirements, then use `dsh_reliability_handoff`. It automatically binds the active acceptance task. The host rejects completion when checks or candidate/target identities fail despite a model approval. The [runtime reference](../durash-reliability-loop/README.md#task-acceptance-evidence) owns receipt semantics and limits.
+
+Use `status` with `taskId` and `checkId` to inspect a check’s stored definition and raw receipts. Root conversations own plan revisions; only the owning root and its live descendants can run or read a task. Changed host status enters logged plugin context before the next model request.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
@@ -59,7 +67,7 @@ No runtime invariant companion is published because this tool owns no independen
 
 #### What the model sees
 
-The `tool:reliability-handoff` system-prompt section is assembled for a root agent whose Session policy is enabled. Disabled Sessions receive no section.
+The `tool:reliability-handoff` system-prompt section is assembled for a root agent whose Session policy is enabled. Disabled Sessions receive no handoff section; evidence guidance remains available.
 
 ##### Reliability handoff guidance
 

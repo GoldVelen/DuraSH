@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { MutableSessionEventSource } from '@deepseek-ai/dsh-api-session-controller/client'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import {
   ReliabilityPolicyController,
@@ -47,6 +48,68 @@ function fakeRemote(over: Partial<ReliabilityPolicyRemote> = {}) {
 }
 
 describe('ReliabilityPolicyController', () => {
+  it('refreshes acceptance independently of workflow and clears stale approval on read failure', async () => {
+    const view = {
+      taskId: 'task-direct', status: 'checks-passed' as const, checksPassed: true,
+      independentReview: 'not-reviewed' as const, reasons: [], risks: ['Assertion removed'],
+    }
+    const acceptance = vi.fn().mockResolvedValue({ ok: true, value: view })
+    const controller = new ReliabilityPolicyController({ ...fakeRemote().remote, acceptance })
+    await controller.loadPolicy(SID)
+    await controller.refreshAcceptance(SID)
+    expect(controller.sessionState(SID)).toMatchObject({ policy: { enabled: false }, acceptance: view })
+    acceptance.mockResolvedValueOnce({ ok: false, error: { code: 'unavailable', message: 'Cannot read evidence' } })
+    await controller.refreshAcceptance(SID)
+    expect(controller.sessionState(SID)).toMatchObject({ acceptance: null, acceptanceError: 'Cannot read evidence' })
+    acceptance.mockResolvedValueOnce({ ok: true, value: null })
+    await controller.refreshAcceptance(SID)
+    expect(controller.sessionState(SID)).toMatchObject({ acceptance: null, acceptanceError: null })
+    controller.dispose()
+  })
+
+  it('refreshes task facts on tool and turn events and removes subscriptions on disposal', async () => {
+    const acceptance = vi.fn().mockResolvedValue({ ok: true, value: null })
+    const controller = new ReliabilityPolicyController({ ...fakeRemote().remote, acceptance })
+    const source = new MutableSessionEventSource()
+    controller.observeAcceptance(SID, source)
+    controller.observeAcceptance(SID, source)
+    source.append({ type: 'event', event: { type: 'tool/result' } } as never)
+    await vi.waitFor(() => { expect(acceptance).toHaveBeenCalledTimes(1) })
+    source.append({ type: 'event', event: { type: 'turn/end' } } as never)
+    await vi.waitFor(() => { expect(acceptance).toHaveBeenCalledTimes(2) })
+    controller.dispose()
+    source.append({ type: 'event', event: { type: 'turn/end' } } as never)
+    await Promise.resolve()
+    expect(acceptance).toHaveBeenCalledTimes(2)
+  })
+
+  it('rechecks an event arriving during an older read and ignores settlement after disposal', async () => {
+    const pending = Promise.withResolvers<{ ok: true; value: null }>()
+    const acceptance = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue({ ok: true, value: null })
+    const controller = new ReliabilityPolicyController({ ...fakeRemote().remote, acceptance })
+    const first = controller.refreshAcceptance(SID)
+    const second = controller.refreshAcceptance(SID)
+    expect(acceptance).toHaveBeenCalledTimes(1)
+    pending.resolve({ ok: true, value: null })
+    await Promise.all([first, second])
+    expect(acceptance).toHaveBeenCalledTimes(2)
+    const late = Promise.withResolvers<{ ok: true; value: null }>()
+    acceptance.mockReturnValueOnce(late.promise)
+    const request = controller.refreshAcceptance(SID)
+    controller.dispose()
+    const snapshot = controller.getSnapshot()
+    late.resolve({ ok: true, value: null })
+    await request
+    expect(controller.getSnapshot()).toBe(snapshot)
+  })
+
+  it('does not require acceptance RPC from an older carrier', async () => {
+    const controller = new ReliabilityPolicyController(fakeRemote().remote)
+    await expect(controller.refreshAcceptance(SID)).resolves.toEqual({ ok: true })
+    expect(controller.sessionState(SID).acceptance).toBeUndefined()
+    controller.dispose()
+  })
+
   it('loads a Host snapshot and refuses enable without both lanes', async () => {
     const remote = {
       policy: vi.fn(() => Promise.resolve({ ok: true as const, value: snapshot() })),

@@ -4,6 +4,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
+import { MutableSessionEventSource } from '@deepseek-ai/dsh-api-session-controller/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -40,7 +41,10 @@ async function bench() {
     name: 'root',
     children: { 'conversation.input.left': { kind: 'list', scope: 'session' } },
   } as never, () => null)
+  const eventSource = new MutableSessionEventSource()
+  ctx.provide('sessions', { binding: () => ({ eventSource }) })
   const reliabilityPolicy = {
+    acceptance: vi.fn(() => Promise.resolve({ ok: true, value: null })),
     policy: vi.fn(() => Promise.resolve({ ok: true, value: SNAPSHOT })),
     ensurePolicy: vi.fn(() => Promise.resolve({ ok: true, value: SNAPSHOT })),
     configure: vi.fn(() => Promise.resolve({ ok: true, value: { ...SNAPSHOT, enabled: true } })),
@@ -55,7 +59,7 @@ async function bench() {
   ctx.provide('remote', { reliabilityPolicy, $mount: mount })
   ctx.provide('remote.reliabilityPolicy', reliabilityPolicy)
   ctx.provide('locale', new LocaleRuntime(ctx))
-  return { ctx, slots, reliabilityPolicy, mount, disposeMount }
+  return { ctx, slots, reliabilityPolicy, mount, disposeMount, eventSource }
 }
 
 describe('ui-reliability browser apply', () => {
@@ -78,6 +82,9 @@ describe('ui-reliability browser apply', () => {
     expect(injected.readPolicy().status).toBe('cold')
     await expect(injected.loadPolicy()).resolves.toEqual({ ok: true })
     expect(b.reliabilityPolicy.policy).toHaveBeenCalledWith({ sessionId: SID })
+    expect(b.reliabilityPolicy.acceptance).toHaveBeenCalledWith({ sessionId: SID })
+    b.eventSource.append({ type: 'event', event: { type: 'turn/end' } } as never)
+    await vi.waitFor(() => { expect(b.reliabilityPolicy.acceptance).toHaveBeenCalledTimes(2) })
     await expect(injected.ensurePolicy()).resolves.toEqual({ ok: true })
     expect(b.reliabilityPolicy.ensurePolicy).toHaveBeenCalledWith({ sessionId: SID })
     await expect(injected.configure({

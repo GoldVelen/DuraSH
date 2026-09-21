@@ -68,3 +68,13 @@ export interface ReliabilityPolicyConfigureRequest {
   readonly reviewModel: string | null
   readonly reviewThinking: ReliabilityThinking | null
 }
+
+/** Host-evaluated acceptance facts, independent of workflow enablement. */
+export interface AcceptanceView {
+  readonly taskId: string
+  readonly status: 'pending' | 'checks-passed' | 'accepted'
+  readonly checksPassed: boolean
+  readonly independentReview: 'not-reviewed' | 'approved' | 'changes-requested'
+  readonly reasons: readonly string[]
+  readonly risks: readonly string[]
+}

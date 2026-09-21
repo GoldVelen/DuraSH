@@ -67,7 +67,7 @@ function coherenceProblem(record: Record<string, unknown>): string | undefined {
   if (!legal.includes(signature)) {
     return `stage '${stage}' cannot carry slots '${signature}'`
   }
-  if (implement !== undefined && implement.round === 2 && signature !== 'i2+r1:cr' && signature !== 'i2+r2:cr') {
+  if (implement !== undefined && implement.round === 2 && signature !== 'i2+r1:cr' && signature !== 'i2+r2:cr' && signature !== 'i2+r2:ok') {
     return 'round-2 implementation without the rework precondition'
   }
   return undefined
