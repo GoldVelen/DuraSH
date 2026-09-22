@@ -269,6 +269,13 @@ export function createAssembledRemote(options: AssembledRemoteOptions = {}): Ass
       models: [],
     })
   })
+  mock.unary('reliabilityPolicy/acceptance', (request: unknown) => {
+    const sessionId = recordString(recordValue(request, 'request'), 'sessionId')
+    if (!sessions.some(session => session.sessionId === sessionId)) {
+      throw new Error(`assembled fixture: no Session ${sessionId}`)
+    }
+    return ok(null)
+  })
   mock.unary('session/attachment', (request: unknown) => {
     request = recordValue(request, 'request')
     const attachmentId = recordString(request, 'attachmentId')

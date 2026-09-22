@@ -39,6 +39,8 @@ A run surface can answer a pending host request — approving it, optionally cov
 
 Loading is idempotent: asking to load a revision this page already runs changes nothing, a newer revision replaces the loaded one, and the same revision after a retract loads afresh. Operations on a definition serialize. A refresh starts clean by design — the host still holds the definition, this page does not run it until asked again.
 
+Unloading this plugin closes its inspect registry before queued publications or queries can dispatch. In-flight inspect providers receive cancellation. Unloading waits for those queries and already-dispatched Remote calls to settle. Provider removal during unloading sends no new manifest; live publication and result-delivery failures remain observable.
+
 -----
 
 <a id="understand-the-implementation"></a>

@@ -197,6 +197,7 @@ export function apply(ctx: Context): void {
       if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)
     },
   })
+  ctx.effect(() => () => inspect.dispose(), 'cordis-client-runner: inspect registry')
   provideClientCordisInspect(ctx, inspect)
   for (const provider of clientInspectProviders(ctx)) {
     ctx.effect(() => inspect.register(provider), `cordis-client-runner: inspect ${provider.manifest.id}`)

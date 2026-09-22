@@ -38,6 +38,8 @@ interface Bench {
     packageId: CordisDynamicPackageId
     pluginRunId: CordisDynamicPluginRunId
   } }
+  /** Client manifest synchronization calls. */
+  inspectSyncs: unknown[]
   /** Resolutions the host received. */
   resolved: { requestId: string; resolution: unknown }[]
   /** What the namespace received. */
@@ -111,8 +113,9 @@ async function boot(): Promise<Bench> {
   // Every generated Remote method resolves to a RemoteResult: the carrier folds
   // its own failures into the error branch, and only an assembly fault rejects.
   const answered = <T>(value: T): Promise<{ ok: true; value: T }> => Promise.resolve({ ok: true as const, value })
+  const inspectSyncs: unknown[] = []
   const namespace = {
-    syncInspectManifest: () => answered(null),
+    syncInspectManifest: (providers: unknown) => { inspectSyncs.push(providers); return answered(null) },
     resolveInspectQuery: () => answered({ accepted: true }),
     runHostHalf: () => answered({
       ok: true, pluginId: PLUGIN, packageId: PACKAGE, pluginRunId: RUN, waitingFor: [], startedHere: true,
@@ -174,6 +177,7 @@ async function boot(): Promise<Bench> {
   await fiber
   return {
     ctx,
+    inspectSyncs,
     source,
     resolved,
     invoked,
@@ -194,6 +198,14 @@ async function boot(): Promise<Bench> {
 }
 
 describe('browser half', () => {
+  it('stops inspect publication when the owning plugin unloads', async () => {
+    const bench = await boot()
+    await vi.waitFor(() => { expect(bench.inspectSyncs.length).toBeGreaterThan(0) })
+    const published = bench.inspectSyncs.length
+    await bench.dispose()
+    expect(bench.inspectSyncs).toHaveLength(published)
+  })
+
   it('provides the load engine as the page run-state face', async () => {
     const bench = await boot()
     expect(bench.ctx.dynamicCordisRunner.getSnapshot()).toEqual([])

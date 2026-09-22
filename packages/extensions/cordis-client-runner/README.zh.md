@@ -39,6 +39,8 @@ kind: "package-reference"
 
 装载是幂等的：要求装载这一页已在运行的 revision 不会改变任何东西，更新的 revision 顶替已装载的那个，同一 revision 在 retract 之后再装则重新装载。同一定义的操作串行执行。刷新按设计从干净状态开始——host 仍持有定义，本页在再次被要求之前不运行它。
 
+卸载本插件时，inspect 注册表会先关闭，已排队的发布和查询不再派发。执行中的 inspect 提供方会收到取消信号。卸载会等待这些查询和已派发的 Remote 调用结束。卸载过程中移除提供方不会发送新的清单；正常运行时的发布和结果提交失败仍会报告。
+
 -----
 
 <a id="understand-the-implementation"></a>

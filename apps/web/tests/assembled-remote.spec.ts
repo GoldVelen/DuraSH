@@ -3,6 +3,16 @@
 import { expect, it } from 'vitest'
 import { createAssembledRemote } from './assembled-remote.ts'
 
+it('returns no acceptance task for existing and new fixture Sessions without recorded evidence', async () => {
+  const { mock } = createAssembledRemote()
+  await expect(mock.dispatch('reliabilityPolicy/acceptance', [{ request: { sessionId: 'fx-alpha' } }]))
+    .resolves.toEqual({ ok: true, value: null })
+  await mock.dispatch('session/create', [{ request: { cwd: '/work' } }])
+  await expect(mock.dispatch('reliabilityPolicy/acceptance', [{ request: { sessionId: 'fx-1' } }]))
+    .resolves.toEqual({ ok: true, value: null })
+  mock.assertNoUnmatched()
+})
+
 it('advances turns and updates the Session summary after accepted prompts', async () => {
   const { mock } = createAssembledRemote()
   await mock.dispatch('session/create', [{ request: { cwd: '/work' } }])

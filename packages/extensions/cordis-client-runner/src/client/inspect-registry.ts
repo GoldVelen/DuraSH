@@ -9,7 +9,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Context supplied to a Client inspect provider query. */
 export interface ClientCordisInspectQueryContext {
-  /** Cancellation broadcast by the Host. */
+  /** Cancellation broadcast by the Host or caused by plugin disposal. */
   signal: AbortSignal
   /** Session whose model requested the query. */
   sessionId: SessionId
@@ -38,7 +38,8 @@ export interface ClientCordisInspectHost {
 /** Client provider registry, manifest publisher, and live query dispatcher. */
 export class ClientCordisInspectRegistry {
   private readonly providers = new Map<string, ClientCordisInspectProviderRegistration>()
-  private readonly active = new Map<CordisInspectRequestId, AbortController>()
+  private readonly lifetime = new AbortController()
+  private readonly active = new Map<CordisInspectRequestId, { controller: AbortController; done: Promise<void> }>()
   private publishQueued = false
   private syncChain = Promise.resolve()
 
@@ -51,6 +52,7 @@ export class ClientCordisInspectRegistry {
    * @returns idempotent disposer.
    */
   register(registration: ClientCordisInspectProviderRegistration): () => void {
+    this.lifetime.signal.throwIfAborted()
     const { manifest } = registration
     if (manifest.id.trim() === '') throw new Error('Client Cordis inspect provider id must not be empty')
     if (this.providers.has(manifest.id)) throw new Error(`Client Cordis inspect provider "${manifest.id}" is already registered`)
@@ -74,15 +76,19 @@ export class ClientCordisInspectRegistry {
 
   /** Publish the current complete manifest, including after reconnect. */
   publish(): void {
-    if (this.publishQueued) return
+    if (this.lifetime.signal.aborted || this.publishQueued) return
     this.publishQueued = true
     queueMicrotask(() => {
       this.publishQueued = false
+      if (this.lifetime.signal.aborted) return
       const manifests = [...this.providers.values()].map(provider => provider.manifest)
       this.syncChain = this.syncChain.then(async () => {
+        if (this.lifetime.signal.aborted) return
         await this.host.sync(manifests)
       }).catch((error: unknown) => {
-        console.error('[cordis-client-runner] syncing inspect providers failed:', error)
+        if (!this.lifetime.signal.aborted) {
+          console.error('[cordis-client-runner] syncing inspect providers failed:', error)
+        }
       })
     })
   }
@@ -90,12 +96,22 @@ export class ClientCordisInspectRegistry {
   /**
    * Execute and answer one Host-broadcast query.
    * @param request - exact provider query and Session correlation received from Host.
-   * @returns after the first local result has been sent back to Host.
+   * @returns after the result is sent, or cancellation ends the local work.
    */
-  async query(request: CordisInspectQueryRequest): Promise<void> {
-    if (this.active.has(request.requestId)) return
+  query(request: CordisInspectQueryRequest): Promise<void> {
+    if (this.lifetime.signal.aborted || this.active.has(request.requestId)) return Promise.resolve()
     const controller = new AbortController()
-    this.active.set(request.requestId, controller)
+    const done = Promise.resolve().then(async () => {
+      if (controller.signal.aborted) return
+      await this.executeQuery(request, controller.signal)
+    }).finally(() => {
+      this.active.delete(request.requestId)
+    })
+    this.active.set(request.requestId, { controller, done })
+    return done
+  }
+
+  private async executeQuery(request: CordisInspectQueryRequest, signal: AbortSignal): Promise<void> {
     let resolution: CordisInspectQueryResolution
     try {
       const provider = this.providers.get(request.provider)
@@ -105,22 +121,22 @@ export class ClientCordisInspectRegistry {
         resolution = { ok: false, reason: 'method-missing', message: `Client inspect provider "${request.provider}" has no method "${request.method}"` }
       } else {
         const data = await provider.query(request.method, request.input, {
-          signal: controller.signal,
+          signal,
           sessionId: request.agentId,
         })
-        resolution = controller.signal.aborted
+        resolution = signal.aborted
           ? { ok: false, reason: 'cancelled', message: 'Client inspect query was cancelled' }
           : { ok: true, data }
       }
     } catch (error) {
-      resolution = controller.signal.aborted
+      resolution = signal.aborted
         ? { ok: false, reason: 'cancelled', message: 'Client inspect query was cancelled' }
         : { ok: false, reason: 'provider-error', message: error instanceof Error ? error.message : String(error) }
-    } finally {
-      this.active.delete(request.requestId)
     }
-    if (controller.signal.aborted) return
-    await this.host.resolve(request.agentId, request.requestId, resolution)
+    if (signal.aborted) return
+    await this.host.resolve(request.agentId, request.requestId, resolution).catch((error: unknown) => {
+      if (!signal.aborted) throw error
+    })
   }
 
   /**
@@ -128,8 +144,18 @@ export class ClientCordisInspectRegistry {
    * @param requestId - query correlation that is no longer answerable.
    */
   close(requestId: CordisInspectRequestId): void {
-    this.active.get(requestId)?.abort()
-    this.active.delete(requestId)
+    this.active.get(requestId)?.controller.abort()
+  }
+
+  /**
+   * Stop publication and queries, abort live work, and wait for it to settle.
+   * @returns after in-flight provider queries and remote calls have ended.
+   */
+  async dispose(): Promise<void> {
+    this.lifetime.abort()
+    this.providers.clear()
+    for (const { controller } of this.active.values()) controller.abort()
+    await Promise.allSettled([this.syncChain, ...[...this.active.values()].map(query => query.done)])
   }
 }
 

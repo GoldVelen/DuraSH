@@ -10,11 +10,14 @@ const DIST_ROOT = resolve(import.meta.dirname, '../dist')
 installAssembledBootEnv()
 
 it('boots the DuraSH bundle stack and renders only the product identity', async () => {
-  mountAssembledApp({ profile: 'durash' })
+  const { mock } = mountAssembledApp({ profile: 'durash' })
 
   await waitFor(() => {
     expect(document.title).toBe('DuraSH')
     expect(document.body.textContent).toContain('DuraSH')
+    expect(mock.log.calls('reliabilityPolicy/acceptance')).toContainEqual(
+      expect.objectContaining({ state: 'answered', result: { ok: true, value: null } }),
+    )
   })
 
   const marks = [...document.querySelectorAll<SVGElement>('svg[viewBox="0 0 64 64"]')]
