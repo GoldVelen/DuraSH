@@ -20,6 +20,8 @@ Use `@deepseek-ai/dsh-llm` to stream model calls through configured provider ada
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+Model discovery returns editable candidates; adapters may refresh an online directory on request. Disclosed reasoning mappings and input types survive the Remote response and remain optional when unknown.
+
 -----
 
 <a id="use-this-package"></a>

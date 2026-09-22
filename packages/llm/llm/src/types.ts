@@ -262,12 +262,12 @@ export interface LlmConfigurableProvider {
  */
 export interface LlmModelDiscoveryRequest {
   /**
-   * Route the draft is editing, when it edits an existing one. A route whose
-   * adapter already knows its models answers from that knowledge instead of
-   * asking the endpoint — the adapter's own registry is the better answer, and
-   * it costs no network call.
+   * Route the draft is editing. Adapters may use an installed catalog unless
+   * the caller explicitly requests a fresh provider listing.
    */
   provider?: string
+  /** Request a fresh provider listing where supported; does not save the result. */
+  refresh?: boolean
   /**
    * Endpoint to interrogate. Optional because a route the adapter already
    * describes needs none; a route it does not must supply one.
@@ -311,6 +311,8 @@ export interface LlmDiscoveredModel {
   maxTokens?: number
   /** Accepted input types when disclosed by the catalog or endpoint; absent means unknown. */
   inputModalities?: readonly ModelModality[]
+  /** Supported reasoning levels mapped to provider wire values; null omits the wire parameter. */
+  reasoningEfforts?: Readonly<Record<string, string | null>>
 }
 
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */

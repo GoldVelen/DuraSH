@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Model-list editing, endpoint interrogation, and hand-declared provider creation. */
-import { within, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, within, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
@@ -583,8 +583,7 @@ describe('endpoint interrogation', () => {
     await waitFor(() => { expect(discover).toHaveBeenCalled() })
     expect(lastProbe(discover)).toEqual({
       settingsNs: 'llm-pi-ai',
-      // The route is named, so an adapter that already describes it answers
-      // from its own registry rather than the endpoint.
+      refresh: true,
       provider: 'openai',
       baseURL: 'https://edited.example/v1',
       apiKey: 'typed-not-saved',
@@ -604,6 +603,7 @@ describe('endpoint interrogation', () => {
     await waitFor(() => { expect(discover).toHaveBeenCalled() })
     expect(lastProbe(discover)).toEqual({
       settingsNs: 'llm-pi-ai',
+      refresh: true,
       provider: 'openai',
       baseURL: 'https://proxy.example/v1',
       api: 'openai-responses',
@@ -647,14 +647,114 @@ describe('endpoint interrogation', () => {
     const discover = vi.fn(() => Promise.resolve(
       fail('https://proxy.example/v1/models answered 401; check the API key', 'llm/model-discovery-rejected'),
     ))
-    await mountSection({ discover })
-    openEditor('openai')
+    const { mutate } = await mountSection({
+      discover,
+      providers: { xai: { models: [{ id: 'grok-kept', reasoningEfforts: { high: 'high' } }] } },
+    })
+    openEditor('xai')
 
     fireEvent.click(screen.getByText(en.fetchModels))
 
     await screen.findByText(/answered 401; check the API key/)
     // The failure is a detour, not a dead end: hand-entry is still offered.
     expect(screen.getByRole('button', { name: en.addModel })).toBeTruthy()
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('grok-kept')
+    expect(screen.queryByText(en.fetchTitle)).toBeNull()
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('refreshes xAI only on request and preserves adopted reasoning metadata through a minimal save', async () => {
+    const reasoningEfforts = { low: 'low', high: 'high', off: null }
+    const discover = vi.fn()
+      .mockResolvedValueOnce(ok([]))
+      .mockResolvedValueOnce(ok([{
+        id: 'grok-4.7', name: 'Grok 4.7', contextWindow: 256_000, maxTokens: 32_000,
+        inputModalities: ['text', 'image'], reasoningEfforts,
+      }]))
+    const { mutate, set } = await mountSection({
+      discover,
+      providers: { xai: { baseURL: 'https://api.x.ai/v1', models: [{ id: 'grok-existing' }] } },
+    })
+    openEditor('xai')
+    await waitFor(() => { expect(discover).toHaveBeenCalledExactlyOnceWith('llm-pi-ai', { provider: 'xai' }) })
+    expect(mutate).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText(en.fetchModels))
+    await screen.findByText(en.fetchTitle)
+    expect(lastProbe(discover)).toEqual({
+      settingsNs: 'llm-pi-ai', provider: 'xai', baseURL: 'https://api.x.ai/v1', refresh: true,
+    })
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+    expect(mutate).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText(`${en.modelName} 2`), { target: { value: 'My Grok 4.7' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate)).toEqual({
+      ns: 'llm-pi-ai', expectedRevision: 3,
+      ops: [{
+        op: 'set', path: ['providers', 'xai', 'models'],
+        value: [
+          { id: 'grok-existing' },
+          {
+            id: 'grok-4.7', name: 'My Grok 4.7', contextWindow: 256_000, maxTokens: 32_000,
+            input: ['text', 'image'], reasoningEfforts,
+          },
+        ],
+      }],
+    })
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('keeps the user reasoning mapping when an existing candidate is explicitly selected again', async () => {
+    const existing = { id: 'grok-4.7', contextWindow: 12_000, reasoningEfforts: { custom: 'high' } }
+    const discover = vi.fn(() => Promise.resolve(ok([
+      { id: 'grok-4.7', contextWindow: 256_000, reasoningEfforts: { low: 'low', high: 'high' } },
+      { id: 'new-model', reasoningEfforts: {} },
+    ])))
+    const { mutate } = await mountSection({ discover, providers: { xai: { models: [existing] } } })
+    openEditor('xai')
+    fireEvent.click(screen.getByText(en.fetchModels))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getAllByRole('checkbox')[0] as HTMLInputElement)
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate).ops).toEqual([{
+      op: 'set', path: ['providers', 'xai', 'models'],
+      value: [existing, { id: 'new-model', reasoningEfforts: {} }],
+    }])
+  })
+
+  it('keeps an explicit refresh failure visible when the passive catalog arrives later', async () => {
+    const passive = Promise.withResolvers<{ ok: true; value: { id: string }[] }>()
+    const discover = vi.fn().mockReturnValueOnce(passive.promise)
+      .mockResolvedValueOnce(fail('xAI catalog unavailable', 'llm/model-discovery-rejected'))
+    const { mutate } = await mountSection({ discover, providers: { xai: { models: [{ id: 'kept' }] } } })
+    openEditor('xai')
+    expect(discover).toHaveBeenCalledExactlyOnceWith('llm-pi-ai', { provider: 'xai' })
+    fireEvent.click(screen.getByText(en.fetchModels))
+    await screen.findByText('xAI catalog unavailable')
+    await act(async () => { passive.resolve(ok([{ id: 'kept' }])) })
+    expect(screen.getByText('xAI catalog unavailable')).toBeTruthy()
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('kept')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('keeps refreshed model capabilities when an older passive catalog arrives later', async () => {
+    const passive = Promise.withResolvers<{ ok: true; value: { id: string; inputModalities: string[] }[] }>()
+    const discover = vi.fn().mockReturnValueOnce(passive.promise)
+      .mockResolvedValueOnce(ok([{ id: 'grok-4.7', inputModalities: ['text', 'image'] }]))
+    const { mutate } = await mountSection({ discover, providers: { xai: { models: [{ id: 'grok-4.7' }] } } })
+    openEditor('xai')
+    fireEvent.click(screen.getByText(en.fetchModels))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within_(dialog, en.cancel))
+    expandModel(1)
+    const imageInput = (): HTMLInputElement => within(screen.getByRole('group', { name: `${en.modelInputTypes} 1` }))
+      .getByRole('checkbox', { name: en.modelInputImage })
+    expect(imageInput().checked).toBe(true)
+    await act(async () => { passive.resolve(ok([{ id: 'grok-4.7', inputModalities: ['text'] }])) })
+    expect(imageInput().checked).toBe(true)
+    expect(mutate).not.toHaveBeenCalled()
   })
 
   it('reports an empty listing', async () => {
@@ -675,7 +775,7 @@ describe('endpoint interrogation', () => {
     fireEvent.click(screen.getByText(en.fetchModels))
 
     await waitFor(() => { expect(discover).toHaveBeenCalled() })
-    expect(lastProbe(discover)).toEqual({ settingsNs: 'llm-pi-ai', provider: 'openai' })
+    expect(lastProbe(discover)).toEqual({ settingsNs: 'llm-pi-ai', provider: 'openai', refresh: true })
   })
 
   it('keeps the create card asking only once it has an endpoint', () => {
@@ -698,6 +798,7 @@ describe('endpoint interrogation', () => {
     // A provider being declared names no route, so only the endpoint travels.
     expect(lastProbe(scripted.discover)).toEqual({
       settingsNs: 'llm-pi-ai',
+      refresh: true,
       baseURL: 'https://acme.test/v1',
       api: 'openai-completions',
     })

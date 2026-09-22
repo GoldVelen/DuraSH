@@ -14,7 +14,7 @@
  * rows the user can still fill in by hand.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -48,9 +48,8 @@ export interface ProbeTarget {
   /** Settings namespace whose adapter family answers. */
   settingsNs: string
   /**
-   * Route being edited, when the card edits one. An adapter that already
-   * describes it answers from its own registry, so such a card can ask without
-   * an endpoint at all.
+   * Route being edited, when the card edits one. The adapter supplies that
+   * route's endpoint defaults, so the card need not carry an explicit endpoint.
    */
   provider?: string
   /** Endpoint as the form currently shows it. */
@@ -122,7 +121,7 @@ function capacitySpelling(value: number | undefined): string {
   return value === undefined ? '' : formatCapacity(value)
 }
 
-/** Adopt a candidate, preserving disclosed capacities and input types. */
+/** Adopt a candidate, preserving disclosed capacities, input types, and reasoning levels. */
 function adopt(candidate: LlmDiscoveredModel): ModelDraft {
   return {
     id: candidate.id,
@@ -130,6 +129,7 @@ function adopt(candidate: LlmDiscoveredModel): ModelDraft {
     ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
     ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },
     ...candidate.inputModalities === undefined ? {} : { input: [...candidate.inputModalities] },
+    ...candidate.reasoningEfforts === undefined ? {} : { reasoningEfforts: { ...candidate.reasoningEfforts } },
   }
 }
 
@@ -143,6 +143,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   const { catalogProvider } = props
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
+  const refreshGeneration = useRef(0)
   const [inheritedCatalog, setInheritedCatalog] = useState<{
     provider: string
     models: readonly LlmDiscoveredModel[]
@@ -150,8 +151,9 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   useEffect(() => {
     if (catalogProvider === undefined) return
     let current = true
+    const generation = refreshGeneration.current
     void operations.discoverModels(probe.settingsNs, { provider: catalogProvider }).then((answer) => {
-      if (!current) return
+      if (!current || generation !== refreshGeneration.current) return
       setInheritedCatalog({ provider: catalogProvider, models: answer.kind === 'found' ? answer.models : [] })
       setFailure(answer.kind === 'refused' ? answer.message : undefined)
     })
@@ -224,10 +226,12 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   }
 
   const fetchModels = async (): Promise<void> => {
+    refreshGeneration.current += 1
     setBusy(true)
     setFailure(undefined)
     try {
       const answer = await operations.discoverModels(probe.settingsNs, {
+        refresh: true,
         ...probe.provider === undefined ? {} : { provider: probe.provider },
         ...probe.baseURL === undefined || probe.baseURL.length === 0 ? {} : { baseURL: probe.baseURL },
         ...probe.api === undefined ? {} : { api: probe.api },

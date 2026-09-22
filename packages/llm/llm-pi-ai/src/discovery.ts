@@ -2,11 +2,9 @@
  * Answering "which models can this provider serve?" for the configuration
  * surface's "fetch available models" action.
  *
- * A route the installed pi-ai catalog ships is answered **from that catalog**,
- * with no network call at all: pi-ai's registry is the authoritative list for
- * its own providers, and it carries the capacities a listing endpoint would
- * not disclose. Only a route the catalog does not describe — a gateway, a
- * self-hosted server — is interrogated over the wire.
+ * Explicit xAI refreshes read its authenticated model and language-model
+ * directories. Passive metadata reads and other installed providers use the
+ * bundled catalog. Hand-declared routes use their model-listing endpoint.
  *
  * Neither path is a catalog refresh. Nothing here is stored: the request
  * carries a draft the user is still editing, and the reply is candidate
@@ -25,7 +23,7 @@
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { catalogModels } from './catalog.ts'
+import { catalogModels, catalogProvider, THINKING_LEVELS } from './catalog.ts'
 
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
@@ -85,6 +83,8 @@ interface ListingEntry {
   maxTokens?: unknown
   limit?: ListingLimit | null
   top_provider?: ListingTopProvider | null
+  input_modalities?: unknown
+  capabilities?: { reasoning_effort?: unknown } | null
 }
 
 /** A positive integer field of a listing entry, or `undefined` when absent or unusable. */
@@ -178,7 +178,7 @@ async function readBounded(response: Response, url: string): Promise<string> {
  * a working endpoint's catalog. Missing names fall back to the adopted id so
  * the Web form receives a complete human-readable row.
  */
-function readListing(body: unknown): LlmDiscoveredModel[] {
+function readListing(body: unknown, fallbackNames = true): LlmDiscoveredModel[] {
   const listing = body as { data?: unknown; models?: unknown } | null
   const data = listing?.data
   let listed: { readonly key?: string; readonly raw: unknown }[]
@@ -203,7 +203,7 @@ function readListing(body: unknown): LlmDiscoveredModel[] {
     const entry = raw as ListingEntry | null
     const id = label(key, entry?.id)
     if (id === undefined) continue
-    const name = label(entry?.name, entry?.display_name, entry?.displayName) ?? id
+    const name = label(entry?.name, entry?.display_name, entry?.displayName) ?? (fallbackNames ? id : undefined)
     const contextWindow = capacity(
       entry?.contextWindow,
       entry?.context_window,
@@ -219,11 +219,24 @@ function readListing(body: unknown): LlmDiscoveredModel[] {
       entry?.limit?.output,
       entry?.top_provider?.max_completion_tokens,
     )
+    const inputModalities = Array.isArray(entry?.input_modalities)
+      ? entry.input_modalities.filter((value): value is 'text' | 'image' => value === 'text' || value === 'image')
+      : undefined
+    const offered = entry?.capabilities?.reasoning_effort
+    const efforts = Array.isArray(offered)
+      ? offered.flatMap((value: unknown): [string, string][] => {
+        if (value === 'none') return [['off', 'none']]
+        return typeof value === 'string' && THINKING_LEVELS.some(level => level === value) && value !== 'off'
+          ? [[value, value]] : []
+      })
+      : []
     models.push({
       id,
-      name,
+      ...name === undefined ? {} : { name },
       ...contextWindow === undefined ? {} : { contextWindow },
       ...maxTokens === undefined ? {} : { maxTokens },
+      ...inputModalities === undefined || inputModalities.length === 0 ? {} : { inputModalities },
+      ...efforts.length === 0 ? {} : { reasoningEfforts: Object.fromEntries<string>(efforts) },
     })
   }
   return models
@@ -254,6 +267,15 @@ export interface StoredModelDiscoveryProfile {
   readonly headers: Readonly<Record<string, string>> | undefined
   /** Resolve the named route's credential only when the draft carries none. */
   readonly resolveApiKey: () => Promise<string | undefined>
+  /** Stored endpoint when the draft leaves it inherited. */
+  readonly baseURL?: string
+  /** Installed provider whose protocol and authentication this route uses. */
+  readonly catalogProvider?: string
+  /** Resolve provider-native authentication, including subscription refresh, only when no explicit key exists. */
+  readonly resolveNativeAuth?: (signal?: AbortSignal) => Promise<{
+    apiKey?: string
+    headers?: Record<string, string | null>
+  } | undefined>
 }
 
 /**
@@ -270,9 +292,10 @@ export async function discoverModels(
   request: LlmModelDiscoveryOperation,
   storedProfile?: () => StoredModelDiscoveryProfile | undefined,
 ): Promise<readonly LlmDiscoveredModel[]> {
-  // A catalog route already has its answer, and a better one: the installed
-  // entries carry context windows and output caps no listing endpoint reports.
-  if (request.provider !== undefined) {
+  const refreshedProfile = request.refresh === true ? storedProfile?.() : undefined
+  const sourceProvider = refreshedProfile?.catalogProvider ?? request.provider
+  const onlineXai = request.refresh === true && sourceProvider === 'xai'
+  if (!onlineXai && request.provider !== undefined) {
     const installed = catalogModels(request.provider)
     if (installed.size > 0) {
       return [...installed.values()].map(model => ({
@@ -284,7 +307,10 @@ export async function discoverModels(
       }))
     }
   }
-  if (request.baseURL === undefined || request.baseURL.length === 0) {
+  const baseURL = request.baseURL || (onlineXai
+    ? refreshedProfile?.baseURL ?? catalogProvider('xai')?.baseUrl
+    : undefined)
+  if (baseURL === undefined || baseURL.length === 0) {
     throw new LlmError(
       `pi-ai ships no catalog for provider "${request.provider ?? ''}", so its models can only come from its`
       + " endpoint; set a baseURL, or enter this provider's models by hand",
@@ -304,40 +330,66 @@ export async function discoverModels(
       'DISCOVERY_UNSUPPORTED',
     )
   }
-  const url = listingUrl(request.baseURL, api)
+  const url = listingUrl(baseURL, api)
   // A key typed into the form wins: it may replace the stored key that is
   // failing. The stored profile is asked past the catalog and protocol checks,
   // and its credential resolver remains lazy so a typed key cannot fail over a
   // stored credential it supersedes. A route may still authenticate through a
   // deployment-owned Authorization header when neither key exists.
-  const stored = storedProfile?.()
+  const stored = refreshedProfile ?? storedProfile?.()
   const supplied = request.apiKey ?? await stored?.resolveApiKey()
-  const apiKey = supplied === undefined ? undefined : usableProbeKey(supplied)
+  const native = onlineXai && supplied === undefined
+    ? await stored?.resolveNativeAuth?.(request.signal)
+    : undefined
+  const credential = supplied ?? native?.apiKey
+  const apiKey = credential === undefined ? undefined : usableProbeKey(credential)
+  const headers = new Headers(Object.entries({ ...native?.headers, ...stored?.headers })
+    .filter((entry): entry is [string, string] => entry[1] !== null))
+  headers.set('accept', 'application/json')
+  if (api === 'anthropic-messages') {
+    headers.set('anthropic-version', ANTHROPIC_VERSION)
+    if (apiKey !== undefined) headers.set('x-api-key', apiKey)
+  } else if (apiKey !== undefined) {
+    headers.set('authorization', `Bearer ${apiKey}`)
+  }
+  for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+  if (onlineXai) {
+    if (!headers.has('authorization')) {
+      throw new LlmError('xAI model discovery requires an API key or subscription sign-in', 'MISSING_CREDENTIAL')
+    }
+    const directory = readListing(await readEndpoint(`${baseURL.replace(/\/+$/, '')}/models`, headers, request.signal))
+    const body = await readEndpoint(`${baseURL.replace(/\/+$/, '')}/language-models`, headers, request.signal)
+    if (typeof body !== 'object' || body === null || !('models' in body) || !Array.isArray(body.models)) {
+      throw new LlmError('xAI language-model directory did not contain a models array', 'DISCOVERY_FAILED')
+    }
+    const metadata = new Map(directory.map(model => [model.id, model]))
+    return readListing({ data: body.models }, false).map(model => ({
+      ...metadata.get(model.id),
+      ...model,
+      name: model.name ?? metadata.get(model.id)?.name ?? model.id,
+    }))
+  }
+  return readListing(await readEndpoint(url, headers, request.signal))
+}
+
+/** Read one bounded JSON listing without exposing provider error bodies or credentials. */
+async function readEndpoint(url: string, headers: Headers, signal?: AbortSignal): Promise<unknown> {
   let response: Response
   try {
-    const headers = new Headers(stored?.headers === undefined ? undefined : Object.entries(stored.headers))
-    headers.set('accept', 'application/json')
-    if (api === 'anthropic-messages') {
-      headers.set('anthropic-version', ANTHROPIC_VERSION)
-      if (apiKey !== undefined) headers.set('x-api-key', apiKey)
-    } else if (apiKey !== undefined) {
-      headers.set('authorization', `Bearer ${apiKey}`)
-    }
-    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     response = await fetch(url, {
       method: 'GET',
       headers,
-      ...request.signal === undefined ? {} : { signal: request.signal },
+      ...signal === undefined ? {} : { signal },
     })
   } catch (error: unknown) {
-    if (request.signal?.aborted) {
+    if (signal?.aborted) {
       throw new LlmError('model discovery aborted by caller', 'ABORTED', { cause: error })
     }
     throw new LlmError(`could not reach ${url}`, 'DISCOVERY_FAILED', { cause: error })
   }
   if (!response.ok) {
     throw new LlmError(
-      `${url} answered ${response.status}${response.status === 401 || response.status === 403 ? '; check the API key' : ''}`,
+      `${url} answered ${response.status}${response.status === 401 || response.status === 403 ? '; check the API key or account sign-in' : ''}`,
       'DISCOVERY_FAILED',
     )
   }
@@ -348,7 +400,7 @@ export async function discoverModels(
     // Cancellation during the body read rejects with the abort reason, which
     // may be any value; the caller gets the same coded failure it would have
     // for a cancellation before the request went out.
-    if (request.signal?.aborted) {
+    if (signal?.aborted) {
       throw new LlmError('model discovery aborted by caller', 'ABORTED', { cause: error })
     }
     throw error
@@ -359,5 +411,5 @@ export async function discoverModels(
   } catch (error: unknown) {
     throw new LlmError(`${url} did not answer with JSON`, 'DISCOVERY_FAILED', { cause: error })
   }
-  return readListing(body)
+  return body
 }

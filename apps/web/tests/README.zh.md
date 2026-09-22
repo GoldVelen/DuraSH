@@ -6,6 +6,8 @@
 
 DuraSH 组合测试的 fixture 没有已记录的验收任务。它的验收接口对 fixture Session 返回 `null`，工作流关闭时也一样；启动检查会等待这次读取完成。未注册的 Remote 请求仍使测试失败。
 
+`xai-model-sync.e2e.ts` 使用隔离设置、凭据和本机回环目录服务，验证显式刷新、采用模型元数据、输入区的推理档位，以及刷新被拒绝时的行为，全程不发起模型请求。
+
 ## 完成状态观察
 
 依赖状态的用例使用 Workspace、接纳、附件和模型流屏障，区分可见中间状态与已完成操作。详情关闭等待框架过渡结束；归档验证为 seed Session 设置显式标题，并跨重载跟踪该身份。参见 [CI fixture 同步决策](../../../.agents/notes/implemented/testing/2026-09-08-ci-completion-observations.zh.md)。

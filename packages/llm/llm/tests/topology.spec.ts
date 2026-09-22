@@ -238,14 +238,14 @@ describe('model discovery registry', () => {
   it('preserves discovered input types without inventing missing metadata', async () => {
     const ctx = await setup()
     ctx.llm.registerModelDiscovery('llm-example', () => Promise.resolve([
-      { id: 'keep', name: 'Keep', contextWindow: 1024, maxTokens: 256, inputModalities: ['text', 'image'] },
+      { id: 'keep', name: 'Keep', contextWindow: 1024, maxTokens: 256, inputModalities: ['text', 'image'], reasoningEfforts: { low: 'low', xhigh: 'xhigh' } },
       { id: '' },
       { id: 'keep' },
       { id: 'bare' },
     ] as never))
 
     expect(await ctx.llm.discoverModels('llm-example', { baseURL: 'https://gateway.example/v1' })).toEqual([
-      { id: 'keep', name: 'Keep', contextWindow: 1024, maxTokens: 256, inputModalities: ['text', 'image'] },
+      { id: 'keep', name: 'Keep', contextWindow: 1024, maxTokens: 256, inputModalities: ['text', 'image'], reasoningEfforts: { low: 'low', xhigh: 'xhigh' } },
       { id: 'bare' },
     ])
   })

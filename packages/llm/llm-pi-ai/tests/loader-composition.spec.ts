@@ -8,15 +8,16 @@
  * same guard.
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { createServer, type Server } from 'node:http'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import LlmRuntime, { createMessage, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createMessage, createUserMessage, ReasoningEffortId, userAgent } from '@deepseek-ai/dsh-llm'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
@@ -34,6 +35,7 @@ const truncatedToolCallEvents = [
 
 let root: string | undefined
 let context: Context | undefined
+let xaiServer: Server | undefined
 
 afterEach(async () => {
   await context?.fiber.dispose()
@@ -41,15 +43,24 @@ afterEach(async () => {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
   root = undefined
   await closeMockServers()
+  if (xaiServer !== undefined) await new Promise<void>((resolve, reject) => {
+    xaiServer!.close((error) => {
+      if (error === undefined) resolve()
+      else reject(error)
+    })
+  })
+  xaiServer = undefined
   vi.unstubAllEnvs()
 })
 
 /** Boot the dormant composition: a bare `llm-pi-ai` row with no config at all. */
-async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }> {
-  root = await mkdtemp(join(tmpdir(), 'dsh-pi-composition-'))
+async function loadComposition(existingRoot?: string): Promise<{ ctx: Context; settingsPath: string }> {
+  root = existingRoot ?? await mkdtemp(join(tmpdir(), 'dsh-pi-composition-'))
   const settingsPath = join(root, 'settings.yaml')
-  await writeFile(settingsPath, '# personal settings\n')
-  await writeFile(join(root, '.credentials.yaml'), 'version: 1\nrefs:\n  PI_COMPOSITION_KEY: key-from-store\n', { mode: 0o600 })
+  if (existingRoot === undefined) {
+    await writeFile(settingsPath, '# personal settings\n')
+    await writeFile(join(root, '.credentials.yaml'), 'version: 1\nrefs:\n  PI_COMPOSITION_KEY: key-from-store\n', { mode: 0o600 })
+  }
 
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
@@ -94,6 +105,60 @@ async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }
   })
   await ctx.loader.await()
   return { ctx, settingsPath }
+}
+
+
+/** One route-matched loopback fixture for both xAI directories and Responses inference. */
+async function xaiDirectoryFixture() {
+  const calls: { path: string; method: string | undefined; authorization: string | undefined; body: unknown }[] = []
+  const completedMessage = {
+    type: 'message', id: 'message-1', role: 'assistant', status: 'completed',
+    content: [{ type: 'output_text', text: 'hello', annotations: [] }],
+  }
+  const server = createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
+    request.on('end', () => {
+      const path = request.url ?? ''
+      calls.push({ path, method: request.method, authorization: request.headers.authorization,
+        body: body.length === 0 ? undefined : JSON.parse(body) })
+      if (request.method === 'GET' && path === '/v1/language-models') {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ models: [{
+          id: 'grok-4.7', name: 'Grok 4.7', input_modalities: ['text', 'image'],
+          capabilities: { reasoning_effort: ['low', 'medium', 'high', 'xhigh'] },
+        }] }))
+      } else if (request.method === 'GET' && path === '/v1/models') {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ data: [{ id: 'grok-4.7', context_length: 500000 }] }))
+      } else if (request.method === 'POST' && path === '/v1/responses') {
+        response.writeHead(200, { 'content-type': 'text/event-stream' })
+        const events = [
+          { type: 'response.created', response: { id: 'response-1' } },
+          { type: 'response.output_item.added', output_index: 0, item: { ...completedMessage, status: 'in_progress', content: [] } },
+          { type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: 'hello' },
+          { type: 'response.output_item.done', output_index: 0, item: completedMessage },
+          { type: 'response.completed', response: {
+            id: 'response-1', status: 'completed', output: [completedMessage],
+            usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 },
+          } },
+        ]
+        for (const event of events) response.write(`data: ${JSON.stringify(event)}\n\n`)
+        response.end()
+      } else {
+        response.writeHead(404, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: `unexpected fixture request: ${request.method} ${path}` }))
+      }
+    })
+  })
+  xaiServer = server
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('xAI fixture did not bind a TCP port')
+  return { url: `http://127.0.0.1:${address.port}/v1`, calls }
 }
 
 describe('llm-pi-ai real dormant composition', () => {
@@ -157,6 +222,73 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
     expect(server.headers[0]?.accept).toBe('application/json')
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
+  })
+
+  it('refreshes the online xAI catalog, persists new metadata, and sends the selected xhigh effort', async () => {
+    vi.stubEnv('PI_COMPOSITION_KEY', '')
+    const server = await xaiDirectoryFixture()
+    const { ctx, settingsPath } = await loadComposition()
+    await ctx.settings.mutate('llm-pi-ai', [{
+      op: 'set', path: ['providers', 'xai'], value: {
+        apiKeyEnv: 'PI_COMPOSITION_KEY', api: 'openai-responses', baseURL: server.url,
+        models: [{ id: 'grok-4.6' }],
+      },
+    }])
+    const installed = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'xai', baseURL: server.url })
+    expect(installed.some(model => model.id === 'grok-4.6')).toBe(true)
+    expect(installed.some(model => model.id === 'grok-4.7')).toBe(false)
+    expect(server.calls).toEqual([])
+
+    const discovered = await ctx.llm.discoverModels('llm-pi-ai', {
+      provider: 'xai', baseURL: server.url, api: 'openai-responses', refresh: true,
+    })
+    expect(server.calls.map(call => call.path).sort()).toEqual(['/v1/language-models', '/v1/models'])
+    expect(server.calls.every(call => call.method === 'GET' && call.authorization === 'Bearer key-from-store')).toBe(true)
+    const candidate = discovered.find(model => model.id === 'grok-4.7')
+    expect(candidate).toMatchObject({
+      id: 'grok-4.7', contextWindow: 500000, inputModalities: ['text', 'image'],
+      reasoningEfforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' },
+    })
+    expect(candidate?.maxTokens).toBeUndefined()
+    expect(candidate).toBeDefined()
+    await ctx.settings.mutate('llm-pi-ai', [{
+      op: 'set', path: ['providers', 'xai', 'models'], value: [
+        { id: 'grok-4.6' },
+        {
+          id: candidate!.id, name: candidate!.name, contextWindow: candidate!.contextWindow,
+          input: candidate!.inputModalities, reasoningEfforts: candidate!.reasoningEfforts,
+        },
+      ],
+    }])
+    expect((await ctx.llm.listModels('xai')).map(model => model.id)).toEqual(['grok-4.6', 'grok-4.7'])
+    const resolved = await ctx.llm.resolveModelInfo('xai', 'grok-4.7')
+    expect(resolved.context).toEqual({ contextWindow: 500000 })
+    expect(resolved.reasoning?.efforts).toContainEqual({ id: ReasoningEffortId('xhigh'), name: 'Xhigh' })
+
+    const result = await assemble(ctx, {
+      provider: 'xai', model: 'grok-4.7', reasoningEffort: ReasoningEffortId('xhigh'),
+      messages: [createUserMessage({ content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } })],
+    })
+    expect(result.finish).toEqual({ kind: 'stop' })
+    expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
+    expect(server.calls.at(-1)).toMatchObject({
+      path: '/v1/responses', method: 'POST', authorization: 'Bearer key-from-store',
+      body: { model: 'grok-4.7', reasoning: { effort: 'xhigh' } },
+    })
+    const persisted = await readFile(settingsPath, 'utf8')
+    expect(persisted).toContain('grok-4.6')
+    expect(persisted).toContain('grok-4.7')
+    expect(persisted).toContain('500000')
+    expect(persisted).toContain('xhigh')
+    expect(persisted).not.toContain('key-from-store')
+    await ctx.fiber.dispose()
+    context = undefined
+    const reloaded = await loadComposition(root)
+    expect((await reloaded.ctx.llm.listModels('xai')).map(model => model.id)).toEqual(['grok-4.6', 'grok-4.7'])
+    const reloadedModel = await reloaded.ctx.llm.resolveModelInfo('xai', 'grok-4.7')
+    expect(reloadedModel.context).toEqual({ contextWindow: 500000 })
+    expect(reloadedModel.reasoning?.efforts).toContainEqual({ id: ReasoningEffortId('xhigh'), name: 'Xhigh' })
+    expect(server.calls).toHaveLength(3)
   })
 
   it('continues natively after max-token assembly drops a tool call, with pruned replay metadata', async () => {

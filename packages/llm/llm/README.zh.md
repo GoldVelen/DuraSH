@@ -20,6 +20,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+模型发现返回可编辑的候选，适配器可以应请求刷新在线目录。提供方披露的推理档位映射和输入类型会保留在 Remote 响应中，未知能力保持未指定。
+
 -----
 
 <a id="use-this-package"></a>

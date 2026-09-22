@@ -6,6 +6,8 @@ These tests boot the real web composition in-process and drive it with a real Ch
 
 The assembled DuraSH fixture has no recorded acceptance tasks. Its acceptance endpoint returns `null` for fixture Sessions, including when workflow is off; the boot check waits for that read to settle. Unregistered Remote requests remain test failures.
 
+`xai-model-sync.e2e.ts` uses isolated settings and credentials with a loopback directory server. It checks explicit refresh, adopted model metadata, the composer's reasoning levels, and a rejected refresh without making a model request.
+
 ## Completion observations
 
 State-sensitive cases use Workspace, admission, attachment, and model-stream barriers to separate visible intermediate states from completed operations. Details close waits for frame transitions; archive verification assigns an explicit title to the seeded Session and follows that identity across reload. See the [CI fixture synchronization decision](../../../.agents/notes/implemented/testing/2026-09-08-ci-completion-observations.md).
