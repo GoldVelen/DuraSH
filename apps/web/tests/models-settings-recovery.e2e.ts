@@ -63,6 +63,7 @@ describe('web e2e: repairs a stored provider after catalog drift', () => {
     expect(await dialog.getByText(CUSTOM_FAILURE, { exact: true }).count()).toBe(1)
     expect(await dialog.getByRole('button', { name: '添加提供方', exact: true }).isEnabled()).toBe(true)
     expect(await dialog.getByRole('button', { name: '添加自定义提供方', exact: true }).isEnabled()).toBe(true)
+    await dialog.getByRole('heading', { name: '账号登录', exact: true }).waitFor({ timeout: 10_000 })
     await compareOrRefreshGolden(EXPECTED, await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), webSnapshotMode())
 
     await dialog.getByRole('button', { name: '添加提供方', exact: true }).click()

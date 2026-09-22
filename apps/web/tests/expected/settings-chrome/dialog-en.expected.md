@@ -7,6 +7,9 @@
     - button "Models":
       - img
       - text: Models
+    - button "Global rules":
+      - img
+      - text: Global rules
     - button "Built-in plugins":
       - img
       - text: Built-in plugins

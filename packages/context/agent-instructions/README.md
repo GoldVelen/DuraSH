@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-agent-instructions` gives agents workspace guidance from user-global and project-level `AGENTS.md`-compatible files. It loads the applicable chain for the first request. It does not watch external edits continuously: successful filesystem operations discover newly relevant nested files and make later changes or removals visible, while session resume reconciles the baseline. `dsh-base` enables this behavior by default, while profiles can disable it. A byte budget bounds the injected context: broader files are omitted before the most specific file is truncated, and an empty chain adds nothing.
+`dsh-agent-instructions` gives agents workspace guidance from user-global and project-level `AGENTS.md`-compatible files. It loads the applicable chain for the first request. Global rules settings edits the same Host file and refreshes existing sessions before request admission. It does not watch external edits continuously: successful filesystem operations discover newly relevant nested files and make later changes or removals visible, while session resume reconciles the baseline. `dsh-base` enables this behavior by default, while profiles can disable it. A byte budget bounds the injected context: broader files are omitted before the most specific file is truncated, and an empty chain adds nothing.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount this plugin when agents should work from the workspace's own instruction f
 
 ### What the agent gets
 
-The first request includes one durable baseline message with the user-global `$DSH_HOME/AGENTS.md` followed by the project chain — every existing candidate file from the project root down to the session working directory, in broad-to-specific order. Sibling files whose content matches after trimming render once, so a `CLAUDE.md` that duplicates its `AGENTS.md` is not repeated. After a successful `read`, `write`, or `edit` call reaches a deeper directory, the next request includes the newly applicable instruction file; a changed file replaces its content, and a file that disappears or duplicates an earlier candidate produces a removal notice.
+The first request includes one durable baseline message with the Host’s user-global `$DSH_HOME/AGENTS.md` followed by the filesystem provider’s project chain — every existing candidate file from the project root down to the session working directory, in broad-to-specific order. Sibling files whose content matches after trimming render once, so a `CLAUDE.md` that duplicates its `AGENTS.md` is not repeated. After a successful `read`, `write`, or `edit` call reaches a deeper directory, the next request includes the newly applicable instruction file; a changed file replaces its content, and a file that disappears or duplicates an earlier candidate produces a removal notice.
 
 ### Configuration
 
@@ -67,6 +67,13 @@ export interface Config {
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-instructions) is the exhaustive source for every accepted field and its JSDoc.
 
+<a id="editing-global-rules"></a>
+### Editing global rules
+
+Settings → Global rules reads the exact Host file resolved from this plugin’s `dshHome`, then `$DSH_HOME`, then `~/.dsh`. The file is the only editable source: opening the page does not create it, and saving preserves the submitted UTF-8 text. Revision checks before preparation and replacement reject stale edits; permission bits are restored before atomic replacement, independently of the process umask. Symbolic links can be read but saving through them is refused.
+
+A successful save confirms storage only. Before an existing session’s next admitted request, the plugin rebuilds the baseline and previously discovered nested scopes, records `user/message` surface replacements for earlier instruction nodes, and starts a new request series. Old rule text leaves derived history; unchanged saves do not repeat it. Running tools and already sent requests continue unchanged. New sessions read the saved file on their first request. In-process workflow children use the same plugin; external agent providers retain their own instruction mechanisms. Disabling this plugin or its filesystem provider prevents loading, and source/render budgets may omit rules. The recorded instruction message and request context, rather than the save result, establish what a particular request loaded.
+
 ### Observing the budget
 
 Rendering keeps the most specific files first: it drops whole broader files before truncating the most-specific file, and emits a visible `Workspace instruction budget ...` notice naming the omitted and truncated paths. The rendered bytes never exceed `maxBytes`. An over-budget broad file is ignored; during refresh it is treated as temporarily unavailable rather than removed.
@@ -89,7 +96,8 @@ The plugin is built on one principle: workspace instructions are durable convers
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: pre-step listener, `tools/result` touch tracking, inbox composition |
+| [`src/index.ts`](src/index.ts) | Plugin entry: pre-step and request-context listeners, `tools/result` touch tracking, inbox composition |
+| [`src/global-rules.ts`](src/global-rules.ts) | Host file editor, revision checks, and save generation |
 | [`src/config.ts`](src/config.ts) | `Config` schema, budget resolution, baseline identity |
 | [`src/files.ts`](src/files.ts) | Candidate discovery, project-root search, bounded streaming reads |
 | [`src/render.ts`](src/render.ts) | Instruction rendering, budget truncation, change records |
@@ -202,7 +210,7 @@ Each confirmed change or removal is one retained history message bounded by `max
 
 #### KV Cache effect
 
-Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV Cache entries.
+Filesystem-tool updates append after the reusable prefix. Settings saves replace existing instruction nodes and begin a new request series, invalidating the reusable prefix from the first changed instruction node.
 
 ## Known Limitations and Deferred Work
 
@@ -212,7 +220,8 @@ Append-only; newly visible content follows the reusable request prefix and does 
 These limits define when instruction loading is a poor fit or needs operational awareness. They are current package constraints, not a task backlog.
 
 - **Discovery follows structured fs tools, not shell navigation** — a `bash` command that changes directories does not trigger nested instruction discovery because shell syntax and per-call shell state are not a reliable filesystem seam.
-- **Refresh is touch-driven** — there is no watcher; external edits become visible on the next successful first-party `read`, `write`, or `edit`, when resume reconciles a visible baseline, or when an entering pre-step restores a shadowed baseline.
+- **External writers can race the final replacement** — saves detect changes during editing and file preparation. A process that ignores the writer lock can still change the file between the final revision check and rename; the filesystem does not provide an atomic compare-and-swap for this operation.
+- **External refresh has no watcher** — settings saves explicitly refresh the next admitted request; external edits become visible on the next successful first-party `read`, `write`, or `edit`, when resume reconciles a visible baseline, or when an entering pre-step restores a shadowed baseline.
 - **Candidate semantics stay intentionally small** — lowercase names, `.claude/rules/`, and `@path` imports are not interpreted; project scopes load `AGENTS.local.md`/`CLAUDE.local.md` overlays by default, but the user-global `$DSH_HOME` scope has no local overlay and other custom names require explicit candidate configuration.
 - **Per-directory dedup is content-based** — sibling candidates collapse only when byte-identical after trimming leading and trailing whitespace; a `CLAUDE.md` that symlinks its sibling `AGENTS.md` resolves to the same content and collapses like any duplicate, while a distinct real copy that has drifted from `AGENTS.md` loads in full alongside it.
 - **Symlinked instruction files are followed across the trust boundary** — a candidate whose final component is a symlink is resolved and its target loaded, so a cloned repository can surface off-tree file content as lower-authority workspace guidance (it never overrides system, developer, or direct user instructions). Confine `ctx.fs` with the filesystem policy gate or an OS sandbox when loading untrusted repositories.

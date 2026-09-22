@@ -114,6 +114,8 @@ await handle.agent.whenIdle()
 
 `AgentHandle` disposer 是一项能力：在消费方中，只有其持有者能拆除该 agent。已注册的工厂提供方是结构化共同拥有者，因为作用域 agent 依赖该提供方的服务 API；提供方卸载会停止并排空它创建的每个实时句柄。`ctx.agents.get(id)` 仍返回裸 `Agent`——句柄只暴露给创建它的消费方。
 
+`agent/request-context` 在适配器准备后、请求冻结前运行。插件可以在此刷新自己的待提交上下文，同时保留用户直接输入；保留上下文的更新使用持久 Session surface 替换。已接纳输入只提供一次，重试时提供空批次。
+
 </details>
 
 -----

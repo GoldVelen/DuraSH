@@ -2198,7 +2198,7 @@ describe('workspace context request injection', () => {
     }
   })
 
-  it('loads user-global and CLAUDE fallback content through ctx.fs', async () => {
+  it('loads global instructions from the Host and CLAUDE fallback through ctx.fs', async () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
@@ -2216,13 +2216,46 @@ describe('workspace context request injection', () => {
 
       await composeBaselinePrefix(ctx, agent)
 
-      expect(derivedText(agent)).toContain('ctx global rule')
+      expect(derivedText(agent)).toContain('node global rule')
       expect(derivedText(agent)).toContain('ctx claude rule')
-      expect(derivedText(agent)).not.toContain('node global rule')
+      expect(derivedText(agent)).not.toContain('ctx global rule')
+      expect(fs.readTargets).not.toContain(join(home, 'AGENTS.md'))
       expect(derivedText(agent)).not.toContain('node claude rule')
     } finally {
       await rm(root, { recursive: true, force: true })
       await rm(home, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps Host global and provider project rules at the same path as separate instruction scopes', async () => {
+    const root = await tempRepo()
+    const ctx = new Context()
+    try {
+      await write(join(root, 'AGENTS.md'), 'Host global rule')
+      await ctx.plugin(RecordingFileSystem)
+      const fs = ctx.fs as RecordingFileSystem
+      fs.entries.set(join(root, '.git'), { type: 'directory' })
+      fs.entries.set(join(root, 'AGENTS.md'), { type: 'file', content: 'remote project rule' })
+      await mountAgentInstructionsPlugin(ctx, { dshHome: root, maxBytes: 65536 })
+      const agent = await stubAgent(root)
+      await composeBaselinePrefix(ctx, agent)
+      expect(derivedText(agent)).toContain('Host global rule')
+      expect(derivedText(agent)).toContain('remote project rule')
+      const result = await reconcileInstructionContext(await stubAgent(root), resolveConfig({
+        dshHome: root, maxBytes: 65536,
+        instructionFileCandidates: ['AGENTS.md'], localInstructionFileCandidates: [],
+      }), new WeakMap(), fs, {
+        authorityMessages: [], scopeMessages: [], touchedPaths: [], includeBaselineScopes: true,
+      })
+      expect(result?.context.source).toMatchObject({ changes: [
+        { action: 'set', scope: sk(USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE) },
+        { action: 'set', scope: sk('.', 'AGENTS.md') },
+      ] })
+      expect(blocksText(result!.context.content)).toContain('Host global rule')
+      expect(blocksText(result!.context.content)).toContain('remote project rule')
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
     }
   })
 
@@ -3350,7 +3383,7 @@ describe('dynamic nested workspace context injection', () => {
     }
   })
 
-  it('loads one transition when user-global and project scopes resolve to the same file', async () => {
+  it('keeps a provider-only project file out of the absent Host global scope', async () => {
     const root = join(await tempRepo(), 'virtual-repo')
     const ctx = new Context()
     try {
@@ -3375,7 +3408,7 @@ describe('dynamic nested workspace context injection', () => {
       })
 
       expect(result?.context.source).toMatchObject({
-        changes: [{ action: 'set', scope: sk(USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE) }],
+        changes: [{ action: 'set', scope: sk('.', 'AGENTS.md') }],
       })
     } finally {
       await ctx.fiber.dispose()

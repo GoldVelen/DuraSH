@@ -29,6 +29,8 @@ Mount this package as a Loader entry in a profile that serves browser configurat
 
 `settings.describe()` returns deployment facts and every namespace under `redactSecrets: true`. `settings.update`, `settings.replace`, and `settings.mutate` expose the settings service's three write operations and return the namespace's new redacted view; stale writes use `settings-conflict` and other provider refusals use `settings-rejected`.
 
+`settings.readGlobalRules()` reads the exact global `AGENTS.md` selected by the Host's root instruction loader or its default preset's standing composition and returns its path, revision, existence, and loading limits; it returns `null` when that plugin is absent. `settings.saveGlobalRules(content, expectedRevision)` saves only that file with atomic replacement and a revision check, reporting concurrent edits as `global-rules/conflict` and read or write refusals as `global-rules/rejected`. No browser-supplied path is accepted. A successful response confirms file storage; instruction admission remains the [instruction loader's responsibility](../../context/agent-instructions/README.md).
+
 `authorization.describe()` lists every registered sign-in flow beside the controller-tracked attempts, so a page polls one snapshot for both the offer and an attempt's progress. When a flow has no tracked attempt, an existing configured credential is projected as `authorized`; a current tracked attempt takes precedence. `authorization.begin({ key, method? })` starts an attempt against a Host-held interaction and answers at once — an attempt waits on a human for minutes, so no request stays open — while `authorization.respond({ key, promptId, value | declined })` answers the pending prompt and `authorization.cancel({ key })` withdraws. Notices accumulate under a retention bound, one prompt is pending at a time, and a secret answer crosses in this direction only. Attempt state is the Host's own: a reloaded page rejoining `describe` sees the same attempt, and a second begin while one runs reports `conflict`. A failed view states whether the controller had received a notice or prompt, or whether credential commit failed; its outer message is token-redacted and may include only bounded, allowlisted network metadata from nested transport errors.
 
 `settings.openSettingsDocument()` prepares the provider-owned document and opens it with the native text-editor intent. `settings.canOpenAgentPresetDirectory()` reports native-opening availability when the preset page becomes visible. `settings.openAgentPresetDirectory(id)` resolves only a user-authored preset and either opens its directory or returns the path when native opening is unavailable; neither open method accepts a browser-supplied filesystem target.
@@ -49,7 +51,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as settings and credential configuration are browser and Host state and register no prompt, tool, or session event.
+None, as this controller registers no prompt, tool, or session event; global rule text reaches later requests through the instruction loader.
 
 #### KV Cache effect
 

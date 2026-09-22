@@ -7,7 +7,7 @@
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import type { FileSystem, FsInfo, FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
+import { FsVersion, type FileSystem, type FsInfo, type FsTarget } from '@deepseek-ai/dsh-fs'
 import { dshHomeDisplay } from '@deepseek-ai/dsh-home-paths'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { resolveConfig, resolveDiscoveryConfig, type ResolvedConfig } from './config.ts'
@@ -29,7 +29,7 @@ export interface InstructionFile {
 /** An instruction file whose UTF-8 content was read successfully. */
 export interface LoadedInstructionFile extends InstructionFile {
   content: string
-  /** Provider freshness token when the file was loaded through `ctx.fs`. */
+  /** Host or provider freshness token from the file metadata probe. */
   version?: FsVersion
 }
 
@@ -39,9 +39,10 @@ interface DiscoveredInstructionFile extends InstructionFile {
   version?: FsVersion
 }
 
-/** Provider metadata for a probed scope candidate before its content is read. */
+/** Host or provider metadata for a probed candidate before its content is read. */
 export interface ProbedInstructionFile extends InstructionFile {
-  target: FsTarget
+  /** Absent for the Host-owned global instruction file. */
+  target?: FsTarget
   version: FsVersion
   size?: number
 }
@@ -79,7 +80,7 @@ export type ScopeInstructionProbe =
 interface StatFileInfo {
   target?: FsTarget
   size?: number
-  version?: FsVersion
+  version: FsVersion
 }
 
 type StatFileProbe =
@@ -104,10 +105,13 @@ async function nodeStatFile(path: string, signal?: AbortSignal): Promise<StatFil
     signal?.throwIfAborted()
     // stat (not lstat) follows a final-component symlink so a link to a regular
     // file loads; a broken link surfaces as ENOENT and is treated as absent below.
-    const info = await stat(path)
+    const info = await stat(path, { bigint: true })
     signal?.throwIfAborted()
     if (!info.isFile()) return { kind: 'absent' }
-    return { kind: 'present', info: { size: info.size } }
+    return { kind: 'present', info: {
+      size: Number(info.size),
+      version: FsVersion(`host:${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`),
+    } }
   } catch (error: unknown) {
     signal?.throwIfAborted()
     return isMissingPathError(error) ? { kind: 'absent' } : { kind: 'unavailable' }
@@ -269,6 +273,21 @@ async function allExistingInstructionFiles(
   return found
 }
 
+/**
+ * Distinguish equal path strings belonging to different filesystem worlds.
+ * @param file - discovered Host or provider candidate.
+ * @param fileSystem - provider whose mapping can establish a shared Host path.
+ * @returns a deduplication key for the file in its filesystem world.
+ */
+export function instructionFileIdentity(
+  file: InstructionFile & { target?: FsTarget },
+  fileSystem?: FileSystem,
+): string {
+  const host = file.target === undefined
+    || fileSystem?.processPathFromHostPath(file.absolutePath) === file.absolutePath
+  return `${host ? 'host' : 'provider'}:${file.absolutePath}`
+}
+
 async function discoverInstructionFiles(
   options: DiscoverOptions,
   fileSystem?: FileSystem,
@@ -277,13 +296,14 @@ async function discoverInstructionFiles(
   const files: DiscoveredInstructionFile[] = []
   const seen = new Set<string>()
   const addFile = (file: DiscoveredInstructionFile): void => {
-    if (seen.has(file.absolutePath)) return
-    seen.add(file.absolutePath)
+    const identity = instructionFileIdentity(file, fileSystem)
+    if (seen.has(identity)) return
+    seen.add(identity)
     files.push(file)
   }
 
   const userGlobal = join(config.dshHome, USER_GLOBAL_FILE)
-  const userGlobalProbe = await statFile(userGlobal, fileSystem, options.signal)
+  const userGlobalProbe = await nodeStatFile(userGlobal, options.signal)
   switch (userGlobalProbe.kind) {
     case 'present':
       addFile({
@@ -458,11 +478,11 @@ export async function loadBaselineInstructionSet(
 }
 
 /**
- * Probe the current provider metadata for one per-candidate instruction scope.
+ * Probe Host metadata for the global file and provider metadata for project candidates.
  * @param scope - a {@link candidateScopeKey} identifying a directory and candidate file.
  * @param projectRoot - project root used to resolve and display project scopes.
  * @param resolved - normalized plugin configuration.
- * @param fileSystem - provider used to resolve and stat scope candidates.
+ * @param fileSystem - provider used to resolve and stat project candidates.
  * @param signal - cancellation for provider probes.
  * @returns present metadata, confirmed absence, or temporary unavailability.
  */
@@ -478,6 +498,13 @@ export async function probeScopeInstruction(
     ? resolved.dshHome
     : directory === '.' ? projectRoot : join(projectRoot, directory)
   const absolutePath = join(dir, candidateName)
+  if (directory === USER_GLOBAL_DIRECTORY) {
+    const probe = await nodeStatFile(absolutePath, signal)
+    if (probe.kind !== 'present') return probe
+    return { kind: 'present', file: {
+      absolutePath, displayPath: userGlobalDisplayPath(resolved.dshHome), ...probe.info,
+    } }
+  }
   // resolve() follows a final-component symlink; stat then classifies the target.
   // A non-file target (missing, or a link to a directory) is a confirmed absence;
   // only a provider exception is reported as unavailable.
@@ -493,7 +520,7 @@ export async function probeScopeInstruction(
   if (info?.type !== 'file') return { kind: 'absent' }
   const file: ProbedInstructionFile = {
     absolutePath,
-    displayPath: directory === USER_GLOBAL_DIRECTORY ? userGlobalDisplayPath(resolved.dshHome) : relativeDisplay(projectRoot, absolutePath),
+    displayPath: relativeDisplay(projectRoot, absolutePath),
     target,
     version: info.version,
     ...info.size === undefined ? {} : { size: info.size },
@@ -503,9 +530,9 @@ export async function probeScopeInstruction(
 
 /**
  * Read one already-probed scope candidate under the configured source cap.
- * @param file - winning provider candidate and its metadata snapshot.
+ * @param file - Host or provider candidate and its metadata snapshot.
  * @param maxSourceBytes - maximum UTF-8 bytes accepted from the source.
- * @param fileSystem - provider used for the streaming read.
+ * @param fileSystem - provider used for project-file streaming; global text is read on the Host.
  * @param signal - cancellation for provider streaming.
  * @returns loaded content with the probed version, or undefined when unavailable.
  */

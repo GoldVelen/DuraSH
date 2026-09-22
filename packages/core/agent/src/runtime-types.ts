@@ -336,6 +336,21 @@ declare module '@deepseek-ai/cordis' {
     */
     'agent/request'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }, next: () => Promise<LlmCallConfig>): Promise<LlmCallConfig>
     /**
+     * Reconcile plugin-owned context after route preparation, immediately before
+     * synchronous prompt admission and request freezing. Call `next()` to retain
+     * accepted input; replacements of retained context must be durable Session
+     * surface operations. Direct user input must remain unchanged.
+     * @param payload.agent - the agent making the request.
+     * @param payload.messages - accepted messages, empty on retries.
+     * @param payload.turn - the open turn number.
+     * @param payload.step - the current step number.
+     * @param payload.signal - the current turn cancellation signal.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+     * @mode waterfall
+     */
+    'agent/request-context'(this: Scoped<Agent>, payload: { agent: Agent; messages: readonly UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<readonly UserMessage[]>): Promise<readonly UserMessage[]>
+
+    /**
      * Handle one failed model-request attempt before the loop retries or closes
      * its step. A listener returns `{ kind: 'retry' }` without calling `next()`
      * when it owns recovery, or calls `next()` to delegate. The default

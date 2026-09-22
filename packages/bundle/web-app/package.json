@@ -84,6 +84,7 @@
     "@deepseek-ai/dsh-client-ui-settings-plugin-inventory": "workspace:^",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "workspace:^",
     "@deepseek-ai/dsh-client-ui-settings-unarchive-sessions": "workspace:^",
+    "@durash/dsh-client-ui-settings-global-rules": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar-browser": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar-files": "workspace:^",

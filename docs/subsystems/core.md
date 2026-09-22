@@ -1122,6 +1122,33 @@ Types: [LlmCallConfig](llm-streaming.md) · [Scoped](scope.md)
 
 Source: [`packages/core/agent/src/runtime-types.ts`](../../packages/core/agent/src/runtime-types.ts)
 
+<a id="agentrequest-context--waterfall"></a>
+
+#### `agent/request-context` — waterfall
+
+Reconcile plugin-owned context after route preparation, immediately before synchronous prompt admission and request freezing. Call `next()` to retain accepted input; replacements of retained context must be durable Session surface operations. Direct user input must remain unchanged.
+
+```ts cordis-catalog
+/**
+ * Reconcile plugin-owned context after route preparation, immediately before
+ * synchronous prompt admission and request freezing. Call `next()` to retain
+ * accepted input; replacements of retained context must be durable Session
+ * surface operations. Direct user input must remain unchanged.
+ * @param payload.agent - the agent making the request.
+ * @param payload.messages - accepted messages, empty on retries.
+ * @param payload.turn - the open turn number.
+ * @param payload.step - the current step number.
+ * @param payload.signal - the current turn cancellation signal.
+ * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @mode waterfall
+ */
+'agent/request-context'(this: Scoped<Agent>, payload: { agent: Agent; messages: readonly UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<readonly UserMessage[]>): Promise<readonly UserMessage[]>
+```
+
+Types: [Scoped](scope.md) · [UserMessage](session.md)
+
+Source: [`packages/core/agent/src/runtime-types.ts`](../../packages/core/agent/src/runtime-types.ts)
+
 <a id="agentrequest-error--waterfall"></a>
 
 #### `agent/request-error` — waterfall

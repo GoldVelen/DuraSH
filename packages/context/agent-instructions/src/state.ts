@@ -15,6 +15,7 @@ import {
   ancestorChain,
   descendantDirsBetween,
   findProjectRoot,
+  instructionFileIdentity,
   probeScopeInstruction,
   readScopeInstruction,
   relativeDisplay,
@@ -136,9 +137,10 @@ function sameInstructionChange(a: AgentInstructionChange, b: AgentInstructionCha
 function visibleInstructionChanges(
   agent: Agent,
   authorityMessages: readonly UserMessage[],
+  resetVisible = false,
 ): Map<string, AgentInstructionChange> {
   const visible = new Map<string, AgentInstructionChange>()
-  for (const seq of agent.session.surface.nodes) {
+  for (const seq of resetVisible ? [] : agent.session.surface.nodes) {
     // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const event = agent.session.eventAt(seq)
     if (event?.type !== 'user/message' || !isAgentInstructionsSource(event.data.source)) continue
@@ -254,13 +256,15 @@ export async function reconcileInstructionContext(
     scopeMessages: readonly UserMessage[]
     touchedPaths: readonly string[]
     includeBaselineScopes: boolean
+    /** Rebuild after a Host save without retaining prior instruction payloads. */
+    resetVisible?: boolean
     excludedBaselineScopes?: ReadonlySet<string>
     projectRoot?: string
     signal?: AbortSignal
   },
 ): Promise<ReconciledInstructionContext | undefined> {
   const session = agent.session
-  const effective = visibleInstructionChanges(agent, options.authorityMessages)
+  const effective = visibleInstructionChanges(agent, options.authorityMessages, options.resetVisible)
   /* v8 ignore next -- normal agents carry an absolute session cwd. */
   const cwd = session.header.cwd ?? process.cwd()
   // TODO(frozen-project-root): retain the baseline root for the loop instance;
@@ -300,7 +304,7 @@ export async function reconcileInstructionContext(
   }
 
   const versions = versionStatesFor(session, versionCache)
-  const seenAbsolutePaths = new Set<string>()
+  const seenFiles = new Set<string>()
   // Per-directory trimmed-content identities kept so far this pass, iterated in
   // candidate order (base before local); a later sibling matching an earlier one
   // is a duplicate and is dropped or removed rather than rendered twice.
@@ -344,7 +348,7 @@ export async function reconcileInstructionContext(
     }
     const itemStart = items.length
     const versionUpdateStart = versionUpdates.length
-    const addedAbsolutePaths: string[] = []
+    const addedFiles: string[] = []
     const priorVersions = new Map(probedScopes.map(scope => [scope, versions.get(scope)]))
     for (const scope of probedScopes) {
       const previous = effective.get(scope)
@@ -360,7 +364,7 @@ export async function reconcileInstructionContext(
           if (prior === undefined) versions.delete(candidateScope)
           else versions.set(candidateScope, prior)
         }
-        for (const absolutePath of addedAbsolutePaths) seenAbsolutePaths.delete(absolutePath)
+        for (const identity of addedFiles) seenFiles.delete(identity)
         keptTrimmedByDir.delete(directory)
         break
       }
@@ -370,9 +374,10 @@ export async function reconcileInstructionContext(
         continue
       }
       const { file: probedFile } = probe
-      if (seenAbsolutePaths.has(probedFile.absolutePath)) continue
-      seenAbsolutePaths.add(probedFile.absolutePath)
-      addedAbsolutePaths.push(probedFile.absolutePath)
+      const identity = instructionFileIdentity(probedFile, fileSystem)
+      if (seenFiles.has(identity)) continue
+      seenFiles.add(identity)
+      addedFiles.push(identity)
       const cached = versions.get(scope)
       if (
         cached !== undefined

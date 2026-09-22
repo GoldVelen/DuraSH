@@ -227,7 +227,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/api/settings-controller/src/index.ts:39`](../packages/api/settings-controller/src/index.ts)
+Source: [`packages/api/settings-controller/src/index.ts:41`](../packages/api/settings-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-terminal-controller"></a>
 
@@ -3899,6 +3899,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-workspace` — requires `storageDomain` · `sessionPersistence` ([`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts))
 - `@durash/dsh-client-ui-brand` ([`packages/client/ui-brand-durash/src/index.ts`](../packages/client/ui-brand-durash/src/index.ts))
 - `@durash/dsh-client-ui-reliability` ([`packages/client/ui-reliability/src/index.ts`](../packages/client/ui-reliability/src/index.ts))
+- `@durash/dsh-client-ui-settings-global-rules` ([`packages/client/ui-settings-global-rules/src/index.ts`](../packages/client/ui-settings-global-rules/src/index.ts))
 - `@durash/dsh-reliability-policy` — requires `storageDomain` · `llm` ([`packages/reliability/durash-reliability-policy/src/index.ts`](../packages/reliability/durash-reliability-policy/src/index.ts))
 - `@durash/dsh-tool-reliability` — requires `tools` · `systemPrompt` · `agents` · `reliabilityPolicy` · `reliabilityLoopRuntime` ([`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts))
 

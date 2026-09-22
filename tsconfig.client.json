@@ -117,6 +117,7 @@
     { "path": "./packages/client/ui-plugin-manager" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
     { "path": "./packages/client/ui-settings-unarchive-sessions" },
+    { "path": "./packages/client/ui-settings-global-rules" },
     { "path": "./packages/client/locale" },
     { "path": "./packages/client/ui-renderer" },
     { "path": "./packages/client/ui-session" },

@@ -114,7 +114,7 @@ describe('web e2e: settings modal and General preferences', () => {
     expect(await presetToggle.getAttribute('aria-expanded')).toBe('false')
     expect(await dialog.locator('[data-plugin-scope="preset"] [data-plugin-entry]').count()).toBe(0)
     await presetToggle.click()
-    await dialog.getByRole('button', { name: /^全局/ }).click()
+    await dialog.locator('[data-plugin-scope="global"]').getByRole('button', { name: /^全局/ }).click()
     const pluginRow = dialog.locator(PLUGIN_ROW_SELECTOR)
     await pluginRow.waitFor({ timeout: 10_000 })
     const expectedPluginCount = [...scaffold.ctx.loader.entries()]

@@ -281,6 +281,23 @@ export function serviceForAgent<K extends string & keyof Context>(
 ): Context[K] | undefined {
   const mount = standingMountFor(agent.ctx)
   if (mount === undefined) return undefined
+  return serviceForScope(ctx, mount.key, name)
+}
+
+/**
+ * Resolve an isolated service in a standing preset without creating an agent.
+ * @param ctx - runtime whose service store owns the standing composition.
+ * @param scope - standing key returned by the preset roster.
+ * @param name - service name published by that composition.
+ * @returns its service, or undefined when this runtime or composition provides none.
+ */
+export function serviceForScope<K extends string & keyof Context>(
+  ctx: Context,
+  scope: ScopeKey,
+  name: K,
+): Context[K] | undefined {
+  const mount = livePresetMounts(ctx.root.fiber).find(candidate => candidate.key === scope)
+  if (mount === undefined) return undefined
   const store = ctx.reflect.store
   for (const key of Object.getOwnPropertySymbols(store)) {
     const impl = store[key]

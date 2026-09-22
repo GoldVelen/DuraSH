@@ -28,10 +28,16 @@
     prefix: >-
       You are a coding agent powered by the {{model}} model.
 
-- id: agent-instructions
-  name: '@deepseek-ai/dsh-agent-instructions'
+- id: instructions
+  name: cordis:group
+  group: true
+  isolate:
+    globalRules: true
   config:
-    maxBytes: 65536
+    - id: agent-instructions
+      name: '@deepseek-ai/dsh-agent-instructions'
+      config:
+        maxBytes: 65536
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

@@ -76,6 +76,8 @@ describe('the settings Remote namespace a configuration page calls', () => {
     expect(controller.typertRemote.namespace).toBe('settings')
     expect(remoteMethods(controller)).toEqual([
       { method: 'describe', invocation: { kind: 'direct' } },
+      { method: 'readGlobalRules', invocation: { kind: 'direct' } },
+      { method: 'saveGlobalRules', invocation: { kind: 'direct' } },
       { method: 'canOpenAgentPresetDirectory', invocation: { kind: 'direct' } },
       { method: 'update', invocation: { kind: 'direct' } },
       { method: 'replace', invocation: { kind: 'direct' } },

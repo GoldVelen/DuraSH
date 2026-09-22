@@ -332,6 +332,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The JSONL backend persists the SessionEvent vocabulary as one artifact per Session.',
   },
   {
+    key: 'globalRules',
+    pkg: 'agent-instructions',
+    title: 'Host global instruction editor',
+    mode: 'core',
+    consumers: ['api-settings-controller'],
+    note: 'Reads and atomically replaces the configured Host AGENTS.md with revision checks; successful saves refresh instruction context for agents using the same file.',
+  },
+  {
     key: 'settings',
     pkg: 'settings',
     title: 'User-settings seam',

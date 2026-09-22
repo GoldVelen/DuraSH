@@ -114,6 +114,8 @@ Each driver runs its complete lifetime inside `ctx.agents.withInitiator(agent, .
 
 The `AgentHandle` disposer is a capability: among consumers, only its holder can tear the agent down. The registered factory provider is a structural co-owner, because scoped agents depend on that provider's service API; provider unload stops and drains every live handle it made. `ctx.agents.get(id)` still returns a bare `Agent` — the handle is exposed only to the consumer that created it.
 
+`agent/request-context` runs after adapter preparation and before request freezing. Plugins can refresh their own pending context there, preserving direct user input; updates to retained context use durable Session surface replacements. The accepted input is supplied once, while retries supply an empty batch.
+
 </details>
 
 -----

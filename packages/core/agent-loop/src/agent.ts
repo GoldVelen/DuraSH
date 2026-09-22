@@ -361,6 +361,12 @@ export class ReactLoopAgent implements Agent {
     let firstAttempt = true
     while (true) {
       const { config, preparedCall } = await this.prepareRequest(turn, step, signal)
+      const admissionMessages = firstAttempt ? decision.messages : []
+      const messages = await this.dispatch.waterfall(
+        'agent/request-context', { messages: admissionMessages, turn, step, signal },
+        () => Promise.resolve(admissionMessages),
+      )
+      signal.throwIfAborted()
       const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true
       const commits = this.systemPrompt.project(renderedPrompt, {
         inHistory: preparedCall?.systemPromptUpdate === 'in-history',
@@ -371,10 +377,8 @@ export class ReactLoopAgent implements Agent {
       for (const { message, intent } of commits) {
         this.session.append('system/message', { turn, step, message }, intent)
       }
-      if (firstAttempt) {
-        for (const message of decision.messages) {
-          this.session.append('user/message', message, { surfaceOp: 'append' })
-        }
+      for (const message of messages) {
+        this.session.append('user/message', message, { surfaceOp: 'append' })
       }
       firstAttempt = false
       const request = this.buildRequest(config, preparedCall, assembly.tools, startsRequestSeries, signal)

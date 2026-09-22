@@ -1095,6 +1095,27 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'globalRules',
+    summary: 'Atomic, revision-checked editor; it never stores a second copy of rule text.',
+    description: 'Atomic, revision-checked editor; it never stores a second copy of rule text.',
+    methods: [
+      {
+        signature: 'async read(): Promise<GlobalRulesDocument>',
+        description: 'Read the configured file without creating it; missing files have empty content.',
+        parameters: [],
+        returns: 'exact text, file revision, and current loading limits.',
+        throws: ['Error when the file cannot be read or is not valid UTF-8.'],
+      },
+      {
+        signature: 'async save(content: string, expectedRevision: string): Promise<GlobalRulesDocument>',
+        description: 'Replace exact text after checking the caller\'s revision before and after staging under the writer lock. Retains permission bits independently of umask; symlink targets are readable but cannot be replaced.',
+        parameters: [{ name: 'content', description: 'complete next UTF-8 text, without normalization.' }, { name: 'expectedRevision', description: 'fingerprint returned by the caller\'s last read.' }],
+        returns: 'the committed file state; this is not a model-admission receipt.',
+        throws: ['GlobalRulesConflict when the file changed, or Error on permission and storage failures.'],
+      },
+    ],
+  },
+  {
     key: 'goals',
     summary: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
     description: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
@@ -2425,6 +2446,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['RemoteError when no settings provider is mounted.'],
       },
       {
+        signature: '@Remote async readGlobalRules(): Promise<GlobalRulesDocument | null>',
+        description: 'Read the sole global instruction file on this Host.',
+        parameters: [],
+        returns: 'current text and revision, or null when instruction loading is not mounted.',
+        throws: ['RemoteError when the file cannot be read.'],
+      },
+      {
+        signature: '@Remote async saveGlobalRules(content: string, expectedRevision: string): Promise<GlobalRulesDocument>',
+        description: 'Save exact global rule text against the editor\'s last observed file revision.',
+        parameters: [{ name: 'content', description: 'complete next text.' }, { name: 'expectedRevision', description: 'revision returned by readGlobalRules.' }],
+        returns: 'committed file state, without claiming model admission.',
+        throws: ['RemoteError when loading is absent, a concurrent edit conflicts, or storage refuses the write.'],
+      },
+      {
         signature: '@Remote canOpenAgentPresetDirectory(): boolean',
         description: 'Report whether this deployment can open an authored Agent preset directory natively.',
         parameters: [],
@@ -3600,6 +3635,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'payload', description: '.signal - the current turn\'s explicit abort signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
   },
   {
+    name: 'agent/request-context',
+    mode: 'waterfall',
+    signature: '\'agent/request-context\'(this: Scoped<Agent>, payload: { agent: Agent; messages: readonly UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<readonly UserMessage[]>): Promise<readonly UserMessage[]>',
+    summary: 'Reconcile plugin-owned context after route preparation, immediately before synchronous prompt admission and request freezing.',
+    description: 'Reconcile plugin-owned context after route preparation, immediately before synchronous prompt admission and request freezing. Call `next()` to retain accepted input; replacements of retained context must be durable Session surface operations. Direct user input must remain unchanged.',
+    parameters: [{ name: 'payload', description: '.signal - the current turn cancellation signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
+  },
+  {
     name: 'agent/request-error',
     mode: 'waterfall',
     signature: '\'agent/request-error\'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; provider: string; failure: LlmFailure; retryPolicy: ResolvedRetryPolicy | undefined; signal: AbortSignal }, next: () => Promise<RequestErrorAction>): Promise<RequestErrorAction>',
@@ -3806,6 +3849,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Single-slot decision for the next FileSystem.writeText.',
     description: 'Single-slot decision for the next FileSystem.writeText. Calling `next()` yields the bare provider\'s unconditional write; the first listener that returns an intent owns the decision rather than composing with peers.',
     parameters: [{ name: 'target', description: 'the resolved target about to be written.' }, { name: 'actor', description: 'the opaque tool-execution context the decider keys off.' }],
+  },
+  {
+    name: 'global-rules/saved',
+    mode: 'emit',
+    signature: '\'global-rules/saved\'(path: string): void',
+    summary: 'A Host editor committed changed global rule text.',
+    description: 'A Host editor committed changed global rule text. Carries no rule body.',
+    parameters: [{ name: 'path', description: 'absolute configured rule file path.' }],
   },
   {
     name: 'goal/activation-changed',
@@ -4918,6 +4969,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GenericResultView',
     declaration: 'export interface GenericResultView {\n    card: \'generic\';\n    title?: string;\n    content?: ContentBlock[];\n}',
+  },
+  {
+    name: 'GlobalRulesDocument',
+    declaration: 'export interface GlobalRulesDocument {\n    readonly path: string;\n    readonly content: string;\n    readonly revision: string;\n    readonly exists: boolean;\n    readonly loadingEnabled: boolean;\n    readonly maxBytes: number;\n    readonly maxSourceBytes: number;\n}',
   },
   {
     name: 'GoalActivation',

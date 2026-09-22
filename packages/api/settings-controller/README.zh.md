@@ -31,6 +31,8 @@ kind: "package-reference"
 
 `settings.openSettingsDocument()` 准备提供方持有的文档，并用原生文本编辑器意图将其打开。`settings.canOpenAgentPresetDirectory()` 在 preset 页面显示时报告原生打开能力。`settings.openAgentPresetDirectory(id)` 只解析用户创作的 preset，并打开其目录，或在原生打开不可用时返回目录路径；两个打开方法都不接受浏览器提供的文件系统目标。
 
+`settings.readGlobalRules()` 原样读取 Host 根级指令加载器或默认预设常驻组合选定的全局 `AGENTS.md`，返回路径、版本、文件存在状态和加载限制；未挂载该插件时返回 `null`。`settings.saveGlobalRules(content, expectedRevision)` 仅使用原子替换和版本检查保存该文件，并发编辑返回 `global-rules/conflict`，读取或写入拒绝返回 `global-rules/rejected`，不接受浏览器传入的文件路径。保存成功仅确认文件写入；指令是否进入请求由[指令加载器](../../context/agent-instructions/README.zh.md)负责。
+
 `authorization.describe()` 列出每个已注册的登录流与其被宿主跟踪的尝试，页面轮询一份快照即可同时得到可登录项与尝试进度。登录流没有被跟踪的尝试时，已有且已配置的凭据会被投影为 `authorized`；当前被跟踪的尝试优先。`authorization.begin({ key, method? })` 以宿主持有的交互启动一次尝试并立即应答——尝试会等一个人几分钟，因此没有任何请求保持挂起；`authorization.respond({ key, promptId, value | declined })` 回答待答提问，`authorization.cancel({ key })` 撤回尝试。通知按保留上限累积，同一时刻只有一个待答提问，密钥回答只朝这个方向传输。尝试状态属于宿主：重新加载的页面通过 `describe` 重新加入同一尝试；已有尝试运行时再次 begin 报 `conflict`。失败视图只说明控制器是否已收到通知或提问，或者凭据提交是否失败；外层消息会脱敏 token，嵌套传输错误只能附带有上限的白名单网络元数据。
 
 -----
@@ -49,7 +51,7 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-无，因为 settings 与凭据配置属于浏览器和 Host 状态，并且不注册提示词、工具或会话事件。
+无，本控制器不注册提示词、工具或会话事件；全局规则正文通过指令加载器进入后续请求。
 
 #### KV Cache 影响
 

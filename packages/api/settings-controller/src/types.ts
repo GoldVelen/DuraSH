@@ -7,8 +7,14 @@
  * @module @deepseek-ai/dsh-api-settings-controller/types
  */
 
+export type { GlobalRulesDocument } from '@deepseek-ai/dsh-agent-instructions/types'
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
+    /** The Host refused to read or save its configured global instruction file. */
+    'global-rules/rejected': Record<string, never>
+    /** The global instruction file changed after the editor loaded it. */
+    'global-rules/conflict': { readonly expected: string; readonly actual: string }
     /**
      * Every seam refusal that is not a stale write: an unregistered or malformed
      * namespace, a read-only provider, schema validation, storage.

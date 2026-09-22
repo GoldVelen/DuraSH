@@ -7,6 +7,9 @@
     - button "模型":
       - img
       - text: 模型
+    - button "全局规则":
+      - img
+      - text: 全局规则
     - button "内置插件":
       - img
       - text: 内置插件

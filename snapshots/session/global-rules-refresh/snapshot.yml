@@ -1,0 +1,11 @@
+version: 1
+scenario: global-rules-refresh
+profile: headless
+composition: global-rules-refresh
+recording: authored
+header:
+  class: global-rules-refresh
+  pin: true
+  changes: 2
+replay:
+  override: true

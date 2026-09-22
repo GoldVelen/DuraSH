@@ -1683,6 +1683,11 @@
     },
     {
       "doc": "docs/subsystems/settings.md",
+      "symbol": "GlobalRulesDocument",
+      "source": "packages/context/agent-instructions/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/settings.md",
       "symbol": "SettingsNamespace",
       "source": "packages/settings/settings/src/types.ts"
     },

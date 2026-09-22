@@ -23553,7 +23553,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[16].changes"
+        "event:agent/inbox/spliced.data.inserted[0].source[15].changes"
       ],
       "sources": []
     },
@@ -33433,7 +33433,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[15].references[0]"
+        "event:agent/inbox/spliced.data.inserted[0].source[16].references[0]"
       ],
       "sources": [
         "packages/context/session-reference/src/types.ts:18"
@@ -38478,7 +38478,7 @@
         "packages/context/agent-instructions/src/state.ts#AgentInstructionSource"
       ],
       "sources": [
-        "packages/context/agent-instructions/src/state.ts:37"
+        "packages/context/agent-instructions/src/state.ts:38"
       ]
     },
     {
@@ -43669,7 +43669,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[16].changes[0].action"
+        "event:agent/inbox/spliced.data.inserted[0].source[15].changes[0].action"
       ],
       "sources": []
     },
@@ -56884,7 +56884,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[15].references"
+        "event:agent/inbox/spliced.data.inserted[0].source[16].references"
       ],
       "sources": []
     },

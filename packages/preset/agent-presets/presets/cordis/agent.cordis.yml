@@ -37,10 +37,16 @@
 
       Use installed bundles for new plugin code. Package installation may require explicit user approval for build scripts. Preserve returned failures and pending states; only report success after observing the requested capability.
 
-- id: agent-instructions
-  name: '@deepseek-ai/dsh-agent-instructions'
+- id: instructions
+  name: cordis:group
+  group: true
+  isolate:
+    globalRules: true
   config:
-    maxBytes: 65536
+    - id: agent-instructions
+      name: '@deepseek-ai/dsh-agent-instructions'
+      config:
+        maxBytes: 65536
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

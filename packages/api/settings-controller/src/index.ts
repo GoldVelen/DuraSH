@@ -11,7 +11,9 @@ import { dirname } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 // Type-only: resolves the `agentPresets` Context augmentation this controller reads.
-import type {} from '@deepseek-ai/dsh-agent-presets'
+import { serviceForScope } from '@deepseek-ai/dsh-agent-presets'
+import type { GlobalRules } from '@deepseek-ai/dsh-agent-instructions'
+import type { GlobalRulesDocument } from '@deepseek-ai/dsh-agent-instructions/types'
 import {
   canOpenNativePath,
   openNativePath,
@@ -124,6 +126,42 @@ export class SettingsController extends TypertRemoteService {
       writable: settings.writable,
       hasDocument: settings.documentPath !== undefined,
       namespaces: settings.describe({ redactSecrets: true }).map(namespaceView),
+    }
+  }
+
+  /**
+   * Read the sole global instruction file on this Host.
+   * @returns current text and revision, or null when instruction loading is not mounted.
+   * @throws RemoteError when the file cannot be read.
+   */
+  @Remote
+  async readGlobalRules(): Promise<GlobalRulesDocument | null> {
+    try {
+      const rules = await this.globalRulesProvider()
+      return rules === undefined ? null : await rules.read()
+    } catch (error) {
+      throw globalRulesRejected(error)
+    }
+  }
+
+  /**
+   * Save exact global rule text against the editor's last observed file revision.
+   * @param content - complete next text.
+   * @param expectedRevision - revision returned by readGlobalRules.
+   * @returns committed file state, without claiming model admission.
+   * @throws RemoteError when loading is absent, a concurrent edit conflicts, or storage refuses the write.
+   */
+  @Remote
+  async saveGlobalRules(content: string, expectedRevision: string): Promise<GlobalRulesDocument> {
+    const parsed = parseRemoteRequest('settings.saveGlobalRules', z.object({
+      content: z.string(), expectedRevision: z.string().min(1),
+    }), { content, expectedRevision })
+    try {
+      const rules = await this.globalRulesProvider()
+      if (rules === undefined) throw new Error('This Host default mode does not mount agent-instructions.')
+      return await rules.save(parsed.content, parsed.expectedRevision)
+    } catch (error) {
+      throw globalRulesRejected(error)
     }
   }
 
@@ -261,6 +299,14 @@ export class SettingsController extends TypertRemoteService {
     }
   }
 
+  private async globalRulesProvider(): Promise<GlobalRules | undefined> {
+    const global = this.ctx.get('globalRules')
+    if (global !== undefined) return global
+    const presets = this.ctx.get('agentPresets')
+    if (presets === undefined) return undefined
+    return serviceForScope(this.ctx, await presets.standingKeyFor(), 'globalRules')
+  }
+
   private async write(
     ns: string,
     mode: 'update' | 'replace' | 'mutate',
@@ -339,6 +385,19 @@ function rejected(ns: string, error: unknown): RemoteError {
     )
   }
   return new RemoteError('settings/rejected', messageOf(error), { ns }, { cause: error })
+}
+
+function globalRulesRejected(error: unknown): RemoteError {
+  if (typeof error === 'object' && error !== null
+    && Reflect.get(error, 'code') === 'GLOBAL_RULES_CONFLICT'
+    && typeof Reflect.get(error, 'expected') === 'string'
+    && typeof Reflect.get(error, 'actual') === 'string') {
+    return new RemoteError('global-rules/conflict', messageOf(error), {
+      expected: Reflect.get(error, 'expected') as string,
+      actual: Reflect.get(error, 'actual') as string,
+    }, { cause: error })
+  }
+  return new RemoteError('global-rules/rejected', messageOf(error), {}, { cause: error })
 }
 
 export default SettingsController

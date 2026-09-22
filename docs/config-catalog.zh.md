@@ -229,7 +229,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/api/settings-controller/src/index.ts:36`](../packages/api/settings-controller/src/index.ts)
+来源：[`packages/api/settings-controller/src/index.ts:41`](../packages/api/settings-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-terminal-controller"></a>
 
@@ -3901,6 +3901,7 @@ export interface Config {
 - `@deepseek-ai/dsh-workspace` — 需要 `storageDomain` · `sessionPersistence`（[`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts)）
 - `@durash/dsh-client-ui-brand`（[`packages/client/ui-brand-durash/src/index.ts`](../packages/client/ui-brand-durash/src/index.ts)）
 - `@durash/dsh-client-ui-reliability`（[`packages/client/ui-reliability/src/index.ts`](../packages/client/ui-reliability/src/index.ts)）
+- `@durash/dsh-client-ui-settings-global-rules`（[`packages/client/ui-settings-global-rules/src/index.ts`](../packages/client/ui-settings-global-rules/src/index.ts)）
 - `@durash/dsh-reliability-policy` — 需要 `storageDomain` · `llm`（[`packages/reliability/durash-reliability-policy/src/index.ts`](../packages/reliability/durash-reliability-policy/src/index.ts)）
 - `@durash/dsh-tool-reliability` — 需要 `tools` · `systemPrompt` · `agents` · `reliabilityPolicy` · `reliabilityLoopRuntime`（[`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts)）
 

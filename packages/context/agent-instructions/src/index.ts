@@ -28,8 +28,11 @@ import {
   type AgentInstructionSource,
 } from './state.ts'
 import type { AgentInstructionChange } from './render.ts'
+import { GlobalRules } from './global-rules.ts'
 
 export { Config, name }
+export type { GlobalRules } from './global-rules.ts'
+export type { GlobalRulesDocument } from './types.ts'
 /** Services required by workspace instruction projection. */
 export const inject = ['sessionProjections']
 export {
@@ -83,6 +86,8 @@ function filePathFromExecution(exec: ToolExecution): string | undefined {
 
 export function apply(ctx: Context, config: Config): void {
   const resolved: ResolvedConfig = resolveConfig(config)
+  const globalRules = new GlobalRules(ctx, resolved)
+  const appliedGenerations = new WeakMap<Session, number>()
   const instructionVersions: InstructionVersionCache = new WeakMap()
   const baselinePreparations = new WeakMap<Session, {
     identity: string
@@ -111,6 +116,7 @@ export function apply(ctx: Context, config: Config): void {
     claimed: readonly UserMessage[],
     pending: readonly UserMessage[],
     touchedPaths: readonly string[] = [],
+    resetVisible = false,
   ): Promise<UserMessage | undefined> => {
     signal.throwIfAborted()
     if (resolved.maxBytes <= 0 || !Number.isFinite(resolved.maxBytes)) {
@@ -118,7 +124,7 @@ export function apply(ctx: Context, config: Config): void {
     }
     const fileSystem = ctx.get('fs')
     if (fileSystem === undefined) return undefined
-    if (touchedPaths.length === 0 && pending.length > 0) return pending[0]
+    if (!resetVisible && touchedPaths.length === 0 && pending.length > 0) return pending[0]
     const content: UserMessage['content'][number][] = []
     const changes: AgentInstructionChange[] = []
     let desiredBaseline = false
@@ -127,7 +133,7 @@ export function apply(ctx: Context, config: Config): void {
     const cwd = agent.session.header.cwd ?? process.cwd()
     const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal)
     const identity = workspaceBaselineIdentity(resolved, cwd, projectRoot)
-    const visibleBaseline = visibleBaselineSource(agent, authorityMessages)
+    const visibleBaseline = resetVisible ? undefined : visibleBaselineSource(agent, authorityMessages)
     const baselinePresent = visibleBaseline !== undefined
     const keepVisibleBaseline = visibleBaseline?.baselineIdentity === identity
     const prepared = baselinePreparations.get(agent.session)
@@ -194,6 +200,7 @@ export function apply(ctx: Context, config: Config): void {
       fileSystem,
       {
         authorityMessages,
+        resetVisible,
         scopeMessages: pending,
         includeBaselineScopes: keepVisibleBaseline,
         ...keepVisibleBaseline ? { excludedBaselineScopes } : {},
@@ -338,6 +345,54 @@ export function apply(ctx: Context, config: Config): void {
     const lastClaimedIndex = decision.messages.findLastIndex(message => messages.includes(message))
     const entered = decision.messages.toSpliced(lastClaimedIndex + 1, 0, desired)
     return { ...decision, messages: entered }
+  })
+
+  ctx.on('agent/request-context', async ({ agent, signal }, next) => {
+    const messages = await next()
+    if (globalRules.generation === (appliedGenerations.get(agent.session) ?? 0)) return messages
+    await waitForProjections(agent)
+    const previous = agent.session.surface.nodes.flatMap((seq) => {
+      // oxlint-disable-next-line typescript/no-deprecated -- Surface replacement needs the retained source event.
+      const event = agent.session.eventAt(seq)
+      return event?.type === 'user/message' && isAgentInstructionsMessage(event.data) ? [event] : []
+    })
+    const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage)
+    let generation: number
+    let desired: UserMessage | undefined
+    do {
+      generation = globalRules.generation
+      instructionVersions.delete(agent.session)
+      baselinePreparations.delete(agent.session)
+      desired = await compose(
+        agent, signal, messages.filter(message => !isAgentInstructionsMessage(message)),
+        [...previous.map(event => event.data), ...messages.filter(isAgentInstructionsMessage), ...pending],
+        [], true,
+      )
+      signal.throwIfAborted()
+    } while (generation !== globalRules.generation)
+    // Only instruction nodes are replaced; user/tool history and already frozen
+    // requests retain their original content. Surface changes start a new series.
+    for (const [index, event] of previous.entries()) {
+      const replacement = index === 0 && desired !== undefined ? desired : createUserMessage({
+        content: [],
+        source: { kind: 'agent-instructions', form: 'instructions', changes: [] },
+      })
+      agent.session.append('user/message', replacement, {
+        surfaceOp: { op: 'replace', startSeq: event.seq, endSeq: event.seq },
+        sourceEventSeqs: [event.seq],
+      })
+    }
+    for (const message of pending) agent.inbox.remove(message.id)
+    appliedGenerations.set(agent.session, generation)
+    const entered = messages.filter(message => !isAgentInstructionsMessage(message))
+    if (previous.length === 0 && desired !== undefined) {
+      const originalIndex = messages.findIndex(isAgentInstructionsMessage)
+      const insertion = originalIndex >= 0
+        ? messages.slice(0, originalIndex).filter(message => !isAgentInstructionsMessage(message)).length
+        : entered.findLastIndex(message => message.source.kind === 'user') + 1
+      entered.splice(insertion, 0, desired)
+    }
+    return entered
   })
 
   ctx.on('tools/result', (exec: ToolExecution, result: ToolExecutionResult) => {
