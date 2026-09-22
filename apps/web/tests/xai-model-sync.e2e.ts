@@ -1,13 +1,13 @@
-/** Real settings and model-picker flow against isolated xAI directory responses; no model calls. */
+/** Real subscription settings and model-picker flow against isolated xAI directories; no model calls. */
 import { createServer, type Server } from 'node:http'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as yaml from 'js-yaml'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { chromium, type Browser, type Page } from 'playwright'
-import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFailed, vi } from 'vitest'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
@@ -16,7 +16,8 @@ import { ZH_BROWSER_LOCALE, connectFreshWorkspaceZh, saveFailureShot } from './s
 
 const expectedDir = fileURLToPath(new URL('./expected/xai-model-sync', import.meta.url))
 const mode = webSnapshotMode()
-const fixtureKey = 'xai-browser-fixture-only'
+const fixtureAccess = 'xai-browser-subscription-only'
+const subscriptionKey = credentialKey('llm-pi-ai', 'xai')
 
 describe('web e2e: xAI online model adoption', () => {
   let scaffold: WebScaffold
@@ -30,9 +31,10 @@ describe('web e2e: xAI online model adoption', () => {
   let tripwire: ReturnType<typeof watchConsole>
 
   beforeAll(async () => {
+    vi.stubEnv('XAI_API_KEY', undefined)
     temporaryRoot = await mkdtemp(join(tmpdir(), 'dsh-xai-browser-'))
     directory = createServer((request, response) => {
-      const authorized = request.headers.authorization === `Bearer ${fixtureKey}`
+      const authorized = request.headers.authorization === `Bearer ${fixtureAccess}`
       requests.push({ method: request.method, path: request.url, authorized })
       response.setHeader('content-type', 'application/json')
       if (rejectDirectory || !authorized) {
@@ -64,11 +66,15 @@ describe('web e2e: xAI online model adoption', () => {
     const overlayPath = join(temporaryRoot, 'default-model.yml')
     await writeFile(overlayPath, '- id: agent-default-model\n  config:\n    provider: xai\n    model: grok-4.6\n')
     scaffold = await launchWebScaffold({ harnessHome: join(temporaryRoot, 'home'), extraOverlayPath: overlayPath })
-    await scaffold.ctx.credentials.set(credentialRef('DSH_XAI_BROWSER_FIXTURE_KEY'), fixtureKey)
+    await scaffold.ctx.credentials.modifyRecord(subscriptionKey, async () => ({
+      kind: 'grant', payload: {
+        type: 'oauth', access: fixtureAccess, refresh: 'fixture-refresh', expires: Date.now() + 3_600_000,
+      },
+    }))
     await scaffold.ctx.settings.update('llm-pi-ai', {
       providers: {
         xai: {
-          baseURL, apiKeyEnv: 'DSH_XAI_BROWSER_FIXTURE_KEY',
+          baseURL,
           models: [{ id: 'grok-4.6', name: 'My Grok 4.6', contextWindow: 12_000 }],
         },
       },
@@ -82,24 +88,32 @@ describe('web e2e: xAI online model adoption', () => {
   }, 120_000)
 
   afterAll(async () => {
-    await browser?.close()
-    await scaffold?.close()
-    if (directory !== undefined) await new Promise<void>((resolve, reject) => {
-      directory.close((error) => {
-        if (error === undefined) resolve()
-        else reject(error)
+    try {
+      await browser?.close()
+      await scaffold?.close()
+      if (directory !== undefined) await new Promise<void>((resolve, reject) => {
+        directory.close((error) => {
+          if (error === undefined) resolve()
+          else reject(error)
+        })
+        directory.closeAllConnections()
       })
-      directory.closeAllConnections()
-    })
-    if (temporaryRoot !== undefined) await rm(temporaryRoot, { recursive: true, force: true })
+      if (temporaryRoot !== undefined) await rm(temporaryRoot, { recursive: true, force: true })
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
-  it('adopts refreshed capabilities, selects xhigh, and retains models after a denied refresh', async () => {
+  it('syncs with subscription auth, preserves xhigh, and restores account auth after an API override', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-xai-model-sync'))
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const settings = page.getByRole('dialog', { name: '设置', exact: true })
     await settings.getByRole('button', { name: '模型', exact: true }).click()
     await settings.getByRole('button', { name: '编辑 xai', exact: true }).click()
+    await settings.getByRole('button', { name: '改用 API 密钥', exact: true }).waitFor()
+    expect(await settings.locator('input[type="password"]').count()).toBe(0)
+    const credentialsPath = join(scaffold.harnessHome, '.credentials.yaml')
+    const originalCredentials = await readFile(credentialsPath, 'utf8')
     await settings.getByText('自定义设置', { exact: true }).click()
     expect(await settings.getByLabel('模型 ID 1').inputValue()).toBe('grok-4.6')
     expect(requests).toEqual([])
@@ -129,6 +143,8 @@ describe('web e2e: xAI online model adoption', () => {
         },
       ] } } },
     })
+    expect(await readFile(settingsPath, 'utf8')).not.toContain('apiKeyEnv:')
+    expect(await readFile(credentialsPath, 'utf8')).toBe(originalCredentials)
     await expect(scaffold.ctx.llm.resolveModelInfo('xai', 'grok-4.7')).resolves.toMatchObject({
       inputModalities: ['text', 'image'],
       reasoning: { efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }, { id: 'xhigh' }] },
@@ -161,8 +177,41 @@ describe('web e2e: xAI online model adoption', () => {
     expect(await settings.getByText('已保存 xai。', { exact: true }).count()).toBe(0)
     const errorAria = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(join(expectedDir, 'denied.expected.md'), errorAria.replaceAll(baseURL, '<XAI_ENDPOINT>'), mode)
-    await page.screenshot({ path: join(tmpdir(), 'dsh-xai-model-sync-denied.png'), fullPage: true })
+    await page.screenshot({ path: join(temporaryRoot, 'denied.png'), fullPage: true })
     expect(requests.map(request => request.path)).toEqual(['/v1/models', '/v1/language-models', '/v1/models'])
+    await settings.getByRole('button', { name: '改用 API 密钥', exact: true }).click()
+    const password = settings.locator('input[type="password"]')
+    await password.fill('unused-password-manager-value')
+    await settings.getByRole('button', { name: '使用账号登录', exact: true }).click()
+    expect(await password.count()).toBe(0)
+    expect(await readFile(settingsPath, 'utf8')).toBe(saved)
+    expect(await readFile(credentialsPath, 'utf8')).toBe(originalCredentials)
+    await settings.getByRole('button', { name: '改用 API 密钥', exact: true }).click()
+    await password.fill('unused-explicit-api-key')
+    await settings.getByRole('button', { name: '保存', exact: true }).click()
+    await settings.getByText('已保存 xai。', { exact: true }).waitFor()
+    expect(await readFile(settingsPath, 'utf8')).toContain('apiKeyEnv: XAI_API_KEY')
+    const credentialsWithUnusedKey = await readFile(credentialsPath, 'utf8')
+    await settings.getByRole('button', { name: '编辑 xai', exact: true }).click()
+    await settings.getByRole('button', { name: '使用账号登录', exact: true }).click()
+    await settings.getByText('已保存：使用账号登录。此卡片中的其他编辑仍需保存。', { exact: true }).waitFor()
+    expect(await readFile(settingsPath, 'utf8')).toBe(saved)
+    expect(await readFile(credentialsPath, 'utf8')).toBe(credentialsWithUnusedKey)
+    rejectDirectory = false
+    await settings.getByRole('button', { name: '改用 API 密钥', exact: true }).waitFor()
+    expect(await settings.locator('input[type="password"]').count()).toBe(0)
+    await settings.getByText('自定义设置', { exact: true }).click()
+    await settings.getByRole('button', { name: '获取可用模型', exact: true }).click()
+    await picker.waitFor()
+    expect(requests.slice(-2)).toEqual([
+      { method: 'GET', path: '/v1/models', authorized: true },
+      { method: 'GET', path: '/v1/language-models', authorized: true },
+    ])
+    await picker.getByRole('button', { name: '取消', exact: true }).click()
+    expect(await settings.getByLabel('模型 ID 1').inputValue()).toBe('grok-4.6')
+    expect(await settings.getByLabel('模型 ID 2').inputValue()).toBe('grok-4.7')
+    expect(await readFile(settingsPath, 'utf8')).toBe(saved)
+    expect(await readFile(credentialsPath, 'utf8')).toBe(credentialsWithUnusedKey)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
   })

@@ -6,6 +6,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { ProviderEditor } from '../src/client/ProviderEditor.tsx'
 import { ModelsSection, providerCopy } from '../src/client/ModelsSection.tsx'
 import { SignInStore } from '../src/client/sign-in-store.ts'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
@@ -25,12 +26,12 @@ afterEach(cleanup)
 const t: ModelsSectionInjected['t'] = key => en[key]
 
 /** A no-flow sign-in inject: the area renders nothing under this fixture. */
-function signInInjects(): {
+function signInInjects(oauth = false): {
   signIn: SignInStore
   useSignIn: SnapshotSelectorHook<SignInState>
 } {
   const signIn = new SignInStore({
-    describe: () => Promise.resolve({ ok: true as const, value: { flows: [], attempts: [] } }),
+    describe: () => Promise.resolve({ ok: true as const, value: { flows: oauth ? [{ key: 'llm-pi-ai/xai', label: 'Grok subscription', methods: [{ id: 'oauth', label: 'Sign in' }], inFlight: false }] : [], attempts: [] } }),
     begin: () => Promise.resolve({ ok: true as const, value: { started: true } }),
     respond: () => Promise.resolve({ ok: true as const, value: undefined }),
     cancel: () => Promise.resolve({ ok: true as const, value: undefined }),
@@ -215,12 +216,12 @@ function firstMutate(mutate: ReturnType<typeof vi.fn>): MutateCall {
   return { ns, ops, ...expectedRevision === undefined ? {} : { expectedRevision } }
 }
 
-async function mountSection(options: Parameters<typeof scriptedFace>[0] = {}) {
+async function mountSection(options: Parameters<typeof scriptedFace>[0] = {}, oauth = false) {
   const scripted = scriptedFace(options)
   const controller = new ModelsSettingsStore(
     ctxWith(scripted.face), settingsSchema, new SettingsDescribeMirror(ctxWith(scripted.face)))
   await controller.load()
-  const signInInject = signInInjects()
+  const signInInject = signInInjects(oauth)
   await signInInject.signIn.refresh()
   const injected: ModelsSectionProps = {
     controller,
@@ -1732,5 +1733,128 @@ describe('API key field', () => {
     await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
     await waitFor(() => { expect(load).toHaveBeenCalledOnce() })
     expect(screen.queryByText(en.customTitle)).toBeNull()
+  })
+})
+
+
+describe('subscription authentication in the provider editor', () => {
+  it('keeps passwords unmounted and refreshes without a draft key or settings write', async () => {
+    const { discover, mutate, set } = await mountSection({ providers: { xai: {} } }, true)
+    openEditor('xai')
+    expect(screen.queryByLabelText(en.keyInput)).toBeNull()
+    expect(document.querySelector('input[type="password"]')).toBeNull()
+    fireEvent.click(buttonNamed(en.fetchModels))
+    await waitFor(() => { expect(lastProbe(discover)).toMatchObject({ provider: 'xai', refresh: true }) })
+    expect(lastProbe(discover)).not.toHaveProperty('apiKey')
+    expect(mutate).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('accepts a key only after an explicit switch and discards it when switching back', async () => {
+    const { discover, mutate, set } = await mountSection({ providers: { xai: {} } }, true)
+    openEditor('xai')
+    fireEvent.click(buttonNamed(en.useApiKeyAuth))
+    fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'intentional-key' } })
+    fireEvent.click(buttonNamed(en.fetchModels))
+    await waitFor(() => { expect(lastProbe(discover)).toMatchObject({ apiKey: 'intentional-key' }) })
+    fireEvent.click(buttonNamed(en.useAccountAuth))
+    expect(screen.queryByLabelText(en.keyInput)).toBeNull()
+    expect(mutate).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('removes only the saved key reference with the opening revision, retaining credentials and model settings', async () => {
+    const { mutate, set, face } = await mountSection({ providers: { xai: {
+      apiKeyEnv: 'XAI_API_KEY', baseURL: 'https://api.x.ai/v1',
+      models: [{ id: 'grok-4.7', contextWindow: 500000 }],
+    } } }, true)
+    openEditor('xai')
+    fireEvent.click(buttonNamed(en.useAccountAuth))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate)).toEqual({
+      ns: 'llm-pi-ai', expectedRevision: 3,
+      ops: [{ op: 'unset', path: ['providers', 'xai', 'apiKeyEnv'] }],
+    })
+    expect(set).not.toHaveBeenCalled()
+    expect(face.credentials.unset).not.toHaveBeenCalled()
+    expect(await screen.findByText(en.accountAuthSaved)).toBeTruthy()
+    expect(screen.queryByLabelText(en.keyInput)).toBeNull()
+  })
+
+
+  it('keeps unsaved model and endpoint edits and advances the revision after switching', async () => {
+    const persisted = { xai: { baseURL: 'https://api.x.ai/v1', models: [{ id: 'grok-4.6' }] } }
+    const nextView = { ...piAiNamespace(persisted), revision: 4 }
+    const mutate = vi.fn(() => Promise.resolve(remoteOk(nextView)))
+    await mountSection({ providers: { xai: { ...persisted.xai, apiKeyEnv: 'XAI_API_KEY' } }, mutate }, true)
+    openEditor('xai')
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://changed.example/v1' } })
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'grok-4.7' } })
+    fireEvent.click(buttonNamed(en.useAccountAuth))
+    await screen.findByText(en.accountAuthSaved)
+    expect(screen.getByLabelText<HTMLInputElement>(en.baseUrl).value).toBe('https://changed.example/v1')
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('grok-4.7')
+    fireEvent.click(buttonNamed(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(2) })
+    expect(mutate.mock.calls[1]).toEqual(['llm-pi-ai', [
+      { op: 'set', path: ['providers', 'xai', 'baseURL'], value: 'https://changed.example/v1' },
+      { op: 'set', path: ['providers', 'xai', 'models'], value: [{ id: 'grok-4.7' }] },
+    ], 4])
+  })
+
+  it('reports a failed key write after switching back without claiming account authentication', async () => {
+    const accountView = { ...piAiNamespace({ xai: {} }), revision: 4 }
+    const keyView = { ...piAiNamespace({ xai: { apiKeyEnv: 'XAI_API_KEY' } }), revision: 5 }
+    const mutate = vi.fn().mockResolvedValueOnce(remoteOk(accountView)).mockResolvedValueOnce(remoteOk(keyView))
+    const set = vi.fn(() => Promise.resolve(remoteFail('credential store refused')))
+    await mountSection({ providers: { xai: { apiKeyEnv: 'XAI_API_KEY' } }, mutate, set }, true)
+    openEditor('xai')
+    fireEvent.click(buttonNamed(en.useAccountAuth))
+    await screen.findByText(en.accountAuthSaved)
+    fireEvent.click(buttonNamed(en.useApiKeyAuth))
+    fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'intentional-key' } })
+    fireEvent.click(buttonNamed(en.apply))
+    await screen.findByText('credential store refused')
+    expect(screen.queryByText(en.accountAuthSaved)).toBeNull()
+    expect(screen.getByText(en.apiKeyAuthHint)).toBeTruthy()
+    expect(mutate.mock.calls[1]).toEqual(['llm-pi-ai', [
+      { op: 'set', path: ['providers', 'xai', 'apiKeyEnv'], value: 'XAI_API_KEY' },
+    ], 4])
+  })
+
+  it.each(['loading', 'error'] as const)('requires an explicit key choice when account flows are %s', async (accountAuth) => {
+    const { face, namespace } = scriptedFace({ providers: { xai: {} } })
+    render(<ProviderEditor provider="xai" displayName="xai" namespace={namespace}
+      schema={settingsSchema} settingsPath={['providers', 'xai']} operations={operationsWith(face)}
+      accountAuth={accountAuth} t={t} readOnly={false} onClose={vi.fn()} />)
+    expect(screen.queryByLabelText(en.keyInput)).toBeNull()
+    fireEvent.click(buttonNamed(en.useApiKeyAuth))
+    expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
+  })
+  it.each([
+    ['settings/conflict', en.conflict],
+    ['settings/rejected', 'storage read-only'],
+  ] as const)('retains key authentication when switching is refused with %s', async (code, message) => {
+    const mutate = vi.fn(() => Promise.resolve(remoteFail('storage read-only', code)))
+    await mountSection({ providers: { xai: { apiKeyEnv: 'XAI_API_KEY' } }, mutate }, true)
+    openEditor('xai')
+    fireEvent.click(buttonNamed(en.useAccountAuth))
+    expect(await screen.findByText(message)).toBeTruthy()
+    expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
+    expect(screen.queryByText('Saved xai.')).toBeNull()
+    expect(buttonNamed(en.useAccountAuth).disabled).toBe(false)
+  })
+
+  it('does not claim account authentication when the composition still supplies a key reference', async () => {
+    const { mutate } = await mountSection({
+      providers: { xai: { apiKeyEnv: 'DEPLOYMENT_XAI_KEY' } },
+      userProviders: { xai: {} },
+      baseProviders: { xai: { apiKeyEnv: 'DEPLOYMENT_XAI_KEY' } },
+    }, true)
+    openEditor('xai')
+    expect(buttonNamed(en.useAccountAuth).disabled).toBe(true)
+    expect(screen.getByText(en.accountAuthPinned)).toBeTruthy()
+    fireEvent.click(buttonNamed(en.useAccountAuth))
+    expect(mutate).not.toHaveBeenCalled()
   })
 })

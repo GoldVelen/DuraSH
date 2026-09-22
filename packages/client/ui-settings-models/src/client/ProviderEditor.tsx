@@ -1,24 +1,8 @@
 /**
- * One provider's editor card, hand-written per adapter family: the primary
- * field is a single write-only **API key** input (the page never asks for an
- * environment-variable name — a typed key stores through `credentials/set`
- * under the profile's reference, deriving `<ROUTE>_API_KEY` when the profile
- * has none. The pi-ai profile records that derivation as `apiKeyEnv` only when
- * a key is entered; a blank key materializes a reference-free profile for
- * provider-native authentication);
- * the collapsed 自定义设置 area carries the per-family extras (`baseURL` for
- * both families, DeepSeek's id/name/context-window model catalog, and the
- * display name and wire protocol of a pi-ai route the adapter does not ship —
- * the two fields the create card asked that route for, editable here for the
- * same reason).
- * Reasoning effort is deliberately absent: it is a per-MODEL capability, and
- * the models under one provider disagree about it, so a provider-scoped
- * control can only be set to a value some of them reject. The composer's
- * model picker offers each model its own levels; `settings.yaml` keeps the
- * profile field for a deployment that knows its route. Everything else stays
- * owned by `settings.yaml`. Profile edits land as minimal `settings.mutate`
- * path ops against the stored section — the card names only the fields it can
- * see instead of rebuilding the whole subtree from a partial descriptor.
+ * Provider model and endpoint editor. OAuth-capable routes keep account
+ * authentication until the user explicitly selects an API key. Switching back
+ * removes only the user-owned credential reference through a fenced settings
+ * mutation; credential records and the remaining profile stay intact.
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -70,6 +54,8 @@ export interface ProviderEditorProps {
   operations: ModelsOperations
   /** Section copy. */
   t: (key: keyof typeof en) => string
+  /** Whether the Host offers account login for this route; unresolved flows hide credential inputs. */
+  accountAuth?: 'loading' | 'error' | 'available' | 'unavailable'
   /** Disable writes (read-only settings provider). */
   readOnly: boolean
   /** Render only the credential field and actions, without provider settings. */
@@ -158,6 +144,8 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const { namespace, schema, settingsPath, operations, t } = props
   const [draft, setDraft] = useState<Record<string, unknown>>(() => draftAt(schema, namespace, settingsPath))
   const [keyDraft, setKeyDraft] = useState('')
+  const [keySelected, setKeySelected] = useState(false)
+  const [accountSelected, setAccountSelected] = useState(false)
   const [keyState, setKeyState] = useState<CredentialInfo | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
@@ -199,6 +187,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     const value = schema.getPath(source, [key])
     return typeof value === 'string' && value.trim().length > 0 ? value : undefined
   }
+  const accountAvailable = layout === 'pi-ai' && props.accountAuth === 'available'
+  const configuredKey = !accountSelected && stringAt(fallback, 'apiKeyEnv') !== undefined
+  const inheritedKey = stringAt(schema.getPath(namespace.base, settingsPath), 'apiKeyEnv') !== undefined
+  const showKey = props.credentialOnly === true || layout !== 'pi-ai'
+    || keySelected || configuredKey
+    || (props.accountAuth !== 'loading' && props.accountAuth !== 'error' && !accountAvailable)
   const setField = (key: string, next: string | undefined): void => {
     // A value of nothing but whitespace is cleared, not stored: `stringAt`
     // already reports it as absent, so the field would otherwise render empty
@@ -213,12 +207,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   // The model list is validated by the same per-row checker for both families,
   // so a bad row is named by its position rather than by a blanket message.
   const modelFailure = validateDeepSeekModels(schema.getPath(draft, ['models']))
-  const keyFailure = apiKeyFailure(keyDraft)
+  const keyFailure = apiKeyFailure(showKey ? keyDraft : '')
   // What a probe or a write must carry: the typed key with paste whitespace
   // removed. A blank field yields an empty string, which both call sites read
   // as "no key supplied" rather than as a key — that is how a card whose
   // provider already has a stored key is edited without re-entering it.
-  const keyValue = keyDraft.trim()
+  const keyValue = showKey ? keyDraft.trim() : ''
   const credentialRequiredFailure = props.credentialRequired === true
     && keyDraft.length > 0 && keyValue.length === 0
     ? 'keyRequired' as const
@@ -248,7 +242,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     // A pi-ai profile names the conventional reference only when this page is
     // about to store a key. Otherwise the provider keeps its native auth path.
     const next = layout === 'pi-ai' && stringAt(draft, 'apiKeyEnv') === undefined
-      && stringAt(fallback, 'apiKeyEnv') === undefined && keyValue.length > 0
+      && (accountSelected || stringAt(fallback, 'apiKeyEnv') === undefined) && keyValue.length > 0
       ? schema.setPath(draft, ['apiKeyEnv'], keyRef)
       : draft
     if (props.credentialOnly !== true) {
@@ -282,6 +276,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       setCommittedOriginal(schema.getPath(written.view.user, settingsPath))
       setExpectedRevision(written.view.revision)
       setDraft(next)
+      if (stringAt(next, 'apiKeyEnv') !== undefined) setAccountSelected(false)
     }
     if (keyValue.length > 0) {
       const stored = await operations.storeCredential(keyRef, keyValue)
@@ -301,6 +296,34 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
         return
       }
       props.onClose(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const useAccount = async (): Promise<void> => {
+    setKeyDraft('')
+    if (!configuredKey) {
+      setKeySelected(false)
+      return
+    }
+    setBusy(true)
+    setFailure(undefined)
+    try {
+      const written = await operations.writeSettings(namespace.ns, [
+        { op: 'unset', path: [...settingsPath, 'apiKeyEnv'] },
+      ], expectedRevision)
+      if (written.kind !== 'written') {
+        setFailure(written.kind === 'conflict' ? t('conflict') : written.message)
+        return
+      }
+      setCommittedOriginal(schema.getPath(written.view.user, settingsPath))
+      setExpectedRevision(written.view.revision)
+      setDraft(current => schema.deletePath(current, ['apiKeyEnv']))
+      setKeySelected(false)
+      setAccountSelected(true)
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error))
     } finally {
       setBusy(false)
     }
@@ -360,7 +383,28 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     }
     return (
       <>
-        <div className={styles['field']}>
+        {accountAvailable ? <div className={styles['field']}>
+          <p className={styles['advancedHint']}>{t(showKey ? 'apiKeyAuthHint' : 'accountAuthHint')}</p>
+          {showKey ? <>
+            <button type="button" className={styles['secondaryButton']}
+              disabled={disabled || inheritedKey} onClick={() => { void useAccount() }}>
+              {t('useAccountAuth')}
+            </button>
+            {inheritedKey ? <p className={styles['advancedHint']}>{t('accountAuthPinned')}</p> : null}
+          </> : <button type="button" className={styles['secondaryButton']}
+            disabled={disabled} onClick={() => { setKeySelected(true) }}>
+            {t('useApiKeyAuth')}
+          </button>}
+        </div> : props.accountAuth === 'loading' || props.accountAuth === 'error'
+          ? <div className={styles['field']}>
+            <p className={styles['advancedHint']}>{t('accountAuthLoading')}</p>
+            {!showKey ? <button type="button" className={styles['secondaryButton']}
+              disabled={disabled} onClick={() => { setKeySelected(true) }}>
+              {t('useApiKeyAuth')}
+            </button> : null}
+          </div> : null}
+        {accountSelected ? <p role="status" className={styles['advancedHint']}>{t('accountAuthSaved')}</p> : null}
+        {showKey ? <div className={styles['field']}>
           <span className={styles['fieldLabel']}>{t('keyInput')}</span>
           <input
             className={styles['input']}
@@ -376,7 +420,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
             onChange={(event) => { setKeyDraft(event.target.value) }}
           />
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
-        </div>
+        </div> : null}
         {props.credentialOnly === true ? null : <details className={styles['customized']}>
           <summary className={styles['customizedSummary']}>{t('customized')}</summary>
           <div className={styles['customizedBody']}>
@@ -512,7 +556,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
         submitLabelKey={props.submitLabelKey ?? 'apply'}
         submitBusyLabelKey={props.submitBusyLabelKey ?? 'applying'}
         {...props.cancelLabelKey === undefined ? {} : { cancelLabelKey: props.cancelLabelKey }}
-        onCancel={() => { props.onClose(false) }}
+        onCancel={() => { props.onClose(accountSelected) }}
         onSubmit={() => { void apply() }}
       />
     </div>

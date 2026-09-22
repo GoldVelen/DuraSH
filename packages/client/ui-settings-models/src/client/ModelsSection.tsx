@@ -24,7 +24,7 @@ import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
-import { SignInSection } from './SignInSection.tsx'
+import { oauthSignInFlows, SignInSection } from './SignInSection.tsx'
 import type { SignInStore } from './sign-in-store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -87,7 +87,7 @@ interface EditorTarget extends ProviderIdentity {
 /** Values that vary around the shared provider-editor rendering. */
 interface ProviderEditorRenderProps extends Pick<
   ProviderEditorProps,
-  'namespace' | 'schema' | 'operations' | 't' | 'readOnly' | 'onClose'
+  'namespace' | 'schema' | 'operations' | 't' | 'readOnly' | 'onClose' | 'accountAuth'
 > {
   target: EditorTarget
 }
@@ -340,6 +340,14 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
     }
   }, [controller, operations, signInState.attempts, signInState.status, state.rows, state.status, state.writable])
 
+  const accountAuthFor = (target: EditorTarget): NonNullable<ProviderEditorProps['accountAuth']> => {
+    if (signInState.status === 'error') return 'error'
+    if (signInState.status !== 'ready') return 'loading'
+    return oauthSignInFlows(signInState.flows).some(flow =>
+      rowForAuthorizationKey(state.rows, flow.key)?.entry.provider === target.provider)
+      ? 'available' : 'unavailable'
+  }
+
   if (state.status === 'idle') void controller.load()
   if (state.status === 'error') {
     /* v8 ignore next -- an error status always carries text; the fallback satisfies the nullable type */
@@ -416,6 +424,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                 {error}
                 {renderProviderEditor({
                   target,
+                  accountAuth: accountAuthFor(target),
                   namespace,
                   schema,
                   operations,
@@ -512,6 +521,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
               {open
                 ? renderProviderEditor({
                   target,
+                  accountAuth: accountAuthFor(target),
                   namespace,
                   schema,
                   operations,
@@ -548,6 +558,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
               </div>
               <ProviderEditor
                 key={addTarget.provider}
+                accountAuth={accountAuthFor(addTarget)}
                 provider={addTarget.provider}
                 displayName={addTarget.displayName}
                 hideTitle

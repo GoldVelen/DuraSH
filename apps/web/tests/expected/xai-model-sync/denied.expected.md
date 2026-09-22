@@ -24,7 +24,7 @@
     - img
     - text: 关闭
   - heading "模型" [level=2]
-  - paragraph: 填入各提供方的 API 密钥即可使用其模型。
+  - paragraph: 登录支持的账号，或配置 API 密钥，即可使用模型。
   - heading "账号登录" [level=3]
   - paragraph: 使用订阅账号登录，或在下方用 API 密钥添加提供方。
   - list:
@@ -46,15 +46,15 @@
     - listitem:
       - text: xAI
       - button "登录"
+      - status: 已登录，该提供方已启用。可在对话中选择模型，或在下方编辑模型目录。
   - list:
     - listitem:
       - text: xai
-      - img "API 密钥已配置"
       - button "编辑 xai": 编辑
       - button "删除 xai": 删除
-      - text: xai API 密钥
-      - textbox "API 密钥":
-        - /placeholder: 已配置——输入新值可替换
+      - text: xai
+      - paragraph: 模型请求和模型同步使用账号登录；如尚未登录，请使用上方登录入口。
+      - button "改用 API 密钥"
       - group:
         - text: 自定义设置 API 地址
         - textbox "API 地址":

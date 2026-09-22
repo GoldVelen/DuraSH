@@ -6,7 +6,7 @@ These tests boot the real web composition in-process and drive it with a real Ch
 
 The assembled DuraSH fixture has no recorded acceptance tasks. Its acceptance endpoint returns `null` for fixture Sessions, including when workflow is off; the boot check waits for that read to settle. Unregistered Remote requests remain test failures.
 
-`xai-model-sync.e2e.ts` uses isolated settings and credentials with a loopback directory server. It checks explicit refresh, adopted model metadata, the composer's reasoning levels, and a rejected refresh without making a model request.
+`xai-model-sync.e2e.ts` uses isolated settings and credentials with a loopback directory server. It checks subscription-authenticated refresh, adopted model metadata, the composer's reasoning levels, rejected refreshes, and switching an API override back to the existing account without making a model request or rewriting credentials.
 
 ## Completion observations
 

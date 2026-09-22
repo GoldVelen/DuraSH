@@ -21,6 +21,7 @@ import LlmRuntime, { createMessage, createUserMessage, ReasoningEffortId, userAg
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
+import { recordKeyFor } from '../src/auth.ts'
 import { assemble } from './assemble.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 
@@ -224,13 +225,21 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
   })
 
-  it('refreshes the online xAI catalog, persists new metadata, and sends the selected xhigh effort', async () => {
+  it.each(['api-key', 'subscription'] as const)('refreshes xAI using %s auth, persists metadata, and sends xhigh before and after reload', async (authMode) => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
+    vi.stubEnv('XAI_API_KEY', undefined)
     const server = await xaiDirectoryFixture()
     const { ctx, settingsPath } = await loadComposition()
+    const access = authMode === 'subscription' ? 'subscription-fixture-access' : 'key-from-store'
+    if (authMode === 'subscription') {
+      await ctx.credentials.modifyRecord(recordKeyFor('xai'), async () => ({
+        kind: 'grant', payload: { type: 'oauth', access, refresh: 'fixture-refresh', expires: Date.now() + 3_600_000 },
+      }))
+    }
     await ctx.settings.mutate('llm-pi-ai', [{
       op: 'set', path: ['providers', 'xai'], value: {
-        apiKeyEnv: 'PI_COMPOSITION_KEY', api: 'openai-responses', baseURL: server.url,
+        ...authMode === 'api-key' ? { apiKeyEnv: 'PI_COMPOSITION_KEY' } : {},
+        api: 'openai-responses', baseURL: server.url,
         models: [{ id: 'grok-4.6' }],
       },
     }])
@@ -243,7 +252,7 @@ describe('llm-pi-ai real dormant composition', () => {
       provider: 'xai', baseURL: server.url, api: 'openai-responses', refresh: true,
     })
     expect(server.calls.map(call => call.path).sort()).toEqual(['/v1/language-models', '/v1/models'])
-    expect(server.calls.every(call => call.method === 'GET' && call.authorization === 'Bearer key-from-store')).toBe(true)
+    expect(server.calls.every(call => call.method === 'GET' && call.authorization === `Bearer ${access}`)).toBe(true)
     const candidate = discovered.find(model => model.id === 'grok-4.7')
     expect(candidate).toMatchObject({
       id: 'grok-4.7', contextWindow: 500000, inputModalities: ['text', 'image'],
@@ -272,7 +281,7 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(result.finish).toEqual({ kind: 'stop' })
     expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
     expect(server.calls.at(-1)).toMatchObject({
-      path: '/v1/responses', method: 'POST', authorization: 'Bearer key-from-store',
+      path: '/v1/responses', method: 'POST', authorization: `Bearer ${access}`,
       body: { model: 'grok-4.7', reasoning: { effort: 'xhigh' } },
     })
     const persisted = await readFile(settingsPath, 'utf8')
@@ -280,7 +289,8 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(persisted).toContain('grok-4.7')
     expect(persisted).toContain('500000')
     expect(persisted).toContain('xhigh')
-    expect(persisted).not.toContain('key-from-store')
+    expect(persisted).not.toContain(access)
+    if (authMode === 'subscription') expect(persisted).not.toContain('apiKeyEnv')
     await ctx.fiber.dispose()
     context = undefined
     const reloaded = await loadComposition(root)
@@ -288,7 +298,16 @@ describe('llm-pi-ai real dormant composition', () => {
     const reloadedModel = await reloaded.ctx.llm.resolveModelInfo('xai', 'grok-4.7')
     expect(reloadedModel.context).toEqual({ contextWindow: 500000 })
     expect(reloadedModel.reasoning?.efforts).toContainEqual({ id: ReasoningEffortId('xhigh'), name: 'Xhigh' })
-    expect(server.calls).toHaveLength(3)
+    const resumed = await assemble(reloaded.ctx, {
+      provider: 'xai', model: 'grok-4.7', reasoningEffort: ReasoningEffortId('xhigh'),
+      messages: [createUserMessage({ content: [{ type: 'text', text: 'hello again' }], source: { kind: 'user' } })],
+    })
+    expect(resumed.finish).toEqual({ kind: 'stop' })
+    expect(server.calls.at(-1)).toMatchObject({
+      path: '/v1/responses', method: 'POST', authorization: `Bearer ${access}`,
+      body: { model: 'grok-4.7', reasoning: { effort: 'xhigh' } },
+    })
+    expect(server.calls).toHaveLength(4)
   })
 
   it('continues natively after max-token assembly drops a tool call, with pruned replay metadata', async () => {
