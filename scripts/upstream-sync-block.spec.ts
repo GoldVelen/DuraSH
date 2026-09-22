@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as yaml from 'js-yaml'
 import {
@@ -327,6 +327,85 @@ describe('upstream synchronization workflow wiring', () => {
     expect(clearBlock.run).toContain('scripts/upstream-sync-block.ts resolve')
     const automerge = namedRunStep(steps, 'Enable CI-gated auto-merge when explicitly configured')
     expect(String(automerge.if)).toContain("vars.DURASH_ENABLE_UPSTREAM_AUTOMERGE == 'true'")
+  })
+})
+
+// The synchronization job runs under Bash on Linux; Windows has no native Bash.
+describe.skipIf(process.platform === 'win32')('synchronization branch discovery', () => {
+  function fixture(): { remote: string; local: string; sha: string } {
+    const remote = initRepo()
+    commit(remote, 'source.txt', 'upstream\n', 'seed upstream')
+    const local = initRepo()
+    git(local, ['remote', 'add', 'origin', remote])
+    git(local, ['fetch', '--quiet', 'origin', 'main'])
+    const sha = git(local, ['rev-parse', 'FETCH_HEAD']).trim()
+    git(local, ['update-ref', 'refs/remotes/durash-upstream/main', sha])
+    return { remote, local, sha }
+  }
+
+  function discover(local: string, prelude = ''): ReturnType<typeof spawnSync> {
+    const workflow: unknown = yaml.load(readFileSync(resolve(root, '.github/workflows/upstream-sync.yml'), 'utf8'))
+    if (!isRecord(workflow) || !isRecord(workflow.jobs) || !isRecord(workflow.jobs.synchronize)
+      || !Array.isArray(workflow.jobs.synchronize.steps)) throw new TypeError('missing synchronization steps')
+    const prepare = namedRunStep(workflow.jobs.synchronize.steps, 'Prepare the synchronization branch').run
+    const end = prepare.indexOf('echo "upstream-sha=')
+    if (end < 0) throw new Error('missing upstream-sha output')
+    return spawnSync('bash', ['-c', `${prelude}\n${prepare.slice(0, end)}\nprintf 'SYNC_SHA=%s\\n' "$remote_sync_sha"`], {
+      cwd: local,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: { ...gitEnv(local), BASE_BRANCH: 'main', PRIMARY_REF: 'main', SYNC_BRANCH: 'automation/upstream-sync' },
+    })
+  }
+
+  it('accepts an absent remote branch without reporting an error or reusing a stale tracking ref', () => {
+    const { local, sha } = fixture()
+    git(local, ['update-ref', 'refs/remotes/origin/automation/upstream-sync', sha])
+    const result = discover(local)
+    expect(result.error).toBeUndefined()
+    expect(result.signal).toBeNull()
+    expect(result.status).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toBe('SYNC_SHA=\n')
+  })
+
+  it('fetches an existing remote branch and uses its fetched revision for the push lease', () => {
+    const { remote, local, sha } = fixture()
+    git(remote, ['branch', 'automation/upstream-sync', sha])
+    const result = discover(local)
+    expect(result.error).toBeUndefined()
+    expect(result.signal).toBeNull()
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe(`SYNC_SHA=${sha}\n`)
+    expect(git(local, ['rev-parse', 'refs/remotes/origin/automation/upstream-sync']).trim()).toBe(sha)
+  })
+
+  it('fails when the remote cannot be inspected', () => {
+    const { local } = fixture()
+    git(local, ['remote', 'set-url', 'origin', join(local, 'missing-remote')])
+    const result = discover(local)
+    expect(result.error).toBeUndefined()
+    expect(result.signal).toBeNull()
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('does not appear to be a git repository')
+    expect(result.stdout).not.toContain('SYNC_SHA=')
+  })
+
+  it('fails if fetching a discovered branch fails', () => {
+    const { remote, local, sha } = fixture()
+    git(remote, ['branch', 'automation/upstream-sync', sha])
+    const result = discover(local, `git() {
+      if [ "$1" = fetch ]; then
+        echo 'fixture: fetch failed' >&2
+        return 73
+      fi
+      command git "$@"
+    }`)
+    expect(result.error).toBeUndefined()
+    expect(result.signal).toBeNull()
+    expect(result.status).toBe(73)
+    expect(result.stderr).toContain('fixture: fetch failed')
+    expect(result.stdout).not.toContain('SYNC_SHA=')
   })
 })
 
