@@ -3,7 +3,7 @@
  * conversation.input.left with the workflow chip.
  */
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { MutableSessionEventSource } from '@deepseek-ai/dsh-api-session-controller/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -33,8 +33,9 @@ const SNAPSHOT = {
   models: [],
 }
 
-async function bench() {
+async function bench(binding: 'present' | 'missing' | 'no-service' = 'present') {
   const ctx = new Context()
+  onTestFinished(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(SlotRegistry).await()
   const slots = ctx.get('slots') as SlotRegistry
   slots.register({
@@ -42,7 +43,9 @@ async function bench() {
     children: { 'conversation.input.left': { kind: 'list', scope: 'session' } },
   } as never, () => null)
   const eventSource = new MutableSessionEventSource()
-  ctx.provide('sessions', { binding: () => ({ eventSource }) })
+  if (binding !== 'no-service') {
+    ctx.provide('sessions', { binding: () => binding === 'missing' ? undefined : { eventSource } })
+  }
   const reliabilityPolicy = {
     acceptance: vi.fn(() => Promise.resolve({ ok: true, value: null })),
     policy: vi.fn(() => Promise.resolve({ ok: true, value: SNAPSHOT })),
@@ -109,6 +112,25 @@ describe('ui-reliability browser apply', () => {
     vi.spyOn(b.slots, 'inject').mockImplementationOnce(() => { throw new Error('slot registration failed') })
     await expect(apply(b.ctx)).rejects.toThrow(/slot registration failed/)
     expect(b.mount).toHaveBeenCalledOnce()
+    expect(b.disposeMount).toHaveBeenCalledOnce()
+  })
+
+  it.each(['missing', 'no-service'] as const)('loads a policy without an event subscription when the Session binding is %s', async (binding) => {
+    const b = await bench(binding)
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const entry = b.slots.entries('conversation.input.left')[0]!
+    type WorkflowInject = NonNullable<typeof entry.inject> & ((id: SessionId) => WorkflowPolicyDockInjected)
+    const injected = (entry.inject as WorkflowInject)(SID)
+
+    expect(injected.readPolicy().status).toBe('cold')
+    await expect(injected.loadPolicy()).resolves.toEqual({ ok: true })
+    expect(injected.readPolicy()).toMatchObject({ status: 'ready', policy: SNAPSHOT, acceptance: null })
+    expect(b.reliabilityPolicy.acceptance).toHaveBeenCalledExactlyOnceWith({ sessionId: SID })
+    b.eventSource.replace([], false)
+    expect(b.reliabilityPolicy.acceptance).toHaveBeenCalledOnce()
+    await fiber.dispose()
+    expect(b.slots.entries('conversation.input.left')).toHaveLength(0)
     expect(b.disposeMount).toHaveBeenCalledOnce()
   })
 

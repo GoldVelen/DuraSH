@@ -36,7 +36,7 @@ export interface LoadedInstructionFile extends InstructionFile {
 interface DiscoveredInstructionFile extends InstructionFile {
   target?: FsTarget
   size?: number
-  version?: FsVersion
+  version: FsVersion
 }
 
 /** Host or provider metadata for a probed candidate before its content is read. */
@@ -447,7 +447,7 @@ export async function loadBaselineInstructionSet(
         absolutePath: file.absolutePath,
         displayPath: file.displayPath,
         content,
-        ...file.version === undefined ? {} : { version: file.version },
+        version: file.version,
       })
     }
   }

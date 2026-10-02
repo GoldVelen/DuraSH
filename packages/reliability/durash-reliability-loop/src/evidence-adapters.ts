@@ -163,8 +163,8 @@ function suiteCounts(value: unknown): TestCounts & {
     const node = testcase === '' ? {} : object(testcase)
     const failed = node.failure !== undefined || node.error !== undefined
     const skipped = node.skipped !== undefined
-    const owner = node['@_classname'] || suite['@_name'] || ''
-    if (typeof owner !== 'string') throw new Error('Invalid testcase owner')
+    // Validated XML attributes remain strings with parseAttributeValue: false.
+    const owner = (node['@_classname'] || suite['@_name'] || '') as string
     if (typeof node['@_name'] === 'string' && node['@_name'].trim()) result.testIds.push(JSON.stringify([owner, node['@_name']]))
     if ((failed && skipped) || (node.failure !== undefined && node.error !== undefined)) throw new Error('Conflicting testcase outcomes')
     if (node.failure !== undefined) result.failures++
@@ -266,15 +266,16 @@ function diffPath(header: string): string {
   if (!header.startsWith('"')) return header
   if (!header.endsWith('"')) throw new Error('Incomplete quoted Git path')
   const chunks: Uint8Array[] = []
-  const escapes: Record<string, string> = { a: '\x07', b: '\b', t: '\t', n: '\n', v: '\v', f: '\f', r: '\r', '"': '"', '\\': '\\' }
+  const escapes = { a: '\x07', b: '\b', t: '\t', n: '\n', v: '\v', f: '\f', r: '\r', '"': '"', '\\': '\\' }
   const body = header.slice(1, -1)
   let offset = 0
   for (const match of body.matchAll(/\\([0-7]{1,3}|[abtnvfr"\\])|([^\\]+)/g)) {
     if (match.index !== offset) throw new Error('Unknown Git path escape')
     offset += match[0].length
     const escape = match[1]
+    // The non-octal regex arm admits only keys of the escape table.
     chunks.push(escape === undefined ? Buffer.from(match[0]) : /^[0-7]/.test(escape)
-      ? Uint8Array.of(Number.parseInt(escape, 8)) : Buffer.from(escapes[escape] ?? ''))
+      ? Uint8Array.of(Number.parseInt(escape, 8)) : Buffer.from(escapes[escape as keyof typeof escapes]))
   }
   if (offset !== body.length) throw new Error('Incomplete Git path escape')
   return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))

@@ -55,12 +55,11 @@ export function GlobalRulesSection({ read, save, t }: GlobalRulesSectionProps) {
 
   const draftBytes = new TextEncoder().encode(draft).byteLength
   const dirty = document != null && draft !== document.content
-  async function saveDraft(): Promise<void> {
-    if (document == null) return
+  async function saveDraft(revision: GlobalRulesDocument['revision']): Promise<void> {
     setSaving(true)
     setError(undefined)
     setSaved(false)
-    const result = await save(draft, document.revision)
+    const result = await save(draft, revision)
     setSaving(false)
     if (result.kind === 'saved') {
       setDocument(result.document)
@@ -91,7 +90,7 @@ export function GlobalRulesSection({ read, save, t }: GlobalRulesSectionProps) {
       {conflict && <p role="alert" className={css.error}>{t('conflict')}</p>}
       <div className={css.actions}>
         <Button variant="primary" disabled={loading || saving || conflict || (!dirty && document.exists)}
-          onClick={() => { void saveDraft() }}>{t(saving ? 'saving' : 'save')}</Button>
+          onClick={() => { void saveDraft(document.revision) }}>{t(saving ? 'saving' : 'save')}</Button>
         <span role="status" className={css.hint}>{t(saved ? 'saved' : dirty ? 'dirty' : 'unchanged')}</span>
       </div>
       {draftBytes > document.maxSourceBytes && <p role="alert" className={css.error}>

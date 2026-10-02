@@ -8,7 +8,34 @@
   - button "打开配置文件"
   - button "关闭"
   - heading "模型" [level=2]
-  - paragraph: 填入各提供商的 API 密钥即可使用其模型。
+  - paragraph: 登录支持的账号，或配置 API 密钥，即可使用模型。
+  - heading "账号登录" [level=3]
+  - paragraph: 使用订阅账号登录，或在下方用 API 密钥添加提供方。
+  - list:
+    - listitem:
+      - text: Anthropic
+      - button "登录"
+    - listitem:
+      - text: GitHub Copilot
+      - button "登录"
+    - listitem:
+      - text: Kimi For Coding
+      - button "登录"
+    - listitem:
+      - text: Meta
+      - button "登录"
+    - listitem:
+      - text: OpenAI Codex
+      - button "登录"
+    - listitem:
+      - text: OpenRouter
+      - button "登录"
+    - listitem:
+      - text: Radius
+      - button "登录"
+    - listitem:
+      - text: xAI
+      - button "登录"
   - list:
     - listitem:
       - text: openrouter

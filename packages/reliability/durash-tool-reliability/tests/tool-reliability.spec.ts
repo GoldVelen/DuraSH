@@ -53,6 +53,7 @@ async function setup(options: {
   getAgent?: (id: string) => Agent | undefined
   currentInitiator?: () => Agent | undefined
   roots?: () => Agent[]
+  acceptanceTaskId?: string
 } = {}): Promise<{ ctx: Context; agent: Agent; start: ReturnType<typeof vi.fn> }> {
   const agent = options.agent ?? testAgent()
   const start = options.start ?? vi.fn(async () => ({
@@ -62,6 +63,7 @@ async function setup(options: {
     dispose: async () => undefined,
   }))
   const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
   ctx.provide('agents', {
     get: options.getAgent ?? ((id: string) => id === String(agent.id) ? agent : undefined),
     currentInitiator: options.currentInitiator ?? (() => agent),
@@ -77,7 +79,7 @@ async function setup(options: {
       : undefined,
   })
   ctx.provide('reliabilityLoopRuntime', {
-    start, acceptance: { activeTask: () => undefined }, acceptanceView: () => Promise.resolve(null),
+    start, acceptance: { activeTask: () => options.acceptanceTaskId }, acceptanceView: () => Promise.resolve(null),
   })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -211,6 +213,22 @@ describe('durash-tool-reliability', () => {
       review: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
     })
     expect(result.value).toMatchObject({ status: 'completed', verdict: 'approved' })
+  })
+
+  it('passes the active acceptance task and the bounded blocked diagnostic through the foreground handoff', async () => {
+    const record: ReliabilityLoopRecord = { ...completedRecord(), stage: 'blocked', diagnostic: 'Required checks failed on candidate-a',
+      implement: { round: 2, summary: 'reworked', agentsStarted: 1 },
+      review: { round: 2, verdict: 'changes-requested', feedback: 'still failing', agentsStarted: 1 } }
+    const start = vi.fn(async () => ({
+      loopId: record.loopId, result: Promise.resolve(record), cancel: vi.fn(), dispose: vi.fn(async () => {}),
+    }))
+    const { ctx, agent } = await setup({ enabled: true, start, acceptanceTaskId: 'acceptance-task' })
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('active-acceptance'),
+      name: 'dsh_reliability_handoff', arguments: { objective: record.objective }, agent })
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ acceptanceTaskId: 'acceptance-task' }))
+    expect(result.isError).toBe(false)
+    if (result.isError) throw new Error('expected blocked diagnostic')
+    expect(result.value).toMatchObject({ status: 'blocked', diagnostic: record.diagnostic, summary: 'still failing' })
   })
 
   it('compacts each terminal result and bounds a long implementation summary', async () => {

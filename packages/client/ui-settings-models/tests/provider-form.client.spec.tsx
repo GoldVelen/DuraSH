@@ -1897,6 +1897,42 @@ describe('subscription authentication in the provider editor', () => {
     expect(buttonNamed(en.useAccountAuth).disabled).toBe(false)
   })
 
+  it.each([
+    { label: 'Error', failure: new Error('switch transport failed'), message: 'switch transport failed' },
+    { label: 'non-Error', failure: 'switch transport unavailable', message: 'switch transport unavailable' },
+  ])('retains key authentication after a $label rejection and retries the same revision', async ({ failure, message }) => {
+    const nextView = { ...piAiNamespace({ xai: {} }), revision: 4 }
+    const pending = Promise.withResolvers<ReturnType<typeof remoteOk<SettingsNamespaceView>>>()
+    const mutate = vi.fn().mockImplementationOnce(() => pending.promise).mockResolvedValueOnce(remoteOk(nextView))
+    const { set, face } = await mountSection({ providers: { xai: { apiKeyEnv: 'XAI_API_KEY' } }, mutate }, true)
+    openEditor('xai')
+    try {
+      fireEvent.click(buttonNamed(en.useAccountAuth))
+      await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+      expect(buttonNamed(en.useAccountAuth).disabled).toBe(true)
+      expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
+      expect(screen.queryByText(en.accountAuthSaved)).toBeNull()
+      fireEvent.click(buttonNamed(en.useAccountAuth))
+      expect(mutate).toHaveBeenCalledTimes(1)
+
+      await act(async () => { pending.reject(failure) })
+      expect(await screen.findByText(message)).toBeTruthy()
+      expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
+      expect(screen.queryByText(en.accountAuthSaved)).toBeNull()
+      expect(buttonNamed(en.useAccountAuth).disabled).toBe(false)
+
+      fireEvent.click(buttonNamed(en.useAccountAuth))
+      expect(await screen.findByText(en.accountAuthSaved)).toBeTruthy()
+      expect(screen.queryByLabelText(en.keyInput)).toBeNull()
+      const write = ['llm-pi-ai', [{ op: 'unset', path: ['providers', 'xai', 'apiKeyEnv'] }], 3]
+      expect(mutate.mock.calls).toEqual([write, write])
+      expect(set).not.toHaveBeenCalled()
+      expect(face.credentials.unset).not.toHaveBeenCalled()
+    } finally {
+      await act(async () => { pending.resolve(remoteOk(nextView)) })
+    }
+  })
+
   it('does not claim account authentication when the composition still supplies a key reference', async () => {
     const { mutate } = await mountSection({
       providers: { xai: { apiKeyEnv: 'DEPLOYMENT_XAI_KEY' } },

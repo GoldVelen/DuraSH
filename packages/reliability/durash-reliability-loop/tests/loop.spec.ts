@@ -494,7 +494,7 @@ describe('durash-reliability-loop', () => {
     await driver.dispose()
   })
 
-  it('fails the loop loud when a run settles cancelled without a local cancel request', async () => {
+  it.each([undefined, 'remote workflow was terminated'])('fails the loop loud when a run settles cancelled without a local cancel request (error=%s)', async (error) => {
     const domain = await bareDomain()
     const table = domain.table('loops')
     const record: ReliabilityLoopRecord = {
@@ -505,7 +505,7 @@ describe('durash-reliability-loop', () => {
     }
     await table.put(record.loopId, record)
     const phantomRun = {
-      result: Promise.resolve({ value: null, stopReason: 'cancelled', agentsStarted: 0 }),
+      result: Promise.resolve({ value: null, stopReason: 'cancelled', agentsStarted: 0, ...error === undefined ? {} : { error } }),
       cancel: () => {},
       dispose: () => Promise.resolve(),
     }
@@ -515,6 +515,7 @@ describe('durash-reliability-loop', () => {
     const outcome = await driver.result
     expect(outcome.stage).toBe('failed')
     expect(outcome.error).toContain('without a local cancel request')
+    if (error !== undefined) expect(outcome.error).toContain(error)
     await driver.dispose()
   })
 

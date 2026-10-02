@@ -41,7 +41,7 @@ describe('source evidence identity', () => {
     expect(before.digest).toBe(after.digest)
   })
 
-  it.each([[], ['../outside'], ['/outside'], [':(glob)**'], ['src/*']].map(scope => ({ scope })))('rejects unsafe or empty scope $scope', async ({ scope }) => {
+  it.each([[], [''], ['src\0file'], ['src\\file'], ['../outside'], ['/outside'], [':(glob)**'], ['src/*']].map(scope => ({ scope })))('rejects unsafe or empty scope $scope', async ({ scope }) => {
     await expect(captureSource(sourceIO({}), '/repo', scope, signal)).rejects.toThrow('Source scope must contain explicit relative paths')
   })
 
@@ -308,5 +308,140 @@ describe.skipIf(process.platform === 'win32')('observed Git and build artifact b
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
+  })
+})
+
+describe('refused executor observations', () => {
+  it.each([
+    { command: 'rev-parse --show-toplevel', stdout: '/elsewhere', message: 'repository root' },
+    { command: 'rev-parse --verify HEAD', stdout: 'unborn branch', message: 'HEAD is unavailable' },
+    { command: 'ls-files', stdout: 'outside/app.ts\0', message: 'outside source scope' },
+    { command: 'ls-files', stdout: '../outside\0', message: 'outside source scope' },
+    { command: 'for dsh_evidence_path', stdout: '100644\n100644\n', message: 'Incomplete file mode' },
+    { command: 'for dsh_evidence_path', stdout: 'directory\n', message: 'Unrecognized file mode' },
+  ])('rejects $message instead of minting a source identity', async ({ command, stdout, message }) => {
+    const io = sourceIO({ 'src/app.ts': 'candidate' })
+    const run = io.run
+    io.run = async (text, cwd, abort) => text.includes(command) ? ok(stdout) : run(text, cwd, abort)
+    await expect(captureSource(io, '/repo', ['src'], signal)).rejects.toThrow(message)
+  })
+
+  it('rejects a probe that exits nonzero even when its output resembles Git evidence', async () => {
+    const io = sourceIO({})
+    io.run = async () => ({ ...ok('/repo'), exitCode: 1 })
+    await expect(captureSource(io, '/repo', ['.'], signal)).rejects.toThrow('Evidence probe failed')
+  })
+
+  it('accepts the explicit repository scope and rejects cancellation after a read', async () => {
+    const io = sourceIO({ 'app.ts': 'candidate' })
+    expect((await captureSource(io, '/repo', ['.'], signal)).files['app.ts']).toBeDefined()
+    const abort = new AbortController()
+    const read = io.read
+    io.read = async (path, current) => {
+      const bytes = await read(path, current)
+      abort.abort(new Error('read cancelled'))
+      return bytes
+    }
+    await expect(captureSource(io, '/repo', ['.'], abort.signal)).rejects.toThrow('read cancelled')
+  })
+
+  it.each([[], [''], ['build\0output']].map(paths => ({ paths })))('rejects unsafe artifact selections $paths', async ({ paths }) => {
+    await expect(capturePaths(sourceIO({}), '/repo', paths, signal)).rejects.toThrow('Artifact paths are required')
+  })
+
+  it.each([
+    { listing: '', mode: '100644\n', message: 'selects no files' },
+    { listing: '/outside/file\0', mode: '100644\n', message: 'escaped its declared path' },
+    { listing: '/repo/build\0', mode: 'deleted\n', message: 'disappeared during capture' },
+  ])('rejects an artifact that $message', async ({ listing, mode, message }) => {
+    const io: EvidenceIO = {
+      run: async command => ok(command.includes('-type l') ? '' : command.startsWith('find') ? listing : mode),
+      read: async () => new TextEncoder().encode('artifact bytes'),
+    }
+    await expect(capturePaths(io, '/repo', ['build'], signal)).rejects.toThrow(message)
+  })
+})
+
+describe('contradictory report and review inputs', () => {
+  it('counts JUnit errors, anonymous passing cases, and the declared error total', () => {
+    expect(parseJUnit('<?xml version="1.0"?><testsuite tests="2" failures="0" errors="1"><testcase/><testcase name="broken"><error>setup failed</error></testcase></testsuite>'))
+      .toEqual({ tests: 2, passed: 1, failed: 1, skipped: 0, skips: [] })
+  })
+
+  it.each([
+    '<testsuite><testcase name="one"><failure/><skipped message="offline"/></testcase></testsuite>',
+    '<testsuite><testcase name="one"><failure/><error/></testcase></testsuite>',
+    '<testsuite tests="many"><testcase/></testsuite>',
+    '<testsuite skipped="1"><testcase/></testsuite>',
+    '<testsuite/>',
+    '<testsuite name="empty" tests="0"/>',
+  ])('rejects conflicting or unverifiable JUnit outcomes %s', (xml) => {
+    expect(() => parseJUnit(xml)).toThrow()
+  })
+
+  it.each([null, [], { totalTestCount: -1 }, { totalTestCount: 1.5 }, { totalTestCount: '1' }])('rejects invalid xcresult counts %j', (summary) => {
+    expect(() => parseXcresult(summary)).toThrow()
+  })
+
+  it('retains expected-failure reasons nested beneath test suites and message containers', () => {
+    const summary = { result: 'Expected Failure', totalTestCount: 1, passedTests: 0, failedTests: 0, skippedTests: 0, expectedFailures: 1 }
+    expect(parseXcresult(summary, { testNodes: [{ nodeType: 'Test Suite', children: [{
+      nodeType: 'Test Case', nodeIdentifierURL: 'test://Widget/knownBug', result: 'Expected Failure',
+      children: [{ nodeType: 'Failure Details', children: [{ nodeType: 'Expected Failure', details: 'tracked issue 42' }] }],
+    }] }] })).toEqual({ tests: 1, passed: 0, failed: 0, skipped: 1, skips: [{ testId: 'test://Widget/knownBug', reason: 'tracked issue 42' }] })
+  })
+
+  it.each([
+    { testNodes: {} },
+    { testNodes: [{ nodeType: 'Test Suite', children: 'unknown' }] },
+    { testNodes: [{ nodeType: 'Test Case', nodeIdentifier: 'Widget/test', result: 'Skipped', children: 'unknown' }] },
+  ])('rejects non-array XCTest child collections %j', (tree) => {
+    expect(() => parseXcresult({ result: 'Skipped', totalTestCount: 1, passedTests: 0, failedTests: 0, skippedTests: 1, expectedFailures: 0 }, tree)).toThrow()
+  })
+
+  it('rejects an Expected Failure label when only some tests were expected failures', () => {
+    expect(() => parseXcresult({ result: 'Expected Failure', totalTestCount: 2, passedTests: 1, failedTests: 0, skippedTests: 0, expectedFailures: 1 })).toThrow('result disagrees')
+  })
+
+  it('decodes escaped test paths and keeps ordinary non-test edits out of review hints', () => {
+    const risks = scanTestChanges('+++ "b/tests/space\\040name\\t\\n\\v\\f\\r\\a\\b\\\"\\\\.spec.ts"\n+return\n+++ b/src/app.ts\n+const version = 1\n+expect(visible).toBe(true)\n context\n+++ /dev/null\n')
+    expect(risks).toEqual([{ path: 'tests/space name\t\n\v\f\r\x07\b"\\.spec.ts', kind: 'early-return', line: '+return' }])
+    expect(scanTestChanges('+return\n')).toEqual([])
+  })
+
+  it.each(['+++ "b/tests/spec.ts', '+++ "b/tests/\\q.spec.ts"', '+++ "b/tests/ending\\"'])('refuses an incomplete or unknown Git path escape %s', (diff) => {
+    expect(() => scanTestChanges(diff)).toThrow()
+  })
+})
+
+describe('signed bundle metadata refusals', () => {
+  const options = { cwd: '/repo', appPath: '/Apps/App.app', widgetPath: '/Apps/App.app/PlugIns/Widget.appex' }
+  const signed = (body: string) => `<?xml version="1.0"?><plist version="1.0"><dict>${body}</dict></plist>`
+
+  it.each([
+    '<plist/>',
+    signed('<key>application-identifier</key>'),
+    signed('<key>application-identifier</key><string>TEAM.test.app</string><key>application-identifier</key><string>TEAM.test.app</string>'),
+    signed('<key>application-identifier</key><integer>7</integer>'),
+    signed('<key>application-identifier</key><string>TEAM.other.app</string>'),
+    signed('<key>application-identifier</key><string>TEAM.test.app</string><key>com.apple.security.application-groups</key><string>group.shared</string>'),
+    signed('<key>application-identifier</key><string>TEAM.test.app</string><key>com.apple.security.application-groups</key><array><integer>1</integer></array>'),
+  ])('refuses invalid signed entitlements %s', async (xml) => {
+    const io = iosIO('2', ['group.shared'])
+    const run = io.run
+    io.run = async (command, cwd, abort) => command.startsWith('codesign') ? ok(xml) : run(command, cwd, abort)
+    await expect(captureIOSIdentity(io, options, signal)).rejects.toThrow()
+  })
+
+  it('reports different signing teams even when bundle ids, builds and App Groups agree', async () => {
+    const io = iosIO('2', ['group.shared'])
+    const run = io.run
+    io.run = async (command, cwd, abort) => {
+      const result = await run(command, cwd, abort)
+      return command.startsWith('codesign') && command.includes('Widget.appex')
+        ? { ...result, stdout: result.stdout.replace('TEAM.test.app.widget', 'OTHER.test.app.widget') }
+        : result
+    }
+    expect((await captureIOSIdentity(io, options, signal)).reasons).toEqual(['App and Widget signing teams differ'])
   })
 })

@@ -37,10 +37,10 @@ class AcceptanceWorkflowEngine extends WorkflowEngine {
   })
 }
 
-function harness(gate?: RuntimeAcceptanceGate, maxHandoffChars = 16_384) {
+function harness(gate?: RuntimeAcceptanceGate, maxHandoffChars = 16_384, withAcceptance = true) {
   let record: ReliabilityLoopRecord = {
     loopId: ReliabilityLoopId('acceptance-loop'), objective: 'Show the saved item in the Widget',
-    createdAt: '2026-09-21T00:00:00.000Z', stage: 'implementing', acceptanceTaskId: taskId,
+    createdAt: '2026-09-21T00:00:00.000Z', stage: 'implementing', ...withAcceptance ? { acceptanceTaskId: taskId } : {},
   }
   const unavailable = (): never => { throw new Error('this acceptance fixture only supports driver reads and writes') }
   const table: KvTable<ReliabilityLoopId, ReliabilityLoopRecord> = {
@@ -59,7 +59,8 @@ function harness(gate?: RuntimeAcceptanceGate, maxHandoffChars = 16_384) {
   }
   const start = engine.start
   const driver = new LoopDriver(engine, table, parent, maxHandoffChars, record.loopId, gate)
-  return { driver, start }
+  return { driver, start, readRecord: () => record,
+    putRecord: (id: ReliabilityLoopId, value: ReliabilityLoopRecord) => table.put(id, value) }
 }
 
 describe('workflow acceptance enforcement', () => {
@@ -76,6 +77,7 @@ describe('workflow acceptance enforcement', () => {
     expect(result.diagnostic).toContain('candidate-a')
     expect(result.diagnostic).toContain('Unknown')
     expect(result.diagnostic).toContain(result.objective)
+    expect(result.diagnostic).toContain('Changed Widget code')
   })
 
   it('supplies raw evidence and test changes to the reviewer and binds approval to that candidate', async () => {
@@ -189,5 +191,42 @@ describe('workflow acceptance enforcement', () => {
     expect((await driver.result).stage).toBe('failed')
     expect(start).toHaveBeenCalledTimes(1)
     expect(gate.review).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when a durable task reference appears after the reviewer started without evidence', async () => {
+    const { driver, start, readRecord, putRecord } = harness(undefined, 16_384, false)
+    const launch = start.getMockImplementation()!
+    start.mockImplementation((request) => {
+      const run = launch(request)
+      if (request.args !== null && typeof request.args === 'object' && 'label' in request.args && request.args.label === 'review') {
+        void putRecord(readRecord().loopId, { ...readRecord(), acceptanceTaskId: taskId })
+      }
+      return run
+    })
+    await driver.drive()
+    const result = await driver.result
+    expect(start).toHaveBeenCalledTimes(2)
+    expect(result.stage).toBe('failed')
+    expect(result.error).toContain('no reviewed candidate')
+    expect(result.review).toBeUndefined()
+  })
+
+  it('settles cancelled rather than failed when cancellation rejects pending independent review', async () => {
+    const entered = Promise.withResolvers<undefined>()
+    const pending = Promise.withResolvers<typeof passing>()
+    const gate = { inspect: vi.fn(async () => passing), review: vi.fn(async () => { entered.resolve(undefined); return pending.promise }) }
+    const { driver } = harness(gate)
+    const driving = driver.drive()
+    try {
+      await entered.promise
+      driver.cancel('cancel review probe')
+      pending.reject(new Error('review observer aborted'))
+      await driving
+      expect((await driver.result).stage).toBe('cancelled')
+    } finally {
+      pending.resolve(passing)
+      await driving
+      await driver.dispose()
+    }
   })
 })

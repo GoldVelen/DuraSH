@@ -238,6 +238,43 @@ describe('global rules through Loader and the real request assembler', () => {
     expect(requestText(adapter.requests[1])).not.toContain(OLD)
   })
 
+  it('refreshes a first request after downstream context filtering and removes superseded pending instructions', async () => {
+    const { ctx, agent, adapter } = await harness([textResponse('done')])
+    const waiting = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    ctx.on('agent/request', async (_payload, next) => {
+      waiting.resolve(undefined)
+      await release.promise
+      return next()
+    })
+    ctx.on('agent/request-context', async (_payload, next) =>
+      (await next()).filter(message => message.source.kind !== 'agent-instructions'))
+    const pending = createUserMessage({
+      content: [{ type: 'text', text: 'SUPERSEDED_PENDING_RULE' }],
+      source: { kind: 'agent-instructions', form: 'instructions', changes: [] },
+    })
+    const directPrompt = 'Preserve this direct user request.'
+    const completed = turn(agent, directPrompt)
+    try {
+      await waiting.promise
+      agent.inject(pending)
+      expect(agent.inbox.nextStep.some(message => message.id === pending.id)).toBe(true)
+      await save(ctx, NEW)
+    } finally {
+      release.resolve(undefined)
+      await completed
+    }
+    const sent = requestText(adapter.requests[0])
+    expect(sent).toContain(NEW)
+    expect(sent).toContain(PROJECT)
+    expect(sent).not.toContain(OLD)
+    expect(sent).not.toContain('SUPERSEDED_PENDING_RULE')
+    expect(sent).toContain(directPrompt)
+    expect(sent.indexOf(directPrompt)).toBeLessThan(sent.indexOf(NEW))
+    expect(agent.inbox.nextStep.some(message => message.id === pending.id)).toBe(false)
+    expect(instructionEvents(agent)).toHaveLength(1)
+  })
+
   it('clears the only instruction node without retaining an old global body', async () => {
     const { ctx, agent, adapter } = await harness([textResponse('done'), textResponse('done')], { project: false })
     await turn(agent)

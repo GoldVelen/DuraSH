@@ -68,6 +68,18 @@ describe('xAI online model discovery', () => {
       .rejects.toThrow(/403/)
   })
 
+  it.each([null, {}, { models: null }, { models: {} }])(
+    'rejects a malformed language-model directory without falling back to the public directory: %j',
+    async (body) => {
+      const fetch = listing(body)
+      await expect(discoverModels({ provider: 'xai', refresh: true, apiKey: 'key' }))
+        .rejects.toMatchObject({ code: 'DISCOVERY_FAILED' })
+      expect(fetch.mock.calls.map(call => call[0])).toEqual([
+        'https://api.x.ai/v1/models', 'https://api.x.ai/v1/language-models',
+      ])
+    },
+  )
+
   it('preserves missing capabilities as unknown and maps the declared none effort', async () => {
     listing({ models: [{ id: 'bare' }, { id: 'optional', capabilities: { reasoning_effort: ['none', 'high'] } }] })
     expect(await discoverModels({ provider: 'xai', refresh: true, apiKey: 'key' })).toEqual([

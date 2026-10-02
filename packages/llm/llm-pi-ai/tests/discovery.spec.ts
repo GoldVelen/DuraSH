@@ -309,6 +309,30 @@ describe('draft-provider model discovery', () => {
     await expect(ctx.llm.discoverModels('llm-pi-ai', { provider: 'deepseek' })).resolves.not.toHaveLength(0)
   })
 
+  it('discovers models while a stored custom route still lacks its inference protocol', async () => {
+    const server = await listingServer({ body: JSON.stringify({ data: [{ id: 'fresh-model' }] }) })
+    const ctx = new Context()
+    const runtime = await ctx.plugin(LlmRuntime)
+    try {
+      const provider = await ctx.plugin(LlmPiAi, {
+        providers: { 'unfinished-gateway': { baseURL: server.url, models: [{ id: 'old-model' }] } },
+      })
+      try {
+        expect(ctx.llm.listConfigurableProviders().find(entry => entry.provider === 'unfinished-gateway')?.error)
+          .toContain('needs an api')
+        await expect(ctx.llm.discoverModels('llm-pi-ai', {
+          provider: 'unfinished-gateway', baseURL: server.url, apiKey: 'draft-key',
+        })).resolves.toEqual([{ id: 'fresh-model', name: 'fresh-model' }])
+        expect(server.paths).toEqual(['/models'])
+        expect(server.headers[0]?.authorization).toBe('Bearer draft-key')
+      } finally {
+        await provider.dispose()
+      }
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
   it('drops unusable rows rather than failing the whole listing', async () => {
     const server = await listingServer({
       body: JSON.stringify({

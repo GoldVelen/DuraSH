@@ -94,6 +94,13 @@ describe('Codex online model discovery', () => {
     ])
   })
 
+  it('keeps a visible model without reasoning metadata selectable without inventing an effort', async () => {
+    listing({ models: [{ slug: 'subscription-minimal', visibility: 'list' }] })
+    expect(await discoverModels({ provider: 'openai-codex', refresh: true, apiKey: token })).toEqual([
+      { id: 'subscription-minimal', name: 'subscription-minimal' },
+    ])
+  })
+
   it.each([{}, { models: {} }, null])('rejects malformed directories instead of returning installed models: %j', async (body) => {
     listing(body)
     await expect(discoverModels({ provider: 'openai-codex', refresh: true, apiKey: token }))
@@ -112,7 +119,10 @@ describe('Codex online model discovery', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it.each(['not-a-token', 'e30.bnVsbA.signature', 'e30.e30.signature'])('rejects unusable account tokens without disclosing them: %s', async (apiKey) => {
+  it.each([
+    'not-a-token', 'e30.bnVsbA.signature', 'e30.e30.signature',
+    `e30.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': null })).toString('base64url')}.signature`,
+  ])('rejects unusable account tokens without disclosing them: %s', async (apiKey) => {
     const fetch = listing()
     const failure = await discoverModels({ provider: 'openai-codex', refresh: true, apiKey })
       .catch((error: unknown) => error)

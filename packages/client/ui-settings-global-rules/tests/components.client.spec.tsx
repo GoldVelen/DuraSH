@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { GlobalRulesDocument } from '@deepseek-ai/dsh-api-settings-controller/types'
 import { GlobalRulesSection } from '../src/client/GlobalRulesSection.tsx'
 import type { GlobalRulesSectionInjected, GlobalRulesSectionProps } from '../src/client/GlobalRulesSection.tsx'
@@ -39,6 +39,40 @@ async function editor(): Promise<HTMLTextAreaElement> {
 }
 
 describe('global-rules settings editor', () => {
+  it.each(['resolve', 'reject'] as const)('ignores a late %s from an unmounted editor without changing its replacement', async (settlement) => {
+    const pending = Promise.withResolvers<GlobalRulesDocument | null>()
+    const previous = mount({ read: () => pending.promise })
+    expect(screen.getByText(en.loading)).toBeTruthy()
+    previous.unmount()
+    mount({ read: async () => ({ ...document, content: 'Current file', revision: 'current-revision' }) })
+    const input = await editor()
+    expect(input.value).toBe('Current file')
+    await act(async () => {
+      if (settlement === 'resolve') {
+        pending.resolve({ ...document, content: 'Stale file' })
+        await pending.promise
+      } else {
+        const failure = new Error('Late read failure')
+        pending.reject(failure)
+        await expect(pending.promise).rejects.toBe(failure)
+      }
+    })
+    expect(input.value).toBe('Current file')
+    expect(screen.queryByText('Could not read rules: Late read failure')).toBeNull()
+    fireEvent.change(input, { target: { value: 'Current edited file' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await screen.findByText(en.saved)
+  })
+
+  it('reports a non-Error read failure without offering a save action', async () => {
+    const read = vi.fn<GlobalRulesSectionInjected['read']>().mockRejectedValue('Transport closed')
+    const view = mount({ read })
+    await screen.findByText('Could not read rules: Transport closed')
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: en.save })).toBeNull()
+    expect(view.save).not.toHaveBeenCalled()
+  })
+
   it('loads the original Host file, saves exact edited text with its revision, and only confirms persistence', async () => {
     const b = mount()
     const input = await editor()
@@ -122,6 +156,7 @@ describe('global-rules settings editor', () => {
     const view = mount({ read: async () => null })
     await screen.findByText(en.unavailable)
     expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: en.save })).toBeNull()
     expect(screen.queryByText(document.path)).toBeNull()
     view.unmount()
     mount({ read: async () => ({ ...document, loadingEnabled: false }) })
