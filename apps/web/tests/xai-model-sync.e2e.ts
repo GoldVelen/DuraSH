@@ -132,17 +132,17 @@ describe('web e2e: xAI online model adoption', () => {
     expect(await settings.getByLabel('模型 ID 2').inputValue()).toBe('grok-4.7')
     await settings.getByRole('button', { name: '保存', exact: true }).click()
     await settings.getByText('已保存 xai。', { exact: true }).waitFor()
-    const settingsPath = join(scaffold.harnessHome, 'settings.yaml')
+    const settingsPath = join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml')
     const persisted = yaml.load(await readFile(settingsPath, 'utf8'))
-    expect(persisted).toMatchObject({
-      'llm-pi-ai': { providers: { xai: { models: [
-        { id: 'grok-4.6', name: 'My Grok 4.6', contextWindow: 12_000 },
-        {
-          id: 'grok-4.7', name: 'Grok 4.7', contextWindow: 500_000, maxTokens: 32_768,
-          input: ['text', 'image'], reasoningEfforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' },
-        },
-      ] } } },
-    })
+    const expectedXai: unknown = expect.objectContaining({ models: [
+      { id: 'grok-4.6', name: 'My Grok 4.6', contextWindow: 12_000 },
+      {
+        id: 'grok-4.7', name: 'Grok 4.7', contextWindow: 500_000, maxTokens: 32_768,
+        input: ['text', 'image'], reasoningEfforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' },
+      },
+    ] })
+    const expectedConfig: unknown = expect.objectContaining({ providers: { xai: expectedXai } })
+    expect(persisted).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'llm-pi-ai', config: expectedConfig })]))
     expect(await readFile(settingsPath, 'utf8')).not.toContain('apiKeyEnv:')
     expect(await readFile(credentialsPath, 'utf8')).toBe(originalCredentials)
     await expect(scaffold.ctx.llm.resolveModelInfo('xai', 'grok-4.7')).resolves.toMatchObject({

@@ -42,7 +42,8 @@ describe('global-rules page registration', () => {
     expect(readGlobalRules).not.toHaveBeenCalled()
     locale.setLocale('en')
     expect(resolveSlotLabel(entry.options.label)).toBe('Global rules')
-    const operations = (entry.inject as unknown as () => GlobalRulesSectionInjected)()
+    type RulesInject = (() => GlobalRulesSectionInjected) & NonNullable<typeof entry.inject>
+    const operations = (entry.inject as RulesInject)()
     await expect(operations.read()).resolves.toBeNull()
     readGlobalRules.mockResolvedValueOnce({ ok: false, error: { code: 'global-rules/rejected', message: 'Read denied' } })
     await expect(operations.read()).rejects.toThrow('Read denied')

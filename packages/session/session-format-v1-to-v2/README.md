@@ -43,7 +43,7 @@ const eventRecord = releasedV2SessionFormatCodec.encodeEvent(currentEvent)
 
 `releasedV1SessionFormatCodec` reads the frozen v1 physical language one row at a time. `sessionFormatV1ToV2` creates the cardinality-changing Stage that the static catalog connects to that decoder without retaining a v1 event array. The catalog remaps declared references and validates the released-v2 envelope, inherited cut, event admission, and relationships. Persistence applies full installed-current validation in its Worker before publication. `releasedV2SessionFormatCodec` creates a released-v2 row decoder and encodes v2 headers and events one record at a time.
 
-A successful v1 `assistant/message` must cite its complete ordered attempt. The migration removes the cited top-level chunks and obsolete message chunk references, compacts the chunks without joining token boundaries, and stores the stream on that message. An unclaimed attempt becomes one log-only `assistant/attempt` at its final chunk position. Unrelated interleaved events keep their relative order.
+A successful v1 `assistant/message` must cite its complete ordered attempt. The migration removes the cited top-level chunks and obsolete message chunk references, compacts the chunks without joining token boundaries, and stores the stream on that message. An unclaimed attempt becomes one log-only `assistant/attempt` at its final chunk position. Unrelated interleaved events keep their relative order, including the retired DuraSH log-only mirrors `runs/dispatched`, `workflow/start`, and `workflow/change`. These retain opaque object payloads without contributing model messages.
 
 The edge also closes the bounded legacy restart pattern in which a non-empty `next-turn` inbox insertion is followed by the next `turn/start` without the prior `turn/end`. It records that prior turn as interrupted. A legacy round-zero goal mutation becomes a `goal/change` followed by the original model-visible message with ordinary plugin attribution, so both durable goal state and historical model input survive.
 
@@ -103,7 +103,7 @@ The restored model-message sequence stays unchanged, so the migration alone does
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Closed first-party source inventory** — an unknown v1 event refuses migration, including an event marked `ignorable: true`.
+- **Closed first-party source inventory** — except the three retired DuraSH mirrors above, an unknown v1 event refuses migration, including an event marked `ignorable: true`.
 - **Linear remap state** — streaming retains no complete v1 event array, but the final v2 event array and old-to-new sequence map remain O(event count).
 - **No publication or compatibility fallback** — persistence owns exclusive successor publication, and retained v1 generations are not automatic downgrade or restore inputs.
 

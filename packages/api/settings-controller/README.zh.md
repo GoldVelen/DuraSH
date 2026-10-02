@@ -29,7 +29,7 @@ kind: "package-reference"
 
 `settings.describe()` 返回部署信息，以及在 `redactSecrets: true` 下读取的所有 namespace。`settings.update`、`settings.replace` 与 `settings.mutate` 暴露 settings 服务的三种写入操作，并返回该 namespace 的新脱敏视图；陈旧写入使用 `settings-conflict`，其他提供方拒绝使用 `settings-rejected`。
 
-`settings.openSettingsDocument()` 准备提供方持有的文档，并用原生文本编辑器意图将其打开。`settings.canOpenAgentPresetDirectory()` 在 preset 页面显示时报告原生打开能力。`settings.openAgentPresetDirectory(id)` 只解析用户创作的 preset，并打开其目录，或在原生打开不可用时返回目录路径；两个打开方法都不接受浏览器提供的文件系统目标。
+`settings.openSettingsDocument()` 准备提供方持有的文档，并用原生文本编辑器打开；该方法不接受浏览器提供的文件系统目标。
 
 `settings.readGlobalRules()` 原样读取 Host 根级指令加载器或默认预设常驻组合选定的全局 `AGENTS.md`，返回路径、版本、文件存在状态和加载限制；未挂载该插件时返回 `null`。`settings.saveGlobalRules(content, expectedRevision)` 仅使用原子替换和版本检查保存该文件，并发编辑返回 `global-rules/conflict`，读取或写入拒绝返回 `global-rules/rejected`，不接受浏览器传入的文件路径。保存成功仅确认文件写入；指令是否进入请求由[指令加载器](../../context/agent-instructions/README.zh.md)负责。
 
@@ -42,7 +42,6 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `nativeOpen` | 平台探测 | Agent preset 目录能否交给原生桌面打开器 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-api-settings-controller)是所有受支持字段及其 JSDoc 的完整来源。
 

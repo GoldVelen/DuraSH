@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for CONTRIBUTING.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write CONTRIBUTING.md
-CONTRIBUTING.md: dea09db8ee5f108cf6cf481d073c07e7d1eeba3b
-CONTRIBUTING.zh.md: 64fb2d78efb3a972658f7cdc54af971f529ce5f6
+/contributing-to-durash:
+  en: 9645d823a097cc80
+  zh: 62550cba7d020230
+/contributing-to-durash/before-contributing:
+  en: 5a500d42b8d59d6f
+  zh: 8c08c96c4f2eb48f
+/contributing-to-durash/choose-the-right-repository:
+  en: 4b01b5c4fda97511
+  zh: 9286d3ff389b88ef
+/contributing-to-durash/development-workflow:
+  en: 927d37fd489f01e0
+  zh: cffb360911677a5e
+/contributing-to-durash/license:
+  en: fc5607ce3a7bdd2e
+  zh: a070b7269bc1c3ad

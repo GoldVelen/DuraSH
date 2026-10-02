@@ -8,6 +8,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { AcceptanceTaskId } from '@durash/dsh-reliability-loop'
 
+
 const DESCRIPTION = 'Declare acceptance requirements, run a declared check, or read executor evidence. No second model is called. '
   + 'Use plan with JSON requirements before validation; origin=user requires a verbatim quote from the human request and cannot later be weakened. '
   + 'Each requirement has id, origin(user|plan), description, command, scope(relative Git input paths), kind(command|pytest-junit|xcresult), '
@@ -34,7 +35,7 @@ export function registerAcceptanceTool(ctx: Context): void {
     })
     if (lastContext.get(agent) === text) return decision
     lastContext.set(agent, text)
-    return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: 'text', text: `Host acceptance observations (not model claims): ${text}` }], source: { kind: 'plugin', plugin: 'durash-acceptance', form: 'notice', summary: 'Host acceptance checks and unreviewed test changes' } })] }
+    return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: 'text', text: `Host acceptance observations (not model claims): ${text}` }], source: { kind: 'durash-acceptance', form: 'notice', summary: 'Host acceptance checks and unreviewed test changes' } })] }
   })
   ctx.tools.register(defineTool({
     name: 'dsh_acceptance', description: DESCRIPTION,

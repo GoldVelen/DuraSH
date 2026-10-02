@@ -12,7 +12,7 @@
 
 - **成本可控的模型分工** — 按会话分别选择实施模型与审查模型，把最强的模型留给真正需要它的环节。当前选择是显式的，不是自动成本调度器。
 - **可恢复、带审查的交付** — 一次实施、一次独立审查、最多一轮有界返工。闭环状态可跨重启恢复，已完成阶段不会重复执行，取消后也不会遗留后台写入者。
-- **产品叠加层，而不是另一个陈旧分叉** — DuraSH 以插件形式在当前已验证的 DeepSeek Harness 基线之上加入自有品牌、工作流策略、composer 控件与可靠性引擎。
+- **产品叠加层，而不是另一个陈旧分叉** — DuraSH 以插件形式在 DeepSeek Harness 源码基线之上加入自有品牌、工作流策略、composer 控件与可靠性引擎。
 
 目标中的完整流程是“计划 → 协调实施 → 多路对抗性审查 → 统一总结”。它属于下一产品里程碑；当前开发者预览交付的是上面的较小有界闭环。
 
@@ -22,7 +22,7 @@ DuraSH 不是 DeepSeek 官方产品，也未获得 DeepSeek 背书。
 
 它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
 
-当前源码基线为 `dsh-v0.1.6-alpha.2`；精确版本记录在 [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) 中。精确边界见[上游策略](UPSTREAM.md)、[融合状态](INTEGRATION_STATUS.md)与[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
+当前升级候选以 `dsh-v0.2.0-rc.2` 为目标；整合验证仍在进行，该候选尚未验收或部署。精确版本记录在 [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) 中。精确边界见[上游策略](UPSTREAM.md)、[融合状态](INTEGRATION_STATUS.md)与[开源引用说明](OPEN_SOURCE_ATTRIBUTION.md)。
 
 ## 开发者预览
 
@@ -76,6 +76,8 @@ pnpm start
 ## 开发
 
 请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
+
+`pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。
 
 面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
 

@@ -62,7 +62,7 @@ ctx.authorization.describe(key)   // the entry above, or undefined
 dispose()                         // unregister; withdraws any running attempt
 ```
 
-flow 声明它写入的凭据记录、面向用户的标签以及它提供的登录方法，最优先者在前。`run()` 通过会话与人对话——单向 notice 与 flow 无法自行回答的问题——并且必须在返回前通过 `ctx.credentials` 提交记录：seam 会拒绝未提交就返回的 flow。`list()` 与 `describe()` 让界面展示可授权的内容以及是否有尝试在运行；`dispose()` 注销该 flow 并撤销仍在运行中的尝试。
+flow 声明它写入的凭据记录、面向用户的标签以及至少一种登录方法，最优先者在前。`run()` 通过会话与人对话——单向 notice 与 flow 无法自行回答的问题——并且必须在返回前通过 `ctx.credentials` 提交记录：seam 会拒绝未提交就返回的 flow。`list()` 与 `describe()` 保留该非空方法列表，使界面可以默认选择第一项、展示可授权的内容，并报告是否有尝试在运行；`dispose()` 注销该 flow 并撤销仍在运行中的尝试。
 
 ### 发起一次尝试
 
@@ -161,3 +161,5 @@ notice 是单向的，且从不携带机密：一条消息，以及可选的「�
 上文限制点名的开放方向——可恢复的尝试、服务端吊销、孤儿记录发现——每一项落地前都需要各自的设计与存储。不变式伴生插件是唯一承重的运行时检查：结算时键必须已释放，因为卡死的键与繁忙的键无法区分，只有重启才能释放它。
 
 </details>
+
+flow 可使用 session.commit(record) 拒绝取消后的写入。提交一旦获准，cancel() 会保留执行，直到持久化和流程结束。通过自有凭证适配器写入的 flow 仍须负责自身的取消顺序。

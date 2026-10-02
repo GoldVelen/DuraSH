@@ -9,6 +9,8 @@
   disabled: true
 
 - id: agent-loop
+  # The configured root must claim persistence when it is created.
+  inject: [sessionPersistence]
   config:
     agents:
       - id: main

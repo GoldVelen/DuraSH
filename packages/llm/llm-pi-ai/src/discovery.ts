@@ -2,13 +2,13 @@
  * Answering "which models can this provider serve?" for the configuration
  * surface's "fetch available models" action.
  *
- * Explicit xAI refreshes read its authenticated model and language-model
+ * Explicit xAI and Codex refreshes read their authenticated model
  * directories. Passive metadata reads and other installed providers use the
  * bundled catalog. Hand-declared routes use their model-listing endpoint.
  *
  * Neither path is a catalog refresh. Nothing here is stored: the request
  * carries a draft the user is still editing, and the reply is candidate
- * metadata the surface offers for adoption. `settings.yaml` remains the only
+ * metadata the surface offers for adoption. `cordis.patch.yml` remains the only
  * thing that decides what a route serves.
  *
  * OpenAI-compatible and Anthropic Messages protocols are interrogated through
@@ -45,6 +45,9 @@ const ANTHROPIC_VERSION = '2023-06-01'
 
 /** Largest model-list page accepted by Anthropic's public endpoint; discovery reads one page and does not follow `has_more`. */
 const ANTHROPIC_MODEL_LIMIT = 1000
+
+/** Codex client compatibility version for the model-directory response fields consumed here. */
+const CODEX_DIRECTORY_CLIENT_VERSION = '0.155.0'
 
 /**
  * Endpoint replies larger than this are refused. The endpoint is whatever URL
@@ -242,6 +245,49 @@ function readListing(body: unknown, fallbackNames = true): LlmDiscoveredModel[] 
   return models
 }
 
+/** Read picker-visible subscription models; public API availability does not restrict ChatGPT accounts. */
+function readCodexListing(body: unknown): LlmDiscoveredModel[] {
+  if (typeof body !== 'object' || body === null || !('models' in body) || !Array.isArray(body.models)) {
+    throw new LlmError('Codex model directory did not contain a models array', 'DISCOVERY_FAILED')
+  }
+  const data = body.models.flatMap((raw: unknown) => {
+    if (typeof raw !== 'object' || raw === null) return []
+    const entry = raw as Record<string, unknown>
+    if (entry.visibility !== 'list') return []
+    const levels = Array.isArray(entry.supported_reasoning_levels) ? entry.supported_reasoning_levels : []
+    return [{
+      id: entry.slug, display_name: entry.display_name, context_window: entry.context_window,
+      input_modalities: entry.input_modalities,
+      capabilities: { reasoning_effort: levels.map((level: unknown) =>
+        typeof level === 'object' && level !== null && 'effort' in level ? level.effort : undefined) },
+    }]
+  })
+  return readListing({ data }).map(({ reasoningEfforts, ...model }) => ({
+    ...model,
+    ...reasoningEfforts !== undefined && Object.keys(reasoningEfforts).some(level => level !== 'off')
+      ? { reasoningEfforts } : {},
+  }))
+}
+
+/** Extract the account selector required by Codex from its OAuth access token without exposing credentials. */
+function codexAccountId(token: string): string {
+  let payload: unknown
+  try {
+    payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'))
+  } catch (_error: unknown) {
+    // A malformed JWT cannot identify a subscription account; parser errors may contain token text.
+    throw new LlmError('Codex model discovery requires a valid subscription access token', INVALID_CREDENTIAL_CODE)
+  }
+  if (typeof payload === 'object' && payload !== null && 'https://api.openai.com/auth' in payload) {
+    const auth = payload['https://api.openai.com/auth']
+    if (typeof auth === 'object' && auth !== null && 'chatgpt_account_id' in auth
+      && typeof auth.chatgpt_account_id === 'string' && auth.chatgpt_account_id.length > 0) {
+      return auth.chatgpt_account_id
+    }
+  }
+  throw new LlmError('Codex access token does not identify a subscription account; sign in again', INVALID_CREDENTIAL_CODE)
+}
+
 /**
  * Accept one probe key, or refuse it before the header is built. Without this
  * the `fetch` below would throw a ByteString `TypeError` that this function's
@@ -295,7 +341,9 @@ export async function discoverModels(
   const refreshedProfile = request.refresh === true ? storedProfile?.() : undefined
   const sourceProvider = refreshedProfile?.catalogProvider ?? request.provider
   const onlineXai = request.refresh === true && sourceProvider === 'xai'
-  if (!onlineXai && request.provider !== undefined) {
+  const onlineCodex = request.refresh === true && sourceProvider === 'openai-codex'
+  const onlineNative = onlineXai || onlineCodex
+  if (!onlineNative && request.provider !== undefined) {
     const installed = catalogModels(request.provider)
     if (installed.size > 0) {
       return [...installed.values()].map(model => ({
@@ -307,8 +355,8 @@ export async function discoverModels(
       }))
     }
   }
-  const baseURL = request.baseURL || (onlineXai
-    ? refreshedProfile?.baseURL ?? catalogProvider('xai')?.baseUrl
+  const baseURL = request.baseURL || (onlineNative
+    ? refreshedProfile?.baseURL ?? catalogProvider(sourceProvider)?.baseUrl
     : undefined)
   if (baseURL === undefined || baseURL.length === 0) {
     throw new LlmError(
@@ -324,7 +372,7 @@ export async function discoverModels(
   // when the endpoint speaks something else (an Anthropic gateway answers 401,
   // which reads as a credential problem), and hand-entry remains the way out.
   const api = request.api ?? 'openai-completions'
-  if (!LISTABLE_PROTOCOLS.has(api)) {
+  if (!onlineCodex && !LISTABLE_PROTOCOLS.has(api)) {
     throw new LlmError(
       `pi-ai protocol "${api}" has no model listing this build can read; enter this provider's models by hand`,
       'DISCOVERY_UNSUPPORTED',
@@ -338,7 +386,7 @@ export async function discoverModels(
   // deployment-owned Authorization header when neither key exists.
   const stored = refreshedProfile ?? storedProfile?.()
   const supplied = request.apiKey ?? await stored?.resolveApiKey()
-  const native = onlineXai && supplied === undefined
+  const native = onlineNative && supplied === undefined
     ? await stored?.resolveNativeAuth?.(request.signal)
     : undefined
   const credential = supplied ?? native?.apiKey
@@ -353,6 +401,19 @@ export async function discoverModels(
     headers.set('authorization', `Bearer ${apiKey}`)
   }
   for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+  if (onlineCodex) {
+    if (apiKey === undefined) {
+      throw new LlmError('Codex model discovery requires subscription sign-in', 'MISSING_CREDENTIAL')
+    }
+    headers.set('authorization', `Bearer ${apiKey}`)
+    headers.set('chatgpt-account-id', codexAccountId(apiKey))
+    headers.set('originator', 'pi')
+    const base = baseURL.replace(/\/+$/, '')
+    const root = base.endsWith('/codex') ? base : `${base}/codex`
+    return readCodexListing(await readEndpoint(
+      `${root}/models?client_version=${CODEX_DIRECTORY_CLIENT_VERSION}`, headers, request.signal,
+    ))
+  }
   if (onlineXai) {
     if (!headers.has('authorization')) {
       throw new LlmError('xAI model discovery requires an API key or subscription sign-in', 'MISSING_CREDENTIAL')

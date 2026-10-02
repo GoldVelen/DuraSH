@@ -2,7 +2,7 @@ name: CI master
 
 on:
   push:
-    branches: [master]
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       suite:
@@ -14,7 +14,7 @@ on:
           - larger-runner-benchmark
           - consolidated-runner-benchmark
 
-# New master pushes and manual runs replace obsolete checks in this workflow/ref.
+# New default-branch pushes and manual runs replace obsolete checks in this workflow/ref.
 # Standby drills share cancellation; use completed runs as readiness evidence.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,7 +32,7 @@ env:
 jobs:
   # These native runtime carriers are post-merge checks; release keeps all targets.
   python-runtime:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     name: python runtime / macOS and Linux ARM64
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
@@ -43,7 +43,7 @@ jobs:
 
   # Wine runs once here, independently of the native serial standby aggregates.
   windows:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     name: windows node 24 / wine
     timeout-minutes: 15
@@ -120,7 +120,9 @@ jobs:
         if: always()
         run: wineserver -k 2>/dev/null || true
 
-  # Hot-standby drill for the in-house self-hosted pool: every master move
+  # The in-house standby pools use the existing CI repository identifier;
+  # other repositories keep hosted checks without queuing private runners.
+  # Hot-standby drill for the in-house self-hosted pool: every default-branch move
   # re-runs the complete unsharded aggregate on the persistent 64-core VM,
   # continuously proving that environment can take over a required lane if
   # the hosted pools degrade (the switch is then setting the writer-manageable
@@ -131,7 +133,7 @@ jobs:
   # persistent pnpm store and tool caches make them redundant (and saving here
   # would poison the hosted cache namespace with self-hosted paths).
   serial-linux-selfhosted:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.repository == 'deepseek-harness/deepseek-harness' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     name: serial / linux (self-hosted standby)
     runs-on: [self-hosted, linux, x64, vm-backup]
     steps:
@@ -165,8 +167,8 @@ jobs:
 
       # The persistent VM image owns Playwright's Linux system packages; this
       # step also proves that browser provisioning remains usable for failover.
-      - name: Install Playwright Chromium
-        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install chromium
+      - name: Install Playwright Chromium and WebKit
+        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install chromium webkit
 
       - name: Prepare bubblewrap (unrestrict userns)
         run: bash scripts/prepare-ci-bubblewrap.sh
@@ -213,7 +215,7 @@ jobs:
           DSH_SNAPSHOT_MAX_CONCURRENCY: '1'
         run: pnpm run check:ci
 
-  # Hot-standby drill for the in-house self-hosted Windows pool: every master
+  # Hot-standby drill for the in-house self-hosted Windows pool: every default-branch
   # move re-runs the complete unsharded Windows gate inventory on the persistent
   # VM, continuously proving that environment can take over the required
   # `windows` lane if the hosted pool degrades (the switch is setting the
@@ -225,7 +227,7 @@ jobs:
   # (and saving here would poison the hosted cache namespace with self-hosted
   # paths).
   serial-windows:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.repository == 'deepseek-harness/deepseek-harness' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     name: serial / windows (self-hosted standby)
     runs-on: [self-hosted, dsh-win-ci, windows]
     timeout-minutes: 120

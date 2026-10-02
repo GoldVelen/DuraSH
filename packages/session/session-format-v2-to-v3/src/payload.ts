@@ -2,7 +2,7 @@
 
 import { SessionFormatError, SessionFormatUnsupportedMigrationError, isSessionFormatJsonObject, sessionFormatCount, sessionFormatSafeInteger } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatEvent, SessionFormatJsonObject, SessionFormatJsonValue } from '@deepseek-ai/dsh-session-format'
-import { assertReleasedPayloadSemantics, assertReleasedSurfaceMetadata } from '@deepseek-ai/dsh-session-format-v0-to-v1'
+import { INERT_LEGACY_EVENT_TYPES, assertReleasedPayloadSemantics, assertReleasedSurfaceMetadata } from '@deepseek-ai/dsh-session-format-v0-to-v1'
 import { RELEASED_V2_EVENT_DISPOSITIONS } from '@deepseek-ai/dsh-session-format-v1-to-v2'
 
 /** Audited surface event names; all other admitted events are log-only. */
@@ -35,7 +35,7 @@ export function keys(value: SessionFormatJsonObject, required: readonly string[]
 }
 
 /**
- * Validate classified payloads before migration, or native V3 system/header payloads.
+ * Validate classified payloads and log-only DuraSH mirrors before migration, or native V3 system/header payloads.
  * @param event - decoded logical event.
  * @param version - source or target generation.
  */
@@ -46,7 +46,8 @@ export function assertEvent(event: SessionFormatEvent, version: 2 | 3): void {
   }
   const disposition = RELEASED_V2_EVENT_DISPOSITIONS[event.type]
   const feedback = event.type === 'feedback/message-put' || event.type === 'feedback/message-delete'
-  if (disposition === undefined && !feedback) {
+  const inert = INERT_LEGACY_EVENT_TYPES.has(event.type)
+  if (disposition === undefined && !feedback && !inert) {
     throw new SessionFormatUnsupportedMigrationError('format v2 to v3 cannot safely transform unclassified event ' + event.type)
   }
   const surface = SURFACE_TYPES.has(event.type)
@@ -59,6 +60,7 @@ export function assertEvent(event: SessionFormatEvent, version: 2 | 3): void {
     if (event['surfaceOp'] === undefined) throw new SessionFormatError(event.type + ' requires surfaceOp')
   }
   const data = record(event.data, event.type + ' data')
+  if (inert) return
   if (feedback) {
     assertFeedback(event.type, data)
     return

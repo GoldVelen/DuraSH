@@ -77,7 +77,8 @@ describe('ui-reliability browser apply', () => {
     await fiber.await()
     const entry = b.slots.entries('conversation.input.left')[0]!
     expect(entry.component).toBe(WorkflowPolicyDock)
-    const injected = (entry.inject as unknown as (id: SessionId) => WorkflowPolicyDockInjected)(SID)
+    type WorkflowInject = NonNullable<typeof entry.inject> & ((id: SessionId) => WorkflowPolicyDockInjected)
+    const injected = (entry.inject as WorkflowInject)(SID)
     expect(injected.sessionId).toBe(SID)
     expect(injected.readPolicy().status).toBe('cold')
     await expect(injected.loadPolicy()).resolves.toEqual({ ok: true })

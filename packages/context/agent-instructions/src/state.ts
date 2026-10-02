@@ -94,7 +94,7 @@ function agentInstructionsHook(text: string, changes: AgentInstructionChange[]):
 export function agentInstructionsMessage(text: string): Message {
   return createUserMessage({
     content: [{ type: 'text', text }],
-    source: { kind: 'plugin', plugin: name },
+    source: { kind: name, form: 'instructions', changes: [] },
   })
 }
 

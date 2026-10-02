@@ -272,14 +272,17 @@ describe('durash-reliability-policy', () => {
     ])
   })
 
-  it('turns an enabled row off when a saved model leaves the catalog', async () => {
+  it('preserves both removed Codex model selections and disables them after restart', async () => {
     const root = await mkdtemp(join(tmpdir(), 'durash-reliability-policy-'))
     roots.push(root)
     const first = new Context()
     contexts.push(first)
     first.provide('llm', fakeLlm(
-      [{ id: 'deepseek-official', name: 'DeepSeek' }],
-      { 'deepseek-official': [{ provider: 'deepseek-official', id: 'gone', name: 'Gone' }] },
+      [{ id: 'openai-codex', name: 'Codex' }],
+      { 'openai-codex': [
+        { provider: 'openai-codex', id: 'gpt-5.4', name: 'GPT-5.4' },
+        { provider: 'openai-codex', id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini' },
+      ] },
     ))
     await first.plugin(Storage)
     await first.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
@@ -288,9 +291,9 @@ describe('durash-reliability-policy', () => {
     await first.reliabilityPolicy.configure({
       sessionId: SESSION,
       enabled: true,
-      implementationModel: 'deepseek-official/gone',
+      implementationModel: 'openai-codex/gpt-5.4',
       implementationThinking: 'high',
-      reviewModel: 'deepseek-official/gone',
+      reviewModel: 'openai-codex/gpt-5.4-mini',
       reviewThinking: 'high',
     })
     await first.fiber.dispose()
@@ -299,15 +302,26 @@ describe('durash-reliability-policy', () => {
     const second = new Context()
     contexts.push(second)
     second.provide('llm', fakeLlm(
-      [{ id: 'deepseek-official', name: 'DeepSeek' }],
-      { 'deepseek-official': [{ provider: 'deepseek-official', id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' }] },
+      [{ id: 'openai-codex', name: 'Codex' }],
+      { 'openai-codex': [{ provider: 'openai-codex', id: 'gpt-5.5', name: 'GPT-5.5' }] },
     ))
     await second.plugin(Storage)
     await second.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
     await second.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
     await second.plugin(ReliabilityPolicyService)
     const snapshot = await second.reliabilityPolicy.policy({ sessionId: SESSION })
-    expect(snapshot.enabled).toBe(false)
+    const preserved = {
+      enabled: false,
+      implementationModel: 'openai-codex/gpt-5.4', implementationThinking: 'high',
+      reviewModel: 'openai-codex/gpt-5.4-mini', reviewThinking: 'high',
+    }
+    expect(snapshot).toMatchObject(preserved)
+    expect(second.reliabilityPolicy.enabledRoutes(SESSION)).toBeUndefined()
+    expect(await second.reliabilityPolicy.ensurePolicy({ sessionId: SESSION })).toMatchObject(preserved)
+    await expect(second.reliabilityPolicy.configure({
+      sessionId: SESSION, ...preserved, enabled: true,
+    })).rejects.toThrow("implementation model 'openai-codex/gpt-5.4' is not in the current catalog")
+    expect(await second.reliabilityPolicy.policy({ sessionId: SESSION })).toMatchObject(preserved)
   })
 
   it('turns incomplete and review-only-stale durable rows off', async () => {
@@ -336,7 +350,20 @@ describe('durash-reliability-policy', () => {
       reviewThinking: 'xhigh',
       updatedAt: now,
     })
-    expect((await staleReview.policy.policy({ sessionId: otherSession })).enabled).toBe(false)
+    const snapshot = await staleReview.policy.policy({ sessionId: otherSession })
+    expect(snapshot).toMatchObject({
+      enabled: false,
+      implementationModel: 'deepseek-official/deepseek-v4-pro',
+      reviewModel: 'deepseek-official/missing',
+    })
+    await expect(staleReview.policy.configure({
+      sessionId: otherSession, enabled: true,
+      implementationModel: snapshot.implementationModel, implementationThinking: snapshot.implementationThinking,
+      reviewModel: snapshot.reviewModel, reviewThinking: snapshot.reviewThinking,
+    })).rejects.toThrow("review model 'deepseek-official/missing' is not in the current catalog")
+    expect(await staleReview.policy.ensurePolicy({ sessionId: otherSession })).toMatchObject({
+      enabled: false, implementationModel: snapshot.implementationModel, reviewModel: snapshot.reviewModel,
+    })
   })
 
   it('fails before the durable table has started', async () => {

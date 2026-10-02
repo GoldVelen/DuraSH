@@ -31,6 +31,8 @@ describe('dsh-base bundle', () => {
       patch => patch.insert ?? [],
     )
     expect(rows.length).toBeGreaterThan(50)
+    expect(new Set(rows.map(row => row.id)).size).toBe(rows.length)
+    expect(rows.filter(row => row.id === 'authorization')).toHaveLength(1)
     expect(rows.some(row => row.id === 'agent-loop')).toBe(true)
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.disabled).toBeUndefined()
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.config?.['mode']).toEqual({

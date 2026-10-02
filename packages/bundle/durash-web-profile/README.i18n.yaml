@@ -1,6 +1,37 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/bundle/durash-web-profile/README.md
-README.md: 399b0d7bfa40f0420b6ecf321cd466e87efbc86f
-README.zh.md: 8d8d9b1eebc55952020833b42452df8fde6512d3
+/:
+  en: 4bb290e4250d5451
+  zh: 1ac0136df4c0fc96
+/durash-dsh-web-profile:
+  en: 88122936850ffd12
+  zh: 002e477dfd94c6e7
+/durash-dsh-web-profile/summary:
+  en: 5f01016a3f3f814c
+  zh: 999a9a2e5b6c0588
+/durash-dsh-web-profile/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/durash-dsh-web-profile/use-this-package:
+  en: c01bb84aed6b2b8c
+  zh: f410774335a0710f
+/durash-dsh-web-profile/understand-the-implementation:
+  en: b6ca1452f6f8e30c
+  zh: 3232decea970ffe5
+/durash-dsh-web-profile/further-exploration:
+  en: ef29538826e27a32
+  zh: dcb4227e60cec7ae
+/durash-dsh-web-profile/model-experience:
+  en: 429929e087b60bef
+  zh: e92d2b5bcd1d71f5
+/durash-dsh-web-profile/model-experience/kv-cache-effect:
+  en: c9f76ddc3bbd0aa0
+  zh: 5fb82160a5990845
+/durash-dsh-web-profile/known-limitations-and-deferred-work:
+  en: 42c65b7e562bde5d
+  zh: 08b0131d69d86347
+/durash-dsh-web-profile/known-limitations-and-deferred-work/dev-note:
+  en: 748828b8b064cf74
+  zh: b64d99f04f008208

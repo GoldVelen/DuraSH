@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-01-grok-46-xhigh-from-installed-catalog.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-01-grok-46-xhigh-from-installed-catalog.md
-2026-09-01-grok-46-xhigh-from-installed-catalog.md: e20d92ff5166c85b43a6c1a9cd84886c9c893b2f
-2026-09-01-grok-46-xhigh-from-installed-catalog.zh.md: 1a4512dc83aa8edc9901b9ee3ec362cf691e01e6
+/agent-note-grok-4-6-offers-xhigh-from-the-installed-catalog:
+  en: 57b2c4aa810d4ed8
+  zh: b3462dc222640fe3
+/agent-note-grok-4-6-offers-xhigh-from-the-installed-catalog/problem:
+  en: 98d2924ca65a6751
+  zh: 4447216d7dae2dc0
+/agent-note-grok-4-6-offers-xhigh-from-the-installed-catalog/decision:
+  en: 37da5d66529061be
+  zh: b853cf06c1d58994
+/agent-note-grok-4-6-offers-xhigh-from-the-installed-catalog/alternatives-considered:
+  en: 94ff8f662661f9f3
+  zh: e424d8041bae117a
+/agent-note-grok-4-6-offers-xhigh-from-the-installed-catalog/consequences:
+  en: 6e4ba9595484b551
+  zh: 6f0cbfde3dad53e3
+/agent-note-grok-4-6-offers-xhigh-from-the-installed-catalog/testing:
+  en: e3fa84d960f884c2
+  zh: c9af7bd33230bd3d

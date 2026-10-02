@@ -2,7 +2,7 @@
 
 [English](reliability-loop.md) | 中文
 
-[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) 承载 DuraSH 可靠性引擎的第一个切片：一个有界的实施-审查-返工闭环，跑在 workflow seam 之上，循环的整个状态机以一条持久记录的形式保存在 `reliability_loop` storage domain 中。它只组合进 `durash` profile，不注册任何工具或提示段落，自身不贡献任何模型上下文。
+[`@durash/dsh-reliability-loop`](../../packages/reliability/durash-reliability-loop) 负责 DuraSH 的可靠性工作流与任务证据：一个有界的实施-审查-返工闭环，跑在 workflow seam 之上，循环的整个状态机以一条持久记录的形式保存在 `reliability_loop` storage domain 中。它只组合进 `durash` profile，不注册任何工具或提示段落，自身不贡献任何模型上下文。
 
 Source: [`packages/reliability/durash-reliability-loop/src/types.ts`](../../packages/reliability/durash-reliability-loop/src/types.ts)
 

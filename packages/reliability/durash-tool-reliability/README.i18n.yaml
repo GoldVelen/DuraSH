@@ -1,6 +1,64 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/reliability/durash-tool-reliability/README.md
-README.md: 064e76764815c1273680b66d105b8d2b1580e6ec
-README.zh.md: 37cbf356a8851a32f244209335a183e450ede788
+/:
+  en: 347134152bdb8867
+  zh: f8e9b0e539a076ae
+/durash-dsh-tool-reliability:
+  en: b3f0af29cbdfdd1c
+  zh: c2b864bd6f61b6f8
+/durash-dsh-tool-reliability/summary:
+  en: 8cdf216301ca9853
+  zh: c002bb482b0d8d17
+/durash-dsh-tool-reliability/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/durash-dsh-tool-reliability/use-this-package:
+  en: 4271ec6b3c8f2256
+  zh: b4ec44032654f436
+/durash-dsh-tool-reliability/use-this-package/direct-evidence-and-workflow-mode:
+  en: aa30fd951464c97b
+  zh: f88807ad74f21b28
+/durash-dsh-tool-reliability/understand-the-implementation:
+  en: c7535a66adae8de6
+  zh: 388431497ebfbdd4
+/durash-dsh-tool-reliability/further-exploration:
+  en: f782a6e9b5d5f15f
+  zh: 5ae0a72abe5bb77d
+/durash-dsh-tool-reliability/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/durash-dsh-tool-reliability/model-experience/request-context-and-condition:
+  en: cd8530c72534ee6b
+  zh: 16dbf6046e7e51fd
+/durash-dsh-tool-reliability/model-experience/request-context-and-condition/what-the-model-sees:
+  en: 7286afbdbae54440
+  zh: 9d7988dea321349c
+/durash-dsh-tool-reliability/model-experience/request-context-and-condition/what-the-model-sees/reliability-handoff-guidance:
+  en: 20bdf2c31279d672
+  zh: 41afcb52bfd7e404
+/durash-dsh-tool-reliability/model-experience/request-context-and-condition/token-effect:
+  en: f9571606f698dc75
+  zh: 722ef6eaef9f4951
+/durash-dsh-tool-reliability/model-experience/request-context-and-condition/kv-cache-effect:
+  en: b7c33d0a64d845ac
+  zh: 2eb54816156fcc62
+/durash-dsh-tool-reliability/model-experience/tool-schema:
+  en: e4c7376d4f29dbd5
+  zh: 6b7a9eaf69c9ea53
+/durash-dsh-tool-reliability/model-experience/tool-schema/what-the-model-sees:
+  en: 6eca49dad5d256c2
+  zh: 28f82acce00596e1
+/durash-dsh-tool-reliability/model-experience/tool-schema/token-effect:
+  en: a529ce2727a1aaa1
+  zh: 9780c95b0bd28020
+/durash-dsh-tool-reliability/model-experience/tool-schema/kv-cache-effect:
+  en: faf307940287adde
+  zh: 36c5ef2e8d7d07f5
+/durash-dsh-tool-reliability/known-limitations-and-deferred-work:
+  en: f92e49db1d1302ca
+  zh: 22c4e933139b6877
+/durash-dsh-tool-reliability/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

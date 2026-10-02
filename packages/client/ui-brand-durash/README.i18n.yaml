@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-brand-durash/README.md
-README.md: 6b0e2d357e3879ad7cb221015ac37772ae43ce83
-README.zh.md: f92314e11d246f86e912be0f46102e072e2dd45d
+/:
+  en: 50fb458ac356cb53
+  zh: d0c0367151a3c0d0
+/durash-dsh-client-ui-brand:
+  en: bd8a3996d42a865d
+  zh: 1617101aae2c33ae
+/durash-dsh-client-ui-brand/summary:
+  en: 74b2e72bb91dd62e
+  zh: 81d0f23e3ac69a27
+/durash-dsh-client-ui-brand/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/durash-dsh-client-ui-brand/use-this-package:
+  en: 4299a6b9a146c982
+  zh: e99ab0c9a33a8737
+/durash-dsh-client-ui-brand/use-this-package/choosing-the-profile:
+  en: 4c97055f1a29efb2
+  zh: 23eadd059219c493
+/durash-dsh-client-ui-brand/use-this-package/brand-artwork:
+  en: 3e12b84f1a952e21
+  zh: e3f9d0a29d722a0b
+/durash-dsh-client-ui-brand/understand-the-implementation:
+  en: 71608d2153d9296a
+  zh: 953d316c7391e583
+/durash-dsh-client-ui-brand/further-exploration:
+  en: 8e71e72f5845b51e
+  zh: d6decd843df0245e
+/durash-dsh-client-ui-brand/model-experience:
+  en: 01da6310a34b1b0a
+  zh: 7233febb4d92ccfb
+/durash-dsh-client-ui-brand/model-experience/kv-cache-effect:
+  en: ca75c51c89c2c9b0
+  zh: f57cc48a1b5cbfa9
+/durash-dsh-client-ui-brand/known-limitations-and-deferred-work:
+  en: 5b8b517ce0a5604b
+  zh: 8d7b3625221a5081
+/durash-dsh-client-ui-brand/known-limitations-and-deferred-work/dev-note:
+  en: 03bed192d49b4ff7
+  zh: 3568764fec8324c0

@@ -1,6 +1,67 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/reliability/durash-reliability-loop/README.md
-README.md: 7cadff7980910347caef899424533c8e6683ffc2
-README.zh.md: c52160671d1d7532af32bdda9bdbc0de1c021d72
+/:
+  en: b05ca32399dd960b
+  zh: a777ff52a2e3c7ce
+/durash-dsh-reliability-loop:
+  en: 2617224f74a8caf8
+  zh: 690244306551e3c5
+/durash-dsh-reliability-loop/summary:
+  en: 66ea08afe651c4b7
+  zh: 83be028e0dd6e309
+/durash-dsh-reliability-loop/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: ffab54373e9e61f0
+/durash-dsh-reliability-loop/use-this-package:
+  en: 5689e38f9409166f
+  zh: 42ef082d947a3104
+/durash-dsh-reliability-loop/use-this-package/starting-observing-and-cancelling:
+  en: 00c9ccfc446a454e
+  zh: 56b6a5dc147f31ab
+/durash-dsh-reliability-loop/use-this-package/restart-recovery:
+  en: 6cf6fe9346b214e3
+  zh: dff39493bd8dc9f4
+/durash-dsh-reliability-loop/use-this-package/stages-and-the-bounded-rework:
+  en: a90fa1b65addd7dd
+  zh: 7512176253ad64b2
+/durash-dsh-reliability-loop/use-this-package/the-handoff-bound:
+  en: f53fd6d795e1665e
+  zh: 5893f6149ac69ea9
+/durash-dsh-reliability-loop/use-this-package/task-acceptance-evidence:
+  en: 034cfa7eac12e0c4
+  zh: 58e9f1d53db61337
+/durash-dsh-reliability-loop/use-this-package/config:
+  en: 81b6b62c8bf2ebc8
+  zh: ac85befa40407331
+/durash-dsh-reliability-loop/understand-the-implementation:
+  en: 9f4a1d96a3a13642
+  zh: e40737b7f31d8103
+/durash-dsh-reliability-loop/understand-the-implementation/design-concept:
+  en: a3353e33c4b2d539
+  zh: 4f75742071d9852d
+/durash-dsh-reliability-loop/understand-the-implementation/source-map:
+  en: ab0b01107e742159
+  zh: e1e20630f3aa043b
+/durash-dsh-reliability-loop/understand-the-implementation/lifecycle-and-ownership:
+  en: cd8b05a455598701
+  zh: 761401e702656ee7
+/durash-dsh-reliability-loop/understand-the-implementation/failure-discipline:
+  en: 4f9d9c412b1054e4
+  zh: fd6cfbbb8af0323a
+/durash-dsh-reliability-loop/further-exploration:
+  en: 807c375eda9c4eaa
+  zh: c2369a7030ef8d6e
+/durash-dsh-reliability-loop/model-experience:
+  en: 1c432e2a40b69a58
+  zh: 1e9cb24094bcb1cc
+/durash-dsh-reliability-loop/model-experience/kv-cache-effect:
+  en: dd270a5d1c3060de
+  zh: 65dfd34f74cede95
+/durash-dsh-reliability-loop/known-limitations-and-deferred-work:
+  en: dc30db3ceaabe4c3
+  zh: 80a5aa7597e8c543
+/durash-dsh-reliability-loop/known-limitations-and-deferred-work/dev-note:
+  en: d82a99822c4a6470
+  zh: 3240cf8de5a9ab55

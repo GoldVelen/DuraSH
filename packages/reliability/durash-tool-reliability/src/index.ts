@@ -14,6 +14,15 @@ import type { ReliabilityLoopRecord } from '@durash/dsh-reliability-loop'
 import type {} from '@durash/dsh-reliability-policy'
 import type {} from '@deepseek-ai/dsh-agent'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Host observation notice preserved without the producer; its attribution grants no authority.
+     * @persistenceAttribution
+     */
+    'durash-acceptance': { kind: 'durash-acceptance'; form: 'notice'; summary: string }
+  }
+}
+
 export const name = 'tool-reliability'
 export const inject = ['tools', 'systemPrompt', 'agents', 'reliabilityPolicy', 'reliabilityLoopRuntime']
 
@@ -135,6 +144,7 @@ export function apply(ctx: Context): void {
         )
       }
       const acceptanceTaskId = ctx.reliabilityLoopRuntime.acceptance.activeTask(agent.id)
+      exec.signal.throwIfAborted()
       const handle = await ctx.reliabilityLoopRuntime.start({
         parent: agent,
         objective,
@@ -142,11 +152,14 @@ export function apply(ctx: Context): void {
         implementation: routes.implementation,
         review: routes.review,
       })
-      exec.signal.addEventListener('abort', () => { handle.cancel('reliability handoff cancelled') }, { once: true })
+      const cancel = () => { handle.cancel('reliability handoff cancelled') }
+      exec.signal.addEventListener('abort', cancel, { once: true })
       try {
+        if (exec.signal.aborted) cancel()
         const record = await handle.result
         return compactRecord(record)
       } finally {
+        exec.signal.removeEventListener('abort', cancel)
         await handle.dispose()
       }
     },

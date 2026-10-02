@@ -1,7 +1,8 @@
 /** Fail-closed parsers and POSIX probes for system-observed implementation evidence. */
 import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
-import { XMLParser, XMLValidator } from 'fast-xml-parser'
+import { XMLParser } from 'fast-xml-parser'
+import { SyntaxValidator } from 'fast-xml-validator'
 import type { ContentIdentity, EvidenceIO, IOSBundleIdentity, IOSIdentity, SourceIdentity, TestChangeRisk, TestCounts } from './evidence-adapter-types.ts'
 
 function quote(value: string): string {
@@ -130,11 +131,16 @@ function count(value: unknown): number {
 
 function xmlDocument(xml: string, preserveOrder = false): unknown {
   if (/<!ENTITY/i.test(xml) || /<!DOCTYPE[^>]*\[/i.test(xml)) throw new Error('XML entity declarations are not supported')
-  if (XMLValidator.validate(xml) !== true) throw new Error('Malformed evidence XML')
+  try {
+    SyntaxValidator.validate(xml)
+  } catch (error) {
+    throw new Error('Malformed evidence XML', { cause: error })
+  }
   const parser = new XMLParser({
     ignoreAttributes: false, parseAttributeValue: false, parseTagValue: false, preserveOrder, processEntities: false,
   })
-  return parser.parse(xml) as unknown
+  const document: unknown = parser.parse(xml)
+  return document
 }
 
 function suiteCounts(value: unknown): TestCounts & {
@@ -326,7 +332,8 @@ function plistEntitlements(xml: string): Record<string, unknown> {
 }
 
 async function bundleIdentity(io: EvidenceIO, cwd: string, path: string, signal: AbortSignal): Promise<IOSBundleIdentity> {
-  const info = object(JSON.parse(await run(io, `plutil -convert json -o - ${quote(posix.join(path, 'Info.plist'))}`, cwd, signal)) as unknown)
+  const parsedInfo: unknown = JSON.parse(await run(io, `plutil -convert json -o - ${quote(posix.join(path, 'Info.plist'))}`, cwd, signal))
+  const info = object(parsedInfo)
   const entitlements = plistEntitlements(await run(io, `codesign -d --entitlements :- ${quote(path)}`, cwd, signal))
   const bundleId = text(info.CFBundleIdentifier, 'bundle identifier')
   const applicationId = text(entitlements['application-identifier'], 'signed application identifier')

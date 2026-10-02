@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-本包是应用在当前上游 `dsh-base` 与 `dsh-web-app` bundle 之后的 DuraSH 产品叠加层。它加入产品自有的浏览器品牌插件、可靠性循环运行时、按会话工作流策略、受门控的交接工具与 composer 工作流开关，并重新启用上游 `workflow-ptc` 行（web app 默认关闭该行），使闭环通过 base bundle 的 Node PTC 运行时驱动阶段运行。上游官方品牌包与保持关闭的 `workflow`/`ralph` 工具不变。这样可以缩小后续合并上游时的冲突，并让所有下游自有 row 都集中显示在一个 patch 层中。
+本包是应用在当前上游 `dsh-base` 与 `dsh-web-app` bundle 之后的 DuraSH 产品叠加层。它加入产品自有的全局规则编辑器、浏览器品牌插件、可靠性循环运行时、按会话工作流策略、受门控的交接工具与 composer 工作流开关，并重新启用上游 `workflow-ptc` 行（web app 默认关闭该行），使闭环通过 base bundle 的 Node PTC 运行时驱动阶段运行。上游官方品牌包与保持关闭的 `workflow`/`ralph` 工具不变。这样可以缩小后续合并上游时的冲突，并让所有下游自有 row 都集中显示在一个 patch 层中。
 
 ## 目录
 
@@ -35,7 +35,7 @@ kind: "package-bundle"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`cordis.patch.yml` 插入 DuraSH 品牌行、可靠性循环运行时、按会话策略、受门控的交接工具与 composer 工作流开关。产品层保持增量：只有不存在兼容的上游扩展点时才允许替换上游 row，并且必须先在仓库融合状态文档中记录精确例外。
+`cordis.patch.yml` 插入全局规则编辑器、DuraSH 品牌行、可靠性循环运行时、按会话策略、受门控的交接工具与 composer 工作流开关。产品层保持增量：只有不存在兼容的上游扩展点时才允许替换上游 row，并且必须先在仓库融合状态文档中记录精确例外。
 
 本包不发布运行时 invariant companion，因为它只承载静态 patch 列表；每个被插入的包自行负责其启用的可变关系。
 

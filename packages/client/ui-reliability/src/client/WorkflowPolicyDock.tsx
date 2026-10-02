@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  IconChevronDownOutline14, IconCloseOutline16, IconSearchOutline16, Menu,
+  IconChevronDownOutlineRegular, IconCloseOutlineRegular, IconSearchOutlineRegular, Menu,
   useAnchoredMaxHeight, useAnchoredPosition,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -208,7 +208,7 @@ function EffortField({ label, value, levels, disabled, t, onChange }: EffortFiel
               </span>
             </span>
             <span className={css.chevron} aria-hidden>
-              <IconChevronDownOutline14 />
+              <IconChevronDownOutlineRegular />
             </span>
           </button>
         )}
@@ -274,7 +274,7 @@ function ModelPicker({ anchorRef, value, options, disabled, t, onSelect }: Model
           )
           : null}
         <label className={css.searchBox}>
-          <IconSearchOutline16 size={14} />
+          <IconSearchOutlineRegular size={14} />
           <input
             className={css.searchInput}
             value={query}
@@ -356,7 +356,7 @@ function ModelField({
           <span className={css.laneValue}>{modelDisplay(value, options, t)}</span>
         </span>
         <span className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} aria-hidden>
-          <IconChevronDownOutline14 />
+          <IconChevronDownOutlineRegular />
         </span>
       </button>
       {open
@@ -481,13 +481,17 @@ export function WorkflowPolicyDock({
     [draft.reviewModel, models],
   )
   const dirty = !equalDraft(draft, normalizeDraft(state))
+  const unavailableModels = [...new Set([draft.implementationModel, draft.reviewModel]
+    .filter((selector): selector is string => selector !== null
+      && !models.some(model => model.selector === selector)))]
+  const modelError = loading || state.status === 'cold' || unavailableModels.length === 0
+    ? null : t('policy.modelsUnavailable', { models: unavailableModels.join(', ') })
 
   const syncForToggle = async (enabled: boolean): Promise<void> => {
     const needsEnsure = models.length === 0
     const baseline = needsEnsure ? await ensurePolicy() : OK_RESULT
     if (!baseline.ok) return
-    const next = needsEnsure ? readPolicy() : (workflow ?? state)
-    const current = next.policy
+    const current = needsEnsure ? normalizeDraft(readPolicy()) : draft
     void configure({
       sessionId,
       enabled,
@@ -582,7 +586,7 @@ export function WorkflowPolicyDock({
               aria-label={t('policy.close')}
               onClick={() => { setOpen(false); setOpenPicker(null) }}
             >
-              <IconCloseOutline16 size={16} />
+              <IconCloseOutlineRegular size={16} />
             </button>
           </div>
         </div>
@@ -635,7 +639,8 @@ export function WorkflowPolicyDock({
           />
         </div>
 
-        {state.error === null ? null : <div className={css.error} role="alert">{state.error}</div>}
+        {(state.error ?? modelError) === null ? null
+          : <div className={css.error} role="alert">{state.error ?? modelError}</div>}
 
         <div className={css.footer}>
           <span className={css.note}>{t('policy.note')}</span>
@@ -670,7 +675,7 @@ export function WorkflowPolicyDock({
         <span className={css.triggerLabel}>{t('workflow.label')}</span>
         <span className={css.triggerStatus}>{state.policy.enabled ? t('workflow.on') : t('workflow.off')}</span>
         <span className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} aria-hidden>
-          <IconChevronDownOutline14 />
+          <IconChevronDownOutlineRegular />
         </span>
       </button>
       {state.acceptanceError == null ? null : (

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type { ShellExecRequest, ShellRunResult } from '@deepseek-ai/dsh-shell'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -26,8 +27,9 @@ import {
   inject as storageJsonInject,
   name as storageJsonName,
 } from '@deepseek-ai/dsh-storage-json'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
+import { unsupportedInbox } from '../../../test-support/agent-loop-testkit/src/inbox.ts'
 import { LoopDriver } from '../src/driver.ts'
 import { reliabilityLoopDomainSpec } from '../src/spec.ts'
 import ReliabilityLoopRuntime, { ReliabilityLoopId } from '../src/index.ts'
@@ -39,7 +41,15 @@ vi.setConfig({ testTimeout: 30_000 })
 
 /** A minimal parent stand-in: the engine only threads it through to the provider. */
 function fakeParent(): Agent {
-  return { id: SessionId('reliability-parent'), options: {} } as unknown as Agent
+  const ctx = new Context()
+  contexts.push(ctx)
+  const session = Session.create(SessionId('reliability-parent'))
+  const unavailable = (): never => { throw new Error('this parent fixture only supports identity and options') }
+  return {
+    id: session.id, session, options: {}, ctx, status: 'idle', inbox: unsupportedInbox(),
+    cancel: unavailable, whenIdle: unavailable, runMaintenance: unavailable,
+    send: unavailable, followup: unavailable, steer: unavailable, inject: unavailable,
+  }
 }
 
 /** Wait for an assertion over contended CI scheduling. */
@@ -719,4 +729,32 @@ describe('durash-reliability-loop', () => {
       expect(() => { assertReliabilityLoopRecord(record) }, name).toThrow()
     }
   })
+})
+
+it.each([false, true])('awaits the shell foreground result and retains timeout evidence (timedOut=%s)', async (timedOut) => {
+  const { ctx, runtime, root } = await harness()
+  const settled = Promise.withResolvers<ShellRunResult>()
+  const result = vi.fn(() => settled.promise)
+  const resolveRequest = vi.fn((request: ShellExecRequest) => ({ ...request, timeoutMs: 37 }))
+  const execute = vi.fn(async () => ({ result }))
+  ctx.provide('shell', { resolve: resolveRequest, execute })
+  const caller = new AbortController()
+  const pending = runtime.evidenceIO().run('check-command', root, caller.signal)
+  let completed = false
+  void pending.then(() => { completed = true })
+  await vi.waitFor(() => { expect(result).toHaveBeenCalledOnce() })
+  expect(completed).toBe(false)
+  const receipt: ShellRunResult = {
+    exitCode: timedOut ? null : 7, signal: timedOut ? 'SIGTERM' : null,
+    timedOut, aborted: false, timeoutMs: 37,
+    stdout: { text: 'observed stdout', truncated: false },
+    stderr: { text: 'observed stderr', truncated: false },
+  }
+  settled.resolve(receipt)
+  expect(await pending).toEqual({
+    exitCode: receipt.exitCode, stdout: 'observed stdout', stderr: 'observed stderr',
+    raw: receipt, incomplete: timedOut,
+  })
+  expect(execute).toHaveBeenCalledWith(resolveRequest.mock.results[0]!.value)
+  expect(resolveRequest).toHaveBeenCalledWith(expect.objectContaining({ command: 'check-command', workdir: root }))
 })

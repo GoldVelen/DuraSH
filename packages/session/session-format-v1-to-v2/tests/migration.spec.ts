@@ -224,6 +224,33 @@ describe('sessionFormatV1ToV2', () => {
     expect(inherited.output.values).toEqual([{ ...marker('parent'), seq: 0 }])
   })
 
+  it.each(['runs/dispatched', 'workflow/start', 'workflow/change'])('keeps interleaved retired %s behind earlier buffered log events', (type) => {
+    const mirror = event(type, 4, 5, { seq: 900, state: 'finished' })
+    const source: SessionFormatArtifact = {
+      header: { version: 1, id: 'buffered-workflow', createdAt: 1, isSeeded: false, delegationDepth: 0 },
+      inheritedEventCount: 0,
+      events: [
+        event('turn/start', 0, 1, { turn: 1 }),
+        event('step/start', 1, 2, { turn: 1, step: 1 }),
+        event('assistant/chunk', 2, 3, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'hello' } }),
+        event('feedback/record', 3, 4, { text: 'earlier audit' }),
+        mirror,
+        event('assistant/chunk', 5, 6, { turn: 1, step: 1, chunk: { type: 'finish', reason: { kind: 'stop' } } }),
+        { ...event('assistant/message', 6, 7, { turn: 1, step: 1, message }), sourceEventSeqs: [2, 5], surfaceOp: 'append' },
+        event('step/end', 7, 8, { turn: 1, step: 1 }),
+        event('turn/end', 8, 9, { turn: 1, reason: { kind: 'completed' } }),
+      ],
+    }
+    const { stage, output } = stageHarness({ id: source.header.id })
+    for (const row of source.events) stage.transformEvent(row, output)
+    expect(stage.finish(output)).toBe(0)
+    expect(output.values.map(row => row.type)).toEqual([
+      'turn/start', 'step/start', 'feedback/record', type, 'assistant/message', 'step/end', 'turn/end',
+    ])
+    expect(output.values.map(row => row.seq)).toEqual([0, 1, 2, 3, 4, 5, 6])
+    expect(output.values[3]).toEqual({ ...mirror, seq: 3 })
+  })
+
   it('expands generic runs and refuses a packed run split by the inherited cut', () => {
     const generic = stageHarness({ sourceKind: 'transformed' })
     const retained = event('feedback/record', 0, 1, { text: 'retained' })

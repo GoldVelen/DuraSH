@@ -1,0 +1,15 @@
+- dialog "选择要添加的模型":
+  - heading "选择要添加的模型" [level=2]
+  - button "关闭"
+  - paragraph: 以下是模型提供商的可用模型，勾选要添加的模型。
+  - searchbox "搜索模型"
+  - button "取消全选"
+  - list:
+    - listitem:
+      - checkbox "gpt-6-sol" [checked]
+      - text: gpt-6-sol
+    - listitem:
+      - checkbox "gpt-6-luna" [checked]
+      - text: gpt-6-luna
+  - button "取消"
+  - button "添加所选"

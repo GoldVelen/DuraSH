@@ -15,7 +15,7 @@
   height: 28px;
   padding: 0 4px 0 8px;
   border: none;
-  border-radius: 24px;
+  border-radius: var(--dsw-radius-panel);
   outline: none;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
@@ -30,7 +30,7 @@
 }
 
 .trigger:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
 }
 
 .trigger:disabled {
@@ -83,7 +83,7 @@
   gap: 6px;
   height: 28px;
   padding: 0 10px;
-  border-radius: 24px;
+  border-radius: var(--dsw-radius-panel);
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   font-size: 13px;
@@ -104,7 +104,7 @@
 .toggle:focus-visible,
 .close:focus-visible,
 .apply:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }
 
@@ -134,8 +134,9 @@
   gap: 12px;
   padding: 14px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   box-shadow: var(--dsw-elevation-prominent);
   color: var(--dsw-alias-label-primary);
@@ -182,7 +183,7 @@
   width: 24px;
   height: 24px;
   flex: none;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-xs);
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   font-size: 14px;
@@ -212,7 +213,7 @@
   gap: 8px;
   padding: 7px 10px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-specific-selector);
   color: inherit;
   cursor: pointer;
@@ -272,8 +273,9 @@
   padding: 8px;
   overflow: hidden;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   box-shadow: var(--dsw-elevation-prominent);
   color: var(--dsw-alias-label-primary);
@@ -294,7 +296,7 @@
   gap: 2px;
   padding: 2px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-specific-selector);
 }
 
@@ -302,7 +304,7 @@
   height: 24px;
   padding: 0 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-xs);
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
@@ -329,7 +331,7 @@
   height: 30px;
   padding: 0 10px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-specific-selector);
   color: var(--dsw-alias-label-secondary);
 }
@@ -348,7 +350,7 @@
 }
 
 .searchBox:focus-within {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }
 
@@ -407,7 +409,7 @@
   gap: 10px;
   padding: 8px 10px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-specific-selector);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -477,7 +479,7 @@
 .apply {
   height: 28px;
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-alias-label-primary-inverted);
   font-size: 12px;

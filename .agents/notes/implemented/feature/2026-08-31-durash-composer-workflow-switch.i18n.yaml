@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-durash-composer-workflow-switch.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-durash-composer-workflow-switch.md
-2026-08-31-durash-composer-workflow-switch.md: 321e9264643dddfd7d3aa098b4b068982e4d70f8
-2026-08-31-durash-composer-workflow-switch.zh.md: 5c291b4efeae8824cb9d6cae18a83bc794d8e484
+/agent-note-durash-composer-workflow-switch:
+  en: bee58f0a7afbfa08
+  zh: 58e3022e0e71e7c3
+/agent-note-durash-composer-workflow-switch/problem:
+  en: 28cc739e2f1040f8
+  zh: 2f72f454349f57e1
+/agent-note-durash-composer-workflow-switch/decision:
+  en: 1f808817aadacaba
+  zh: bceba2b4cd7e6c82
+/agent-note-durash-composer-workflow-switch/alternatives-considered:
+  en: ac4befe44987ab1a
+  zh: ddb99b885ea5eaff
+/agent-note-durash-composer-workflow-switch/consequences:
+  en: 1a8bc28bd2e9de71
+  zh: 91f728fef8107894
+/agent-note-durash-composer-workflow-switch/testing:
+  en: 237a9df67899fe90
+  zh: 74dbeb859ccf0a09

@@ -96,6 +96,14 @@ describe('test result adapters', () => {
     expect(() => parseJUnit(xml)).toThrow()
   })
 
+  it.each([
+    '<testsuite><testcase name="visible"/>',
+    '<testsuite><testcase name="visible"></testsuite>',
+    '<testsuite tests=1><testcase name="visible"/></testsuite>',
+  ])('rejects malformed XML before accepting testcase outcomes', (xml) => {
+    expect(() => parseJUnit(xml)).toThrow('Malformed evidence XML')
+  })
+
   it('does not mistake XCTest expected failures for passes', () => {
     expect(parseXcresult({ result: 'Passed', totalTestCount: 3, passedTests: 1, failedTests: 0, skippedTests: 1, expectedFailures: 1 }, { testNodes: [
       { nodeType: 'Test Case', nodeIdentifier: 'Widget/unavailable', result: 'Skipped', children: [{ nodeType: 'Skip Message', name: 'no device' }] },

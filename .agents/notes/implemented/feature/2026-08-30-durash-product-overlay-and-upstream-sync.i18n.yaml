@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-30-durash-product-overlay-and-upstream-sync.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-30-durash-product-overlay-and-upstream-sync.md
-2026-08-30-durash-product-overlay-and-upstream-sync.md: 17b1655bad0cdff303f70116ffe8cdcabe33ceae
-2026-08-30-durash-product-overlay-and-upstream-sync.zh.md: bd2669b77ec242981a36d7d70af11ef8d04f833c
+/agent-note-durash-product-overlay-and-upstream-synchronization:
+  en: f2538c82c5580b82
+  zh: 036d8079bfa9726c
+/agent-note-durash-product-overlay-and-upstream-synchronization/problem:
+  en: 695a6b8cde85ab8a
+  zh: 5ccb4bc7cf396190
+/agent-note-durash-product-overlay-and-upstream-synchronization/decision:
+  en: 6cc67ce9e04d3c45
+  zh: 04003911f0dc4c4d
+/agent-note-durash-product-overlay-and-upstream-synchronization/alternatives-considered:
+  en: ca5a7ae3c5b7007f
+  zh: d36b5583cfe34d7c
+/agent-note-durash-product-overlay-and-upstream-synchronization/consequences:
+  en: 11d89c91d0efc18c
+  zh: ebe4f697321e6bef

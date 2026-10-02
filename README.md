@@ -12,7 +12,7 @@ English | [中文](README.zh.md)
 
 - **Cost-aware model roles** — choose separate implementation and review models per Session, so the strongest model can be reserved for the work that justifies it. Selection is explicit today, not an automatic cost scheduler.
 - **Durable reviewed delivery** — one implementation, one independent review, and at most one bounded rework. Loop state survives restart, completed stages are not repeated, and cancellation converges without a background writer.
-- **A product overlay, not another stale fork** — DuraSH adds its brand, workflow policy, composer controls, and reliability engine as plugins over the current verified DeepSeek Harness baseline.
+- **A product overlay, not another stale fork** — DuraSH adds its brand, workflow policy, composer controls, and reliability engine as plugins over the DeepSeek Harness source baseline.
 
 The intended larger workflow is planning → coordinated implementation → multi-path adversarial review → one final summary. That pipeline is the next product milestone; the current developer preview ships the smaller bounded loop above.
 
@@ -22,7 +22,7 @@ DuraSH is not an official DeepSeek product and is not endorsed by DeepSeek.
 
 It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
 
-The current source baseline is `dsh-v0.1.6-alpha.2`; its exact revision is recorded in [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json). See [upstream policy](UPSTREAM.md), [integration status](INTEGRATION_STATUS.md), and [open-source attribution](OPEN_SOURCE_ATTRIBUTION.md) for the exact boundaries.
+The current upgrade candidate targets `dsh-v0.2.0-rc.2`; integration verification is still in progress and this candidate has not been accepted or deployed. Its exact revision is recorded in [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json). See [upstream policy](UPSTREAM.md), [integration status](INTEGRATION_STATUS.md), and [open-source attribution](OPEN_SOURCE_ATTRIBUTION.md) for the exact boundaries.
 
 ## Developer preview
 
@@ -74,6 +74,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Development
 
 Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
+
+`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
 
 For agents, follow [AGENTS.md](AGENTS.md).
 
