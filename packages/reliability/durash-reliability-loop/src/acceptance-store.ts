@@ -87,10 +87,13 @@ export class AcceptanceStore {
           if (JSON.stringify(requirementPromise(locked)) !== JSON.stringify(requirementPromise(requirements.find(check => check.id === locked.id)))) throw new Error(`Cannot weaken or replace user requirement ${locked.id}`)
         }
         const io = this.io()
-        const baselineResult = previous ? undefined : await io.run('git rev-parse --verify HEAD', request.cwd, signal)
-        if (baselineResult && (baselineResult.exitCode !== 0 || baselineResult.incomplete)) throw new Error('Git baseline unverified')
-        const baseline = previous?.baseline ?? baselineResult?.stdout.trim()
-        if (baseline === undefined) throw new Error('Git baseline unverified')
+        let baseline: string
+        if (previous) baseline = previous.baseline
+        else {
+          const baselineResult = await io.run('git rev-parse --verify HEAD', request.cwd, signal)
+          if (baselineResult.exitCode !== 0 || baselineResult.incomplete) throw new Error('Git baseline unverified')
+          baseline = baselineResult.stdout.trim()
+        }
         signal.throwIfAborted()
         const task = acceptanceRecord.parse({
           taskId: id, sessionId: request.sessionId, cwd: request.cwd, objective: request.objective,
@@ -152,7 +155,8 @@ export class AcceptanceStore {
           if (output.digest !== build.outputs) throw new Error('Build outputs no longer match the recorded build')
           receipt.buildEvidenceId = build.id
         }
-        const beforeTarget = check.target ? await this.probe(check, io, task.cwd, signal) : undefined
+        const target = check.target
+        const beforeTarget = target ? await this.probe(target, io, task.cwd, signal) : undefined
         if (beforeTarget) receipt.target = beforeTarget
         if (beforeTarget) {
           if (!check.target) throw new Error('Target observation has no declared requirement')
@@ -190,7 +194,7 @@ export class AcceptanceStore {
         }
         if (check.produces.length) receipt.outputs = (await capturePaths(io, task.cwd, check.produces, signal)).digest
         if (check.target) {
-          const afterTarget = await this.probe(check, io, task.cwd, signal)
+          const afterTarget = await this.probe(check.target, io, task.cwd, signal)
           if (afterTarget.digest !== beforeTarget?.digest) receipt.problems.push('Target changed during execution')
         }
         receipt.outcome = result.exitCode !== 0 || (receipt.report?.failed ?? 0) > 0 ? 'failed' : receipt.problems.length ? 'unverified' : 'passed'
@@ -231,7 +235,7 @@ export class AcceptanceStore {
           }
         }
         if (check.target) {
-          const observed = await this.probe(check, io, task.cwd, signal)
+          const observed = await this.probe(check.target, io, task.cwd, signal)
           observations.push(observed.digest)
           if (observed.digest !== check.target.expected) throw new Error('current target mismatch')
         }
@@ -308,9 +312,7 @@ export class AcceptanceStore {
   /** Wait for every started write/command before the persistence domain closes. */
   async drain(): Promise<void> { await Promise.allSettled([...this.planTails.values(), ...this.tails.values()]) }
 
-  private async probe(check: AcceptanceRequirement, io: EvidenceIO, cwd: string, signal: AbortSignal): Promise<TargetObservation> {
-    const target = check.target
-    if (!target) throw new Error('Target probe requires a declared target')
+  private async probe(target: NonNullable<AcceptanceRequirement['target']>, io: EvidenceIO, cwd: string, signal: AbortSignal): Promise<TargetObservation> {
     const probe = this.probes.get(target.adapter)
     if (!probe) throw new Error(`Target adapter ${target.adapter} unavailable; unverified`)
     const observed = await probe(io, cwd, target.options ?? {}, signal)

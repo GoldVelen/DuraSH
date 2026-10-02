@@ -43,11 +43,6 @@ export interface SettingsDocumentOpenValue {
   readonly opened: true
 }
 
-/** Result of opening or revealing one locally authored Agent preset directory. */
-export type AgentPresetDirectoryOpenValue =
-  | { readonly opened: true }
-  | { readonly opened: false; readonly path: string }
-
 /** One registered sign-in flow as the Models page lists it. */
 export interface AuthorizationFlowView {
   /** The credential key the flow writes, in its joined `<scope>/<id>` form. */

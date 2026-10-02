@@ -17,6 +17,9 @@ describe('rescope file selection', () => {
     'scripts/other/package-lock.json',
     'packages/example/src/index.ts',
     'packages/example/package.json',
+    'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts',
+    'snapshots/session/cordis-inspect-liveness/client-fixture.mjs',
+    'snapshots/session/cordis-inspect-timeout/client-fixture.mjs',
   ])('keeps %s subject to upstream package-name checks', (file) => {
     expect(isRescopeExcluded(file)).toBe(false)
   })

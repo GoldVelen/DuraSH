@@ -1,28 +1,13 @@
 - dialog "设置":
   - navigation:
     - text: 设置
-    - button "通用设置":
-      - img
-      - text: 通用设置
-    - button "模型":
-      - img
-      - text: 模型
-    - button "全局规则":
-      - img
-      - text: 全局规则
-    - button "内置插件":
-      - img
-      - text: 内置插件
-    - button "Agent 预设":
-      - img
-      - text: Agent 预设
-    - button "已归档会话":
-      - img
-      - text: 已归档会话
+    - button "通用设置"
+    - button "模型"
+    - button "内置插件"
+    - button "全局规则"
+    - button "Agent 预设"
   - button "打开配置文件"
-  - button "关闭":
-    - img
-    - text: 关闭
+  - button "关闭"
   - heading "全局规则" [level=2]
   - paragraph: 跨项目使用的全局指令；项目规则仍按既有优先级加载。这不是自动长期记忆。其他会话模式若禁用指令加载，则不会应用。
   - paragraph: 保存后，新会话和已有会话会在下一次模型请求前核对规则。已发出的请求不会改变，正在执行的工具不会被中断。

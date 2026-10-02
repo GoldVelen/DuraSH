@@ -129,7 +129,9 @@ function transformReleasedEvent(
 ): void {
   if (event.type === 'assistant/chunk') assertChunkEnvelope(event)
   if (INERT_LEGACY_EVENT_TYPES.has(event.type)) {
-    emitSource(state, event, context)
+    state.lastTime = event.time
+    if (state.pending !== undefined) state.pending.afterLastChunk.push(event)
+    else emitSource(state, event, context)
     return
   }
   if (RELEASED_V0_EVENT_DISPOSITIONS[event.type] === undefined) {

@@ -367,7 +367,7 @@ describe('dsh web keyless CLI smoke', () => {
       const pickerBatch = /^\/plugins\/\?\?@deepseek-ai\/dsh-client-ui-directory-picker-(?:native|browse)\/client\.js&rev=[a-f\d]{12}$/
       const bootstrapBatches = batchPaths.filter(path => !pickerBatch.test(path))
       expect(batchPaths.filter(path => pickerBatch.test(path)).length).toBeLessThanOrEqual(1)
-      expect(bootstrapBatches).toHaveLength(2)
+      expect(bootstrapBatches).toHaveLength(3)
       expect(bootstrapBatches).toContainEqual(expect.stringMatching(
         /^\/plugins\/\?\?.+\/client\.js,.+\/client\.js&rev=[a-f\d]{12}$/,
       ))

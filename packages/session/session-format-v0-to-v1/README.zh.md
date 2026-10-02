@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-本包逐个物理行解码已发布的 v0 会话 JSONL，并生成共享布局的 v1 格式，以还原历史会话。除把版本从 0 改为 1 外，它会保留经过校验的标头与事件，并仅应用 v0 持久化接受的有限旧格式规范化。畸形或不支持的历史记录会在当前还原器运行前使迁移失败，同时保留源文件以便恢复。该迁移只接受冻结的第一方事件清单，且不发布或选择后续格式迁移。
+本包逐个物理行解码已发布的 v0 会话 JSONL，并生成共享布局的 v1 格式，以还原历史会话。除把版本从 0 改为 1 外，它会保留经过校验的标头与事件，并仅应用 v0 持久化接受的有限旧格式规范化。畸形或不支持的历史记录会在当前还原器运行前使迁移失败，同时保留源文件以便恢复。该迁移接受冻结的第一方事件清单和下文明确列出的已退役 DuraSH 镜像事件；它不发布或选择后续格式迁移。
 
 ## 目录
 
@@ -42,7 +42,7 @@ const targetInheritedEventCount = stage.finish(migrationContext)
 
 `releasedV0SessionFormatCodec` 读取精确的 v0 header 与物理行，包括打包的 Assistant 增量和范围编码的来源序号。它的 decoder 通过 `emitEvent()` 与 `emitRun()` 发出单个事件或 codec 自有的紧凑 run。`sessionFormatV0ToV1` 为每次还原创建一个有状态 Stage；静态 catalog 连接该 decoder 与 Stage，使迁移无需保留物理行数组。`releasedV1SessionFormatCodec` 为 v1 物理布局暴露相同的逐行 decoder，同时不冻结普通事件词表。
 
-Alpha 迁移边会拒绝冻结清单之外的所有事件类型，包括带有 `ignorable: true` 标记的未知事件。它也会拒绝意外的 payload 成员。`tool/result.meta` 与嵌套 PTC `arguments` 是显式的不透明 JSON 字段；迁移会原样保留它们，不把其中的数字解释为会话序号。内容块中未知的 `type` 分支、消息来源中未知的 `kind` 分支、assistant 结束原因中未知的 `kind` 分支与 `turn/end` 原因中未知的 `kind` 分支保持 owner-opaque JSON，已知分支则接受结构校验。
+Alpha 迁移边会拒绝冻结清单之外的事件类型，包括带有 `ignorable: true` 标记的未知事件，唯一例外是已退役的 DuraSH 仅日志镜像 `runs/dispatched`、`workflow/start` 和 `workflow/change`。它们保留事件名和不透明的对象载荷，不产生模型消息，且冻结的目标信封不接受 surface 元数据。它也会拒绝意外的 payload 成员。`tool/result.meta` 与嵌套 PTC `arguments` 是显式的不透明 JSON 字段；迁移会原样保留它们，不把其中的数字解释为会话序号。内容块中未知的 `type` 分支、消息来源中未知的 `kind` 分支、assistant 结束原因中未知的 `kind` 分支与 `turn/end` 原因中未知的 `kind` 分支保持 owner-opaque JSON，已知分支则接受结构校验。
 
 有限的历史规范化会把 `steering/message` 转换为 `user/message`、把 `compact/*` 事件重命名为 `compaction/*`、移除 `turn/start.trigger`、转换已停用的 `turn/end` reason、添加当前消息包装层，并为旧消息、retry chain 与压缩（compaction）组补充确定性 id，同时移除已停用且重复的 `request/header.header.messagePrefix`。已停用的 `request/header-delta`、`mode/set` 和 `request/header` fallback reason 会使迁移失败。除此之外，任何事件、引用、来源或 payload 事实都不得改变。
 

@@ -5,14 +5,16 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { WorkflowPolicyDock, type WorkflowPolicyDockProps } from '../src/client/WorkflowPolicyDock.tsx'
 import type { ReliabilityControllerView, ReliabilitySessionState } from '../src/client/controller.ts'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
 
 const t: WorkflowPolicyDockProps['t'] = makeTranslate(zh, commonZh)
+const enT: WorkflowPolicyDockProps['t'] = makeTranslate(en, commonEn)
 const SID = 's-dock' as SessionId
 
 function state(over: Partial<ReliabilitySessionState['policy']> = {}): ReliabilitySessionState {
@@ -57,27 +59,128 @@ function state(over: Partial<ReliabilitySessionState['policy']> = {}): Reliabili
   }
 }
 
-function setup(session = state(), container?: HTMLElement) {
+function unusedSlotSource(): never {
+  throw new Error('Workflow policy dock does not use this standard slot source')
+}
+
+const standardProps = {
+  usePanelInfo: unusedSlotSource,
+  useSessions: unusedSlotSource,
+  useSessionStatus: unusedSlotSource,
+  useSessionRetainInfo: unusedSlotSource,
+  useResource: unusedSlotSource,
+  useWorkspaces: unusedSlotSource,
+  useSession: unusedSlotSource,
+  useProjection: unusedSlotSource,
+  useConversation: unusedSlotSource,
+  useInput: unusedSlotSource,
+  useChat: unusedSlotSource,
+  useTrajectory: unusedSlotSource,
+  inputActions: {
+    captureInsertion: unusedSlotSource, insertText: unusedSlotSource, setDraft: unusedSlotSource,
+    addAttachments: unusedSlotSource, removeAttachment: unusedSlotSource,
+    pruneAttachments: unusedSlotSource, submit: unusedSlotSource,
+  },
+}
+
+function setup(session = state(), container?: HTMLElement, translate = t) {
   const store = createSnapshotStore<ReliabilityControllerView>({
     sessions: new Map([[SID, session]]),
   })
-  const loadPolicy = vi.fn(() => Promise.resolve({ ok: true as const }))
-  const ensurePolicy = vi.fn(() => Promise.resolve({ ok: true as const }))
-  const configure = vi.fn(() => Promise.resolve({ ok: true as const }))
-  const props = {
+  const loadPolicy = vi.fn<WorkflowPolicyDockProps['loadPolicy']>(() => Promise.resolve({ ok: true }))
+  const ensurePolicy = vi.fn<WorkflowPolicyDockProps['ensurePolicy']>(() => Promise.resolve({ ok: true }))
+  const configure = vi.fn<WorkflowPolicyDockProps['configure']>(() => Promise.resolve({ ok: true }))
+  const props: WorkflowPolicyDockProps = {
+    ...standardProps,
     usePolicy: bindSnapshotSelector(store),
     readPolicy: () => store.getSnapshot().sessions.get(SID) ?? session,
     loadPolicy,
     ensurePolicy,
     configure,
     sessionId: SID,
-    t,
-  } as unknown as WorkflowPolicyDockProps
+    t: translate,
+  }
   const rendered = render(<WorkflowPolicyDock {...props} />, container === undefined ? undefined : { container })
   return { ...rendered, store, loadPolicy, ensurePolicy, configure }
 }
 
 describe('WorkflowPolicyDock', () => {
+  it.each([
+    { lane: 'implementationModel', label: '实施模型', alert: '当前目录不再提供这些已选模型：', translate: t, settings: '工作流设置' },
+    { lane: 'reviewModel', label: '审查模型', alert: '当前目录不再提供这些已选模型：', translate: t, settings: '工作流设置' },
+    { lane: 'implementationModel', label: 'Implementation model', alert: 'The current directory no longer offers these selected models:', translate: enT, settings: 'Workflow settings' },
+    { lane: 'reviewModel', label: 'Review model', alert: 'The current directory no longer offers these selected models:', translate: enT, settings: 'Workflow settings' },
+  ] as const)('identifies a removed $lane without choosing another model in $settings', ({ lane, label, alert, translate, settings }) => {
+    const unavailable = 'removed-provider/saved-model'
+    const session = state({
+      enabled: false,
+      implementationModel: 'deepseek-official/deepseek-v4-flash', implementationThinking: 'high',
+      reviewModel: 'cursor/deepseek-v4-pro', reviewThinking: 'xhigh',
+      [lane]: unavailable,
+    })
+    const { configure } = setup(session, undefined, translate)
+    fireEvent.click(screen.getByRole('button', { name: settings }))
+    expect(screen.getByRole('alert').textContent).toContain(alert)
+    expect(screen.getByRole('alert').textContent).toContain(unavailable)
+    expect(screen.getByRole('button', { name: label }).textContent).toContain(unavailable)
+    expect(configure).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('saves the current model choices when toggling from enabled=%s', async (enabled) => {
+    const original = state({
+      enabled,
+      implementationModel: 'deepseek-official/deepseek-v4-flash',
+      implementationThinking: 'high',
+      reviewModel: 'deepseek-official/deepseek-v4-flash',
+      reviewThinking: 'high',
+    })
+    const { configure, store } = setup(original)
+    configure.mockImplementation(async (request) => {
+      store.set({ sessions: new Map([[SID, state({ ...original.policy, ...request, revision: 2 })]]) })
+      return { ok: true }
+    })
+    fireEvent.click(screen.getByRole('button', { name: '工作流设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '审查模型' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cursor' }))
+    fireEvent.click(screen.getByRole('button', { name: /DeepSeek V4 Pro/ }))
+    expect(screen.getByRole('button', { name: '审查模型' }).textContent).toContain('DeepSeek V4 Pro')
+
+    fireEvent.click(screen.getByRole('button', { name: enabled ? '关闭工作流' : '开启工作流' }))
+    await waitFor(() => {
+      expect(configure).toHaveBeenCalledWith({
+        sessionId: SID, enabled: !enabled,
+        implementationModel: 'deepseek-official/deepseek-v4-flash', implementationThinking: 'high',
+        reviewModel: 'cursor/deepseek-v4-pro', reviewThinking: 'xhigh',
+      })
+    })
+    expect(screen.getByRole('button', { name: '审查模型' }).textContent).toContain('DeepSeek V4 Pro')
+    expect(screen.getByRole('button', { name: !enabled ? '关闭工作流' : '开启工作流' })).toBeTruthy()
+  })
+
+  it('uses ensured defaults when enabling before a policy snapshot is available', async () => {
+    const { store, ensurePolicy, configure } = setup()
+    store.set({ sessions: new Map() })
+    const pending = Promise.withResolvers<{ ok: true }>()
+    ensurePolicy.mockReturnValue(pending.promise)
+    fireEvent.click(screen.getByRole('button', { name: '工作流设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '开启工作流' }))
+    const ensured = state({
+      implementationModel: 'deepseek-official/deepseek-v4-flash', implementationThinking: 'high',
+      reviewModel: 'cursor/deepseek-v4-pro', reviewThinking: 'xhigh',
+    })
+    store.set({ sessions: new Map([[SID, ensured]]) })
+    pending.resolve({ ok: true })
+    await waitFor(() => {
+      expect(configure).toHaveBeenCalledWith({
+        sessionId: SID, enabled: true,
+        implementationModel: ensured.policy.implementationModel,
+        implementationThinking: ensured.policy.implementationThinking,
+        reviewModel: ensured.policy.reviewModel,
+        reviewThinking: ensured.policy.reviewThinking,
+      })
+    })
+  })
+
   it('shows unresolved checks and test risks even when the workflow is off', () => {
     setup({ ...state(), acceptance: {
       taskId: 'task-direct', status: 'pending', checksPassed: false,

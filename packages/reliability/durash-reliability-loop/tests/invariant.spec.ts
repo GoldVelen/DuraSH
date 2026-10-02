@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
 import InvariantRegistry, { InvariantError } from '@deepseek-ai/dsh-invariants'
@@ -21,6 +21,7 @@ const invariantViolation: unknown = expect.objectContaining<Partial<InvariantErr
 
 async function setup() {
   const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
   await ctx.plugin(Storage)
   await ctx.plugin(InvariantRegistry, { enabled: true })
   await ctx.plugin(LoopInvariantCompanion)
@@ -98,5 +99,22 @@ describe('reliability loop change-event invariants', () => {
 
   it('assertReliabilityLoopRecord is exported for the driver and tests', () => {
     expect(() => { assertReliabilityLoopRecord(validRecord) }).not.toThrow()
+  })
+
+  it.each(['reviewing', 'cancelled', 'completed'] as const)('rejects round-two work without coherent review slots at %s in both observers', async (stage) => {
+    const { ctx } = await setup()
+    const value: ReliabilityLoopRecord = { ...validRecord, stage,
+      implement: { round: 2, summary: 'reworked', agentsStarted: 1 },
+      ...stage === 'reviewing' ? {} : { settledAt: 'settled' },
+    }
+    expect(() => { assertReliabilityLoopRecord(value) }).toThrow(/attempt slots/)
+    expect(() => { ctx.emit('domain/changed', {
+      domain: 'reliability_loop', table: 'loops', key: value.loopId, operation: 'put', value,
+    }) }).toThrow(invariantViolation)
+    const wrongSlots: ReliabilityLoopRecord = { ...value, review: { round: 1, verdict: 'approved', feedback: 'wrong round', agentsStarted: 1 } }
+    expect(() => { assertReliabilityLoopRecord(wrongSlots) }).toThrow(/attempt slots/)
+    expect(() => { ctx.emit('domain/changed', {
+      domain: 'reliability_loop', table: 'loops', key: value.loopId, operation: 'put', value: wrongSlots,
+    }) }).toThrow(invariantViolation)
   })
 })

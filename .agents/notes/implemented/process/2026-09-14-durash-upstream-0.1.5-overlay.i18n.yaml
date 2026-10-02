@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-14-durash-upstream-0.1.5-overlay.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-14-durash-upstream-0.1.5-overlay.md
-2026-09-14-durash-upstream-0.1.5-overlay.md: 0261ef09960d16b62c139c9d1aef5cae54f608a7
-2026-09-14-durash-upstream-0.1.5-overlay.zh.md: e254c5d0b374c00d5e4cb09cd410a0177d42322e
+/agent-note-reconcile-deepseek-harness-0-1-5-onto-the-durash-overlay:
+  en: aaf85282396b3ed3
+  zh: ac63ded71b399454
+/agent-note-reconcile-deepseek-harness-0-1-5-onto-the-durash-overlay/problem:
+  en: 0ac564f5749de7a3
+  zh: 0b6303ec898bfb43
+/agent-note-reconcile-deepseek-harness-0-1-5-onto-the-durash-overlay/decision:
+  en: e2a348c4812bd7c6
+  zh: 49f71d4bacbb9909
+/agent-note-reconcile-deepseek-harness-0-1-5-onto-the-durash-overlay/alternatives-considered:
+  en: c1f047d6593a5fd5
+  zh: 8e1594227a75eb9d
+/agent-note-reconcile-deepseek-harness-0-1-5-onto-the-durash-overlay/consequences:
+  en: 2999de82075f5109
+  zh: 7ce4ac6e612d6d70
+/agent-note-reconcile-deepseek-harness-0-1-5-onto-the-durash-overlay/verification:
+  en: 5a345a24695ae9c6
+  zh: 9532cd29b6d92495

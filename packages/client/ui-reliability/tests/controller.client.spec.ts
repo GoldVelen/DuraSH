@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
+import { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
 import { MutableSessionEventSource } from '@deepseek-ai/dsh-api-session-controller/client'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import {
@@ -45,6 +46,12 @@ function fakeRemote(over: Partial<ReliabilityPolicyRemote> = {}) {
   const ensurePolicy = vi.fn(over.ensurePolicy ?? (() => Promise.resolve({ ok: true as const, value: snapshot() })))
   const configure = vi.fn(over.configure ?? (() => Promise.resolve({ ok: true as const, value: snapshot() })))
   return { remote: { policy, ensurePolicy, configure }, policy, ensurePolicy, configure }
+}
+
+function ownedController(remote: ReliabilityPolicyRemote): ReliabilityPolicyController {
+  const controller = new ReliabilityPolicyController(remote)
+  onTestFinished(() => { controller.dispose() })
+  return controller
 }
 
 describe('ReliabilityPolicyController', () => {
@@ -108,6 +115,92 @@ describe('ReliabilityPolicyController', () => {
     await expect(controller.refreshAcceptance(SID)).resolves.toEqual({ ok: true })
     expect(controller.sessionState(SID).acceptance).toBeUndefined()
     controller.dispose()
+  })
+
+  it.each(['legacy', 'disposed'] as const)('does not subscribe or read acceptance for a %s carrier', async (kind) => {
+    const acceptance = vi.fn<NonNullable<ReliabilityPolicyRemote['acceptance']>>()
+    const controller = ownedController(kind === 'legacy'
+      ? fakeRemote().remote : { ...fakeRemote().remote, acceptance })
+    if (kind === 'disposed') controller.dispose()
+    const source = new MutableSessionEventSource()
+    const subscribe = vi.spyOn(source, 'subscribe')
+    onTestFinished(() => { subscribe.mockRestore() })
+    const before = controller.getSnapshot()
+
+    controller.observeAcceptance(SID, source)
+    source.replace([], false)
+    expect(subscribe).not.toHaveBeenCalled()
+    expect(acceptance).not.toHaveBeenCalled()
+    await expect(controller.refreshAcceptance(SID)).resolves.toEqual(kind === 'legacy'
+      ? { ok: true }
+      : { ok: false, error: { code: 'disposed', message: 'Reliability policy controller is disposed' } })
+    expect(controller.getSnapshot()).toBe(before)
+  })
+
+  it('follows a replacement source without reading on old, unrelated, or Assistant settlement events', async () => {
+    const acceptance = vi.fn<NonNullable<ReliabilityPolicyRemote['acceptance']>>()
+      .mockResolvedValue({ ok: true, value: null })
+    const controller = ownedController({ ...fakeRemote().remote, acceptance })
+    const oldSource = new MutableSessionEventSource()
+    const currentSource = new MutableSessionEventSource()
+    controller.observeAcceptance(SID, oldSource)
+    controller.observeAcceptance(SID, currentSource)
+
+    oldSource.replace([], false)
+    currentSource.settleAssistant(LlmAttemptId('settled-attempt'))
+    currentSource.append({
+      type: 'event', event: { type: 'step/start', seq: SessionSeq(0), time: 0, data: { turn: 1, step: 1 } },
+    })
+    expect(acceptance).not.toHaveBeenCalled()
+
+    currentSource.replace([], false)
+    await vi.waitFor(() => { expect(controller.sessionState(SID).acceptance).toBeNull() })
+    expect(acceptance).toHaveBeenCalledExactlyOnceWith({ sessionId: SID })
+    controller.dispose()
+    currentSource.replace([], false)
+    expect(acceptance).toHaveBeenCalledOnce()
+  })
+
+  it('discards an invalidated failed read and publishes the later task observation', async () => {
+    const stale = Promise.withResolvers<Awaited<ReturnType<NonNullable<ReliabilityPolicyRemote['acceptance']>>>>()
+    const latest = Promise.withResolvers<Awaited<ReturnType<NonNullable<ReliabilityPolicyRemote['acceptance']>>>>()
+    const acceptance = vi.fn<NonNullable<ReliabilityPolicyRemote['acceptance']>>()
+      .mockReturnValueOnce(stale.promise).mockReturnValueOnce(latest.promise)
+    const controller = ownedController({ ...fakeRemote().remote, acceptance })
+    const before = controller.getSnapshot()
+    const first = controller.refreshAcceptance(SID)
+    const invalidated = controller.refreshAcceptance(SID)
+    stale.resolve({ ok: false, error: new RemoteError('gateway/internal', 'obsolete evidence failure', {}) })
+    await vi.waitFor(() => { expect(acceptance).toHaveBeenCalledTimes(2) })
+    expect(controller.getSnapshot()).toBe(before)
+
+    const view = {
+      taskId: 'new-task', status: 'pending' as const, checksPassed: false,
+      independentReview: 'not-reviewed' as const, reasons: ['Required check has not run'], risks: [],
+    }
+    latest.resolve({ ok: true, value: view })
+    await expect(Promise.all([first, invalidated])).resolves.toEqual([{ ok: true }, { ok: true }])
+    expect(controller.sessionState(SID)).toMatchObject({ acceptance: view, acceptanceError: null })
+  })
+
+  it.each([
+    { failure: new Error('Evidence connection lost'), message: 'Evidence connection lost' },
+    { failure: 'transport rejected without an Error', message: 'Acceptance read failed' },
+  ])('clears a cached acceptance after a transport rejection: $message', async ({ failure, message }) => {
+    const view = {
+      taskId: 'reviewed-task', status: 'accepted' as const, checksPassed: true,
+      independentReview: 'approved' as const, reasons: [], risks: [],
+    }
+    const acceptance = vi.fn<NonNullable<ReliabilityPolicyRemote['acceptance']>>()
+      .mockResolvedValueOnce({ ok: true, value: view }).mockRejectedValueOnce(failure)
+    const controller = ownedController({ ...fakeRemote().remote, acceptance })
+    await controller.refreshAcceptance(SID)
+    expect(controller.sessionState(SID).acceptance).toEqual(view)
+
+    await expect(controller.refreshAcceptance(SID)).resolves.toEqual({
+      ok: false, error: { code: 'transport', message },
+    })
+    expect(controller.sessionState(SID)).toMatchObject({ acceptance: null, acceptanceError: message })
   })
 
   it('loads a Host snapshot and refuses enable without both lanes', async () => {

@@ -10,6 +10,8 @@
 # its runs.
 
 - insert:
+    - id: ui-settings-global-rules
+      name: '@durash/dsh-client-ui-settings-global-rules'
     - id: ui-brand-durash
       name: '@durash/dsh-client-ui-brand'
     - id: reliability-loop

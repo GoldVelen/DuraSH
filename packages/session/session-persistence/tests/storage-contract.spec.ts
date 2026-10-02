@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import {
   SessionAlreadyExistsError,
@@ -149,22 +149,40 @@ describe('validateStoredEvents', () => {
 
   it('retains retired workflow run-state mirrors without an ignorable marker', () => {
     const m = meta('legacy-inert-runs')
-    const events = [
-      { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
-      { type: 'runs/dispatched', seq: 1, time: 2, data: { runId: 'workflow:9d4c:implementation:1:x' } },
-      { type: 'workflow/start', seq: 2, time: 3, data: { workflowId: 'workflow:9d4c', modelVisible: false } },
-      { type: 'workflow/change', seq: 3, time: 4, data: { workflowId: 'workflow:9d4c', modelVisible: false } },
-    ] as unknown as SessionEvent[]
+    const legacy = [
+      { type: 'runs/dispatched', data: { runId: 'workflow:9d4c:implementation:1:x' } },
+      { type: 'workflow/start', data: { workflowId: 'workflow:9d4c', modelVisible: false } },
+      { type: 'workflow/change', data: { workflowId: 'workflow:9d4c', modelVisible: false } },
+    ]
+    const events: SessionEvent[] = [
+      { type: 'turn/start', seq: SessionSeq(0), time: 1, data: { turn: 1 } },
+      ...legacy.map((record, index) => {
+        const event: SessionEvent = { type: 'turn/start', seq: SessionSeq(index + 1), time: index + 2, data: { turn: 1 } }
+        // Simulate decoded durable input whose retired type is absent from the current event map.
+        Reflect.set(event, 'type', record.type)
+        Reflect.set(event, 'data', record.data)
+        return event
+      }),
+    ]
+    expect(events.slice(1)).toEqual(legacy.map((record, index) => ({ ...record, seq: index + 1, time: index + 2 })))
     expect(validateStoredEvents(m, events)).toBe(events)
     expect(events.slice(1).map(event => event.type)).toEqual(['runs/dispatched', 'workflow/start', 'workflow/change'])
   })
 
   it('still refuses an unknown type outside the inert legacy set', () => {
     const m = meta('legacy-inert-with-unknown')
-    const events = [
-      { type: 'workflow/change', seq: 0, time: 1, data: { workflowId: 'workflow:9d4c' } },
-      { type: 'runs/future', seq: 1, time: 2, data: { runId: 'workflow:future' } },
-    ] as unknown as SessionEvent[]
+    const records = [
+      { type: 'workflow/change', data: { workflowId: 'workflow:9d4c' } },
+      { type: 'runs/future', data: { runId: 'workflow:future' } },
+    ]
+    const events = records.map((record, index) => {
+      const event: SessionEvent = { type: 'turn/start', seq: SessionSeq(index), time: index + 1, data: { turn: 1 } }
+      // Deliberately cross the durable-input boundary before testing unknown-required rejection.
+      Reflect.set(event, 'type', record.type)
+      Reflect.set(event, 'data', record.data)
+      return event
+    })
+    expect(events).toEqual(records.map((record, index) => ({ ...record, seq: index, time: index + 1 })))
     expect(() => validateStoredEvents(m, events)).toThrow(SessionFormatUnsupportedError)
     expect(() => validateStoredEvents(m, events)).toThrow(
       'contains event type "runs/future" (seq 1) unknown to this harness',

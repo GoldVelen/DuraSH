@@ -311,7 +311,8 @@ export class LoopDriver {
       ['Confirmed facts', this.acceptanceStatus === undefined ? 'Two implementation and review rounds settled' : `Required checks passed: ${String(this.acceptanceStatus.checksPassed)}`],
       ['Unconfirmed hypotheses', 'Unknown: no environmental cause independently established'],
       ['Failure evidence', this.acceptanceStatus?.index ?? 'Unknown: no execution evidence index recorded'],
-      ['Attempted actions (implementer report)', record.implement?.summary ?? 'Unknown'],
+      // This second review follows a validated durable round-two implementation.
+      ['Attempted actions (implementer report)', (record.implement as ImplementAttempt).summary],
       ['Question for next reviewer', feedback],
     ]
     const overhead = sections.map(([label]) => `${label}: \n`).join('').length

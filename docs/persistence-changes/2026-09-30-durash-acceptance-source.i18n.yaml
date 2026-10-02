@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-09-30-durash-acceptance-source.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-09-30-durash-acceptance-source.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-09-30-durash-acceptance-source:
+  en: b013cfe5fba76f1e
+  zh: e0f711193cb01b5f
+/2026-09-30-durash-acceptance-source/summary:
+  en: c559202dd5e6243a
+  zh: 9b56501979b90307
+/2026-09-30-durash-acceptance-source/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-09-30-durash-acceptance-source/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-09-30-durash-acceptance-source/compatibility:
+  en: c6c45c7fc2d18d0d
+  zh: a3ca8cbc5ba48d4d
+/2026-09-30-durash-acceptance-source/verification:
+  en: d5ee6cf29d8d4252
+  zh: 5e8e53ba8d08142f
+/2026-09-30-durash-acceptance-source/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

@@ -34,15 +34,16 @@
   "dependencies": {
     "@durash/dsh-client-ui-brand": "workspace:^",
     "@durash/dsh-client-ui-reliability": "workspace:^",
+    "@durash/dsh-client-ui-settings-global-rules": "workspace:^",
     "@durash/dsh-reliability-loop": "workspace:^",
     "@durash/dsh-reliability-policy": "workspace:^",
     "@durash/dsh-tool-reliability": "workspace:^"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:~"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/cordis": "workspace:~",
     "js-yaml": "^4.2.0"
   }
 }

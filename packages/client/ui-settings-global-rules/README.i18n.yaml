@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-settings-global-rules/README.md
-README.md: 6e7d5be35ad54e75533439fa5adcd27f078748dc
-README.zh.md: 8d4a7cd3b1db1a1f1aff84a2a019b2d429331feb
+/:
+  en: 078e91baa53630fb
+  zh: 2e7c15b057ef979f
+/durash-dsh-client-ui-settings-global-rules:
+  en: 76ad20530405c300
+  zh: bf41848982005761
+/durash-dsh-client-ui-settings-global-rules/summary:
+  en: 87ed52bb8c44efd9
+  zh: 4cdf4144c893e259
+/durash-dsh-client-ui-settings-global-rules/table-of-contents:
+  en: 2e89ddb1e73218cb
+  zh: eb58ef0ae27de817
+/durash-dsh-client-ui-settings-global-rules/use-this-package:
+  en: 97a9395ca0b48c33
+  zh: 5004e9dbd437004a
+/durash-dsh-client-ui-settings-global-rules/model-experience:
+  en: 3e3bf44de04504ca
+  zh: dd23aae63bfffac2
+/durash-dsh-client-ui-settings-global-rules/model-experience/kv-cache-effect:
+  en: 48e923370c4884aa
+  zh: 02bc0aac3f4cca41
+/durash-dsh-client-ui-settings-global-rules/known-limitations-and-deferred-work:
+  en: 8370a22dbecac609
+  zh: 938eeaab0f00ff36
+/durash-dsh-client-ui-settings-global-rules/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 8ec3e73528ddb1a6

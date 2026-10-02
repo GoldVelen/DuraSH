@@ -192,11 +192,15 @@ export function assertReleasedSurfaceMetadata(
 }
 
 /**
- * Validate one exact known payload after legacy normalization.
- * @param event - known event to validate.
+ * Validate one exact known payload or retain a retired DuraSH mirror as an opaque object.
+ * @param event - historically admitted event after legacy normalization.
  * @param version - payload generation controlling versioned members.
  */
 export function assertReleasedEventPayload(event: SessionFormatEvent, version: 0 | 1): void {
+  if (INERT_LEGACY_EVENT_TYPES.has(event.type)) {
+    releasedV0Record(event.data, `${event.type} ${event.seq} data`)
+    return
+  }
   const disposition = RELEASED_V0_EVENT_DISPOSITIONS[event.type]
   /* v8 ignore next -- artifact coordinate validation admits only the frozen inventory before payload validation. */
   if (disposition === undefined) {

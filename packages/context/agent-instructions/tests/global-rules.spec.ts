@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -13,19 +13,19 @@ vi.mock('@deepseek-ai/dsh-atomic-write', async (importOriginal) => {
 })
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
-  return { ...actual, chmod: vi.fn(actual.chmod), rename: vi.fn(actual.rename) }
+  return { ...actual, chmod: vi.fn(actual.chmod), lstat: vi.fn(actual.lstat), rename: vi.fn(actual.rename) }
 })
 
 const roots: string[] = []
 const contexts: Context[] = []
 
-async function setup(homeSuffix = '') {
+async function setup(homeSuffix = '', maxBytes = 8192) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-global-rules-'))
   roots.push(root)
   const home = join(root, homeSuffix)
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(GlobalRules, resolveConfig({ dshHome: home, maxBytes: 8192 }))
+  await ctx.plugin(GlobalRules, resolveConfig({ dshHome: home, maxBytes }))
   return { root, home, ctx, rules: ctx.globalRules, path: join(home, 'AGENTS.md') }
 }
 
@@ -35,6 +35,46 @@ afterEach(async () => {
 })
 
 describe('Host global rules file editing', () => {
+  it('ignores save notifications belonging to a different configured file', async () => {
+    const { rules, ctx, path, root } = await setup()
+    await writeFile(path, 'owned rules')
+    const before = await rules.read()
+    ctx.emit('global-rules/saved', join(root, 'another-home', 'AGENTS.md'))
+    expect(rules.generation).toBe(0)
+    expect(await rules.read()).toEqual(before)
+    await writeFile(path, 'committed owned rules')
+    ctx.emit('global-rules/saved', path)
+    expect(rules.generation).toBe(1)
+    expect((await rules.read()).content).toBe('committed owned rules')
+  })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'reports a non-finite loading budget as disabled while preserving editable text: %s', async (maxBytes) => {
+      const { rules, path } = await setup('', maxBytes)
+      await writeFile(path, 'editable while loading is disabled')
+      expect(await rules.read()).toMatchObject({
+        content: 'editable while loading is disabled', exists: true, loadingEnabled: false, maxBytes: 0,
+      })
+    },
+  )
+
+  it('propagates metadata read failures without treating an existing file as missing', async () => {
+    const { rules, path } = await setup()
+    await writeFile(path, 'preserved original')
+    const before = await rules.read()
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    const failure = Object.assign(new Error('metadata read denied'), { code: 'EACCES' })
+    vi.mocked(lstat).mockRejectedValueOnce(failure)
+    try {
+      await expect(rules.read()).rejects.toBe(failure)
+      expect(await readFile(path, 'utf8')).toBe('preserved original')
+      expect(rules.generation).toBe(0)
+      expect(await rules.read()).toEqual(before)
+    } finally {
+      vi.mocked(lstat).mockReset().mockImplementation(actual.lstat)
+    }
+  })
+
   it('reads original UTF-8 text and retains BOM, CRLF, and trailing whitespace after replacement', async () => {
     const { rules, path } = await setup()
     const original = '\uFEFF原有规则\r\n  preserve  \r\n\r\n'

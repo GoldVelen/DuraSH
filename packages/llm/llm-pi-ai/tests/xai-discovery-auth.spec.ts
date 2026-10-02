@@ -8,6 +8,7 @@ import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import * as LlmPiAi from '../src/index.ts'
 import { recordKeyFor } from '../src/auth.ts'
+import type { Options } from '../src/config.ts'
 
 const cleanups: (() => Promise<unknown>)[] = []
 
@@ -18,7 +19,7 @@ afterEach(async () => {
 })
 
 /** Mount the Host adapter over isolated durable credentials. */
-async function harness(providers: LlmPiAi.Config['providers'] = {}): Promise<Context> {
+async function harness(providers: Options['providers'] = {}): Promise<Context> {
   vi.stubEnv('XAI_API_KEY', undefined)
   const dir = await mkdtemp(join(tmpdir(), 'dsh-xai-discovery-auth-'))
   cleanups.push(() => rm(dir, { recursive: true, force: true }))

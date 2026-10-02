@@ -288,10 +288,11 @@ export class ReliabilityLoopRuntime extends Service {
       run: async (command, cwd, callerSignal) => {
         const signal = AbortSignal.any([callerSignal, this.evidenceLifecycle.signal])
         const sandboxPolicy = policy?.resolve(session ? { session } : { mode: 'read-only' })
-        const result = await shell.run(shell.resolve({
+        const execution = await shell.execute(shell.resolve({
           command, workdir: cwd, signal, stdoutMaxBytes: this.acceptanceConfig.maxEvidenceChars,
           ...sandboxPolicy ? { sandboxPolicy } : {},
         }))
+        const result = await execution.result()
         return {
           exitCode: result.exitCode, stdout: result.stdout.text, stderr: result.stderr.text, raw: result,
           incomplete: result.aborted || result.timedOut || result.signal !== null

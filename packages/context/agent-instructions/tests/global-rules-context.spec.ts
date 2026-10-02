@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Group from '@deepseek-ai/cordis-plugin-group'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
@@ -19,7 +19,7 @@ import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import AgentPresets, { serviceForAgent, serviceForScope } from '@deepseek-ai/dsh-agent-presets'
+import AgentPresets, { serviceForAgent, serviceForScope } from '@deepseek-ai/dsh-agent-preset-registry'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 const OLD = 'GLOBAL_RULE_VERSION_ONE'
@@ -67,26 +67,13 @@ async function harness(
     ['@deepseek-ai/dsh-tool-fs', ToolFs],
     ['@deepseek-ai/dsh-agent-instructions', AgentInstructions],
     ['@deepseek-ai/dsh-agent-loop', AgentLoop],
-    ...options.presets ? [['@deepseek-ai/dsh-agent-presets', AgentPresets]] as [string, unknown][] : [],
+    ...options.presets ? [['@deepseek-ai/dsh-agent-preset-registry', AgentPresets]] as [string, unknown][] : [],
     ...options.subagent ? [
       ['@deepseek-ai/dsh-subagent', SubagentRuntime],
       ['@deepseek-ai/dsh-subagent-spawn-in-process', Spawn],
     ] as [string, unknown][] : [],
   ])
   const configPath = join(root, 'cordis.yml')
-  const presetRoot = join(root, 'presets')
-  if (options.presets) {
-    for (const preset of ['standard-test', 'ptc-test']) {
-      const directory = join(presetRoot, preset)
-      await mkdir(directory, { recursive: true })
-      await writeFile(join(directory, 'agent.cordis.yml'), [
-        '- id: instructions', '  name: cordis:group', '  group: true',
-        '  isolate:', '    globalRules: true', '  config:',
-        '    - id: agent-instructions', `      name: ${JSON.stringify(new URL('../src/index.ts', import.meta.url).href)}`,
-        '      config:', '        maxBytes: 65536', `        dshHome: ${JSON.stringify(home)}`, '',
-      ].join('\n'))
-    }
-  }
   await writeFile(configPath, [...modules.keys()].filter(name => !options.presets || name !== '@deepseek-ai/dsh-agent-instructions').map((name) => {
     const lines = [`- name: '${name}'`]
     if (name === '@deepseek-ai/dsh-agent-instructions') {
@@ -95,9 +82,8 @@ async function harness(
     }
     if (name === '@deepseek-ai/dsh-fs-local') lines.push('  config:', `    cwd: ${JSON.stringify(cwd)}`)
     if (name === '@deepseek-ai/dsh-agent-loop') lines.push('  config:', '    agents: []')
-    if (name === '@deepseek-ai/dsh-agent-presets') lines.push(
-      '  config:', '    default: standard-test', '    includeShippedRoot: false', '    includeUserRoot: false',
-      '    roots:', `      - path: ${JSON.stringify(presetRoot)}`, '        trust: system',
+    if (name === '@deepseek-ai/dsh-agent-preset-registry') lines.push(
+      '  config:', '    default: standard-test',
     )
     return lines.join('\n')
   }).join('\n') + '\n')
@@ -105,18 +91,34 @@ async function harness(
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   ctx.loader.builtins.group = Group
-  ctx.loader.internal = {
+  const internal: ModuleLoaderV2 = {
     version: 'v2',
+    loadCache: new Map(),
     async import(specifier: string) {
       if (specifier === new URL('../src/index.ts', import.meta.url).href) return AgentInstructions
       if (!modules.has(specifier)) throw new Error(`Unexpected Loader import: ${specifier}`)
       return modules.get(specifier)
     },
-  } as unknown as NonNullable<typeof ctx.loader.internal>
+    register(): never { throw new Error('Unexpected module hook registration') },
+    getOrCreateModuleJob(): never { throw new Error('Unexpected module job creation') },
+    resolveSync(): never { throw new Error('Unexpected synchronous module resolution') },
+    load(): never { throw new Error('Unexpected module load') },
+  }
+  ctx.loader.internal = internal
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
   await ctx.loader.await()
   expect([...ctx.loader.entries()].filter(entry => entry.fiber === undefined && !entry.disabled)
     .map(entry => entry.options.name)).toEqual([])
+  if (options.presets) {
+    for (const id of ['standard-test', 'ptc-test']) {
+      const unregister = await ctx.agentPresets.register({ id, plugins: [{
+        id: 'instructions', name: 'cordis:group', group: true, isolate: { globalRules: true },
+        config: [{ id: 'agent-instructions', name: '@deepseek-ai/dsh-agent-instructions',
+          config: { maxBytes: 65536, dshHome: home } }],
+      }] })
+      ctx.effect(() => unregister)
+    }
+  }
   const adapter = new MockAdapter(script)
   ctx.llm.registerAdapter(['grok'], adapter)
   const createAgent = async (id: string, preset?: string) => options.presets
@@ -234,6 +236,43 @@ describe('global rules through Loader and the real request assembler', () => {
     }
     expect(requestText(adapter.requests[1])).toContain(NEW)
     expect(requestText(adapter.requests[1])).not.toContain(OLD)
+  })
+
+  it('refreshes a first request after downstream context filtering and removes superseded pending instructions', async () => {
+    const { ctx, agent, adapter } = await harness([textResponse('done')])
+    const waiting = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    ctx.on('agent/request', async (_payload, next) => {
+      waiting.resolve(undefined)
+      await release.promise
+      return next()
+    })
+    ctx.on('agent/request-context', async (_payload, next) =>
+      (await next()).filter(message => message.source.kind !== 'agent-instructions'))
+    const pending = createUserMessage({
+      content: [{ type: 'text', text: 'SUPERSEDED_PENDING_RULE' }],
+      source: { kind: 'agent-instructions', form: 'instructions', changes: [] },
+    })
+    const directPrompt = 'Preserve this direct user request.'
+    const completed = turn(agent, directPrompt)
+    try {
+      await waiting.promise
+      agent.inject(pending)
+      expect(agent.inbox.nextStep.some(message => message.id === pending.id)).toBe(true)
+      await save(ctx, NEW)
+    } finally {
+      release.resolve(undefined)
+      await completed
+    }
+    const sent = requestText(adapter.requests[0])
+    expect(sent).toContain(NEW)
+    expect(sent).toContain(PROJECT)
+    expect(sent).not.toContain(OLD)
+    expect(sent).not.toContain('SUPERSEDED_PENDING_RULE')
+    expect(sent).toContain(directPrompt)
+    expect(sent.indexOf(directPrompt)).toBeLessThan(sent.indexOf(NEW))
+    expect(agent.inbox.nextStep.some(message => message.id === pending.id)).toBe(false)
+    expect(instructionEvents(agent)).toHaveLength(1)
   })
 
   it('clears the only instruction node without retaining an old global body', async () => {
@@ -372,7 +411,8 @@ describe('global rules through Loader and the real request assembler', () => {
     await turn(agent)
     await turn(other)
     expect(ctx.get('globalRules')).toBeUndefined()
-    const defaultRules = serviceForScope(ctx, await ctx.agentPresets.standingKeyFor(), 'globalRules')
+    await using lease = await ctx.agentPresets.acquireScope()
+    const defaultRules = serviceForScope(ctx, lease.key, 'globalRules')
     const otherRules = serviceForAgent(ctx, other, 'globalRules')
     expect(defaultRules).toBeDefined()
     expect(otherRules).toBeDefined()

@@ -1,0 +1,85 @@
+- dialog "设置":
+  - navigation:
+    - text: 设置
+    - button "通用设置"
+    - button "模型"
+    - button "内置插件"
+    - button "Agent 预设"
+  - button "打开配置文件"
+  - button "关闭"
+  - heading "模型" [level=2]
+  - paragraph: 登录支持的账号，或配置 API 密钥，即可使用模型。
+  - heading "账号登录" [level=3]
+  - paragraph: 使用订阅账号登录，或在下方用 API 密钥添加提供方。
+  - list:
+    - listitem:
+      - text: Anthropic
+      - button "登录"
+    - listitem:
+      - text: GitHub Copilot
+      - button "登录"
+    - listitem:
+      - text: Kimi For Coding
+      - button "登录"
+    - listitem:
+      - text: Meta
+      - button "登录"
+    - listitem:
+      - text: OpenAI Codex
+      - button "登录"
+      - status: 已登录，该提供方已启用。可在对话中选择模型，或在下方编辑模型目录。
+    - listitem:
+      - text: OpenRouter
+      - button "登录"
+    - listitem:
+      - text: Radius
+      - button "登录"
+    - listitem:
+      - text: xAI
+      - button "登录"
+  - list:
+    - listitem:
+      - text: openai-codex
+      - button "编辑 openai-codex": 编辑
+      - button "删除 openai-codex": 删除
+      - text: openai-codex
+      - paragraph: 模型请求和模型同步使用账号登录；如尚未登录，请使用上方登录入口。
+      - button "改用 API 密钥"
+      - group:
+        - text: 自定义设置 API 地址
+        - textbox "API 地址":
+          - /placeholder: <CODEX_ENDPOINT>
+          - text: <CODEX_ENDPOINT>
+        - region "模型目录":
+          - text: 模型目录 已自定义模型目录
+          - button "恢复默认模型"
+          - button "获取可用模型"
+          - textbox "模型 ID 1":
+            - /placeholder: 模型 ID
+            - text: gpt-6-astra
+          - textbox "显示名称 1":
+            - /placeholder: 显示名称
+            - text: My GPT-6-Astra
+          - button "模型选项 1"
+          - button "删除模型 1"
+          - textbox "模型 ID 2":
+            - /placeholder: 模型 ID
+            - text: gpt-6-sol
+          - textbox "显示名称 2":
+            - /placeholder: 显示名称
+            - text: GPT-6-Sol
+          - button "模型选项 2"
+          - button "删除模型 2"
+          - textbox "模型 ID 3":
+            - /placeholder: 模型 ID
+            - text: gpt-6-luna
+          - textbox "显示名称 3":
+            - /placeholder: 显示名称
+            - text: GPT-6-Luna
+          - button "模型选项 3"
+          - button "删除模型 3"
+          - button "添加模型"
+          - paragraph: <CODEX_ENDPOINT>/codex/models?client_version=0.155.0 answered 403; check the API key or account sign-in
+      - button "取消"
+      - button "保存"
+  - button "添加模型提供商"

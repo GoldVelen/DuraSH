@@ -43,7 +43,7 @@ const eventRecord = releasedV2SessionFormatCodec.encodeEvent(currentEvent)
 
 `releasedV1SessionFormatCodec` 逐行读取冻结的 v1 物理语言。`sessionFormatV1ToV2` 创建改变事件基数的 Stage，静态 catalog 把它连接到 decoder，且不保留 v1 事件数组。Catalog 会重映射已声明引用，并校验 released-v2 envelope、inherited cut、事件准入与关系。持久化在发布前通过 Worker 执行完整 installed-current 校验。`releasedV2SessionFormatCodec` 创建已发布 v2 格式的逐行 decoder，并逐条编码 v2 header 与事件。
 
-成功的 v1 `assistant/message` 必须引用其完整有序 attempt。迁移会移除这些顶层 chunk 和已停用的 message chunk reference，在不合并 token 边界的前提下压缩 chunk，并把 stream 存到该 message 上。未被 message 认领的 attempt 会在其最后一个 chunk 的位置变成一个仅日志可见的 `assistant/attempt`。无关的交错事件保持相对顺序。
+成功的 v1 `assistant/message` 必须引用其完整有序 attempt。迁移会移除这些顶层 chunk 和已停用的 message chunk reference，在不合并 token 边界的前提下压缩 chunk，并把 stream 存到该 message 上。未被 message 认领的 attempt 会在其最后一个 chunk 的位置变成一个仅日志可见的 `assistant/attempt`。无关的交错事件保持相对顺序，包括已退役的 DuraSH 仅日志镜像 `runs/dispatched`、`workflow/start` 和 `workflow/change`。它们保留不透明的对象载荷，不产生模型消息。
 
 该 edge 还会闭合一种有限的旧版恢复模式：非空的 `next-turn` inbox 插入后直接出现下一个 `turn/start`，但缺少前一轮的 `turn/end`；迁移将前一轮记录为 interrupted。旧版 round-zero goal mutation 会变成一个 `goal/change`，随后保留原本模型可见的 message 并改用普通 plugin attribution，因此持久 goal 状态与历史模型输入都会保留。
 
@@ -103,7 +103,7 @@ v2 物理 header 要求 `isSeeded`，且不存储数值切点。编解码器从�
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **封闭的第一方源清单**——未知 v1 事件会使迁移失败，包括带有 `ignorable: true` 的事件。
+- **封闭的第一方源清单**——除上文三类已退役 DuraSH 镜像外，未知 v1 事件会使迁移失败，包括带有 `ignorable: true` 的事件。
 - **线性重映射状态**——流式处理不保留完整 v1 事件数组，但最终 v2 事件数组和旧到新序号映射仍为 O(事件数)。
 - **不负责发布或兼容回退**——持久化拥有排他 successor 发布，保留的 v1 generation 不是自动 downgrade 或 restore 输入。
 

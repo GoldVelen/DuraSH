@@ -1,6 +1,37 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-reliability/README.md
-README.md: bb3b910fb3e12bc40d446e1570caa18cc6ffaaa2
-README.zh.md: 5ad98bc577a21cc1807e94c80d68ddf51388332f
+/:
+  en: 849cf0d3510e0d8f
+  zh: 58cee58f8470b4ef
+/durash-dsh-client-ui-reliability:
+  en: dfd48234e237f24a
+  zh: df21964acb50d813
+/durash-dsh-client-ui-reliability/summary:
+  en: 5fabe1dec5329fa8
+  zh: a224f5bc7cb99461
+/durash-dsh-client-ui-reliability/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/durash-dsh-client-ui-reliability/use-this-package:
+  en: 5134f6c211ed251b
+  zh: 51ddc77dcf782b2e
+/durash-dsh-client-ui-reliability/understand-the-implementation:
+  en: 98d076d67a88e1e7
+  zh: 1ac84fb457df40fb
+/durash-dsh-client-ui-reliability/further-exploration:
+  en: 8606fb292b9081ed
+  zh: cacc9977ce17f871
+/durash-dsh-client-ui-reliability/model-experience:
+  en: 89e4c0c29fb82bb6
+  zh: cf026d7dee276171
+/durash-dsh-client-ui-reliability/model-experience/kv-cache-effect:
+  en: 1854473528f254f7
+  zh: 4c8a851e81a31c58
+/durash-dsh-client-ui-reliability/known-limitations-and-deferred-work:
+  en: 867f43780305132d
+  zh: 8602af1dc7f0b5fd
+/durash-dsh-client-ui-reliability/known-limitations-and-deferred-work/dev-note:
+  en: 868d615b7e227a1f
+  zh: 39a395728b4fe5cb

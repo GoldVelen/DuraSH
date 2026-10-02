@@ -42,7 +42,8 @@ describe('global-rules page registration', () => {
     expect(readGlobalRules).not.toHaveBeenCalled()
     locale.setLocale('en')
     expect(resolveSlotLabel(entry.options.label)).toBe('Global rules')
-    const operations = (entry.inject as unknown as () => GlobalRulesSectionInjected)()
+    type RulesInject = (() => GlobalRulesSectionInjected) & NonNullable<typeof entry.inject>
+    const operations = (entry.inject as RulesInject)()
     await expect(operations.read()).resolves.toBeNull()
     readGlobalRules.mockResolvedValueOnce({ ok: false, error: { code: 'global-rules/rejected', message: 'Read denied' } })
     await expect(operations.read()).rejects.toThrow('Read denied')
@@ -54,6 +55,10 @@ describe('global-rules page registration', () => {
     await expect(operations.save('draft', 'revision')).resolves.toEqual({ kind: 'failed', message: 'EACCES' })
     saveGlobalRules.mockRejectedValueOnce(new Error('Disconnected'))
     await expect(operations.save('draft', 'revision')).resolves.toEqual({ kind: 'failed', message: 'Disconnected' })
+    saveGlobalRules.mockRejectedValueOnce('Transport closed without an Error object')
+    await expect(operations.save('draft', 'revision')).resolves.toEqual({
+      kind: 'failed', message: 'Transport closed without an Error object',
+    })
     stop()
     expect(slots.entries('settings.section')).toHaveLength(0)
     await fiber.dispose()

@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-21-durash-execution-evidence.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-21-durash-execution-evidence.md
-2026-09-21-durash-execution-evidence.md: a1cb0d8b67e3e3c53624f053d9b7309f2450a413
-2026-09-21-durash-execution-evidence.zh.md: e62527b6b887fa1a720f45c22bf125fe3c3c9ceb
+/agent-note-durash-execution-evidence-and-acceptance:
+  en: 50b9eca01157ff0d
+  zh: a8c6ec3fc597b4c9
+/agent-note-durash-execution-evidence-and-acceptance/problem:
+  en: d23f450336be8377
+  zh: 777fcbc1e018a093
+/agent-note-durash-execution-evidence-and-acceptance/decision:
+  en: faf99e464bc0b41d
+  zh: f39e1ef93746a72b
+/agent-note-durash-execution-evidence-and-acceptance/alternatives-considered:
+  en: f88b4872e0a1c2a6
+  zh: 2e23d3f28095e793
+/agent-note-durash-execution-evidence-and-acceptance/consequences:
+  en: cd08a5cfb04a7a6f
+  zh: 16cb2142ee026913
+/agent-note-durash-execution-evidence-and-acceptance/testing:
+  en: 3af3af3b2ab894d9
+  zh: 48f08e477eae15ea

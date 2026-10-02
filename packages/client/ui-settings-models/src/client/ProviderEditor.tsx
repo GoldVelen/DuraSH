@@ -18,6 +18,7 @@ import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import { deriveKeyRef, protocolChoices } from './store.ts'
+import { protocolLabel } from './protocol-label.ts'
 import type { ModelsOperations } from './operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import type { en } from './locales.ts'
@@ -72,6 +73,14 @@ export interface ProviderEditorProps {
   submitBusyLabelKey?: keyof typeof en
   /** Close the editor; `changed` reports whether an Apply committed. */
   onClose: (changed: boolean) => void
+  /** Called on a credential form submission before the save starts. */
+  onSubmitCredential?: () => void
+  /**
+   * Called once per change with whether the apply or the model list's
+   * endpoint interrogation is in flight, so the owner can hold its surface
+   * still.
+   */
+  onBusyChange?: (busy: boolean) => void
 }
 
 /** A user-section subtree as a plain draft object (absent → empty). */
@@ -148,6 +157,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const [accountSelected, setAccountSelected] = useState(false)
   const [keyState, setKeyState] = useState<CredentialInfo | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  const [listBusy, setListBusy] = useState(false)
+  const { onBusyChange } = props
+  useEffect(() => { onBusyChange?.(busy || listBusy) }, [busy, listBusy, onBusyChange])
   const [failure, setFailure] = useState<string | undefined>(undefined)
   // A settings success advances both retry baselines immediately. Keeping the
   // derived fields in the draft prevents a pushed namespace refresh from
@@ -160,7 +172,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const node = useMemo(() => schema.nodeAtPath(root, settingsPath), [root, schema, settingsPath])
   const fallback = schema.getPath(namespace.value, settingsPath)
   const disabled = props.readOnly || busy
-  const layout = layoutOf(namespace.ns)
+  const accountProvider = props.provider === 'deepseek-account'
+  // Account settings use a configurable Cordis entry id.
+  const layout = accountProvider ? 'deepseek' : layoutOf(namespace.ns)
   const keyRef = refFor(schema, namespace, settingsPath, props.provider)
   // The same schema read the create card makes, so the choices offered here
   // and there cannot drift apart: both come from the adapter's own `Config`.
@@ -172,6 +186,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   )
 
   useEffect(() => {
+    if (accountProvider) return
     let stale = false
     setKeyState(undefined)
     // The key state is a placeholder hint, not a precondition for editing: a
@@ -181,7 +196,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       setKeyState(described)
     })
     return () => { stale = true }
-  }, [operations, keyRef])
+  }, [operations, keyRef, accountProvider])
 
   const stringAt = (source: unknown, key: string): string | undefined => {
     const value = schema.getPath(source, [key])
@@ -196,7 +211,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const setField = (key: string, next: string | undefined): void => {
     // A value of nothing but whitespace is cleared, not stored: `stringAt`
     // already reports it as absent, so the field would otherwise render empty
-    // while the draft still carried the spaces into `settings.yaml`, where
+    // while the draft still carried the spaces into `cordis.patch.yml`, where
     // both adapters would accept that non-empty string as a real value.
     const value = next === undefined || next.trim().length === 0 ? undefined : next
     setDraft(current => value === undefined
@@ -381,6 +396,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       },
       onReset: () => { setDraft(current => schema.deletePath(current, ['models'])) },
     }
+    if (accountProvider) return <DeepSeekModelsEditor {...catalogProps}
+      defaultContextWindow={typeof defaultContextWindow === 'number' ? defaultContextWindow : undefined}
+      defaultMaxTokens={typeof defaultMaxTokens === 'number' ? defaultMaxTokens : undefined} />
     return (
       <>
         {accountAvailable ? <div className={styles['field']}>
@@ -409,7 +427,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           <input
             className={styles['input']}
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
             value={keyDraft}
             placeholder={keyPlaceholder}
             aria-label={t('keyInput')}
@@ -458,7 +476,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                 type="text"
                 value={stringAt(draft, 'baseURL') ?? ''}
                 placeholder={family === 'deepseek'
-                  ? t(stringAt(fallback, 'protocol') === 'messages' ? 'deepSeekMessagesBaseUrl' : 'deepSeekChatBaseUrl')
+                  ? t('deepSeekBaseUrl')
                   : stringAt(fallback, 'baseURL') ?? t('baseUrlDefault')}
                 aria-describedby={family === 'deepseek' ? `${props.provider}-endpoint-hint` : undefined}
                 aria-label={t('baseUrl')}
@@ -483,13 +501,13 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                     onChange={(event) => { setField('api', event.target.value) }}
                   >
                     {/* A profile naming no protocol — hand-written into
-                        settings.yaml with no model to need one — selects
+                        cordis.patch.yml with no model to need one — selects
                         nothing rather than reading as if it had picked the
                         first choice. The option is named because a screen
                         reader announces it either way, and an empty one is
                         announced as a choice with no identity. */}
                     {probeApi === undefined ? <option value="">{t('customApiUnset')}</option> : null}
-                    {protocols.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+                    {protocols.map(choice => <option key={choice} value={choice}>{protocolLabel(t, choice)}</option>)}
                   </select>
                 </div>
               )
@@ -515,6 +533,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                   probe={probe}
                   probeBlocked={keyFailure}
                   operations={operations}
+                  onBusyChange={setListBusy}
                 />
               )}
           </div>
@@ -557,7 +576,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
         submitBusyLabelKey={props.submitBusyLabelKey ?? 'applying'}
         {...props.cancelLabelKey === undefined ? {} : { cancelLabelKey: props.cancelLabelKey }}
         onCancel={() => { props.onClose(accountSelected) }}
-        onSubmit={() => { void apply() }}
+        onSubmit={() => { props.onSubmitCredential?.(); void apply() }}
       />
     </div>
   )

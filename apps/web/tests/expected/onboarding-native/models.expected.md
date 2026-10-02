@@ -1,0 +1,47 @@
+- dialog "设置":
+  - navigation:
+    - text: 设置
+    - button "通用设置"
+    - button "模型"
+    - button "内置插件"
+    - button "Agent 预设"
+  - button "打开配置文件"
+  - button "关闭"
+  - heading "模型" [level=2]
+  - paragraph: 登录支持的账号，或配置 API 密钥，即可使用模型。
+  - heading "账号登录" [level=3]
+  - paragraph: 使用订阅账号登录，或在下方用 API 密钥添加提供方。
+  - list:
+    - listitem:
+      - text: Anthropic
+      - button "登录"
+    - listitem:
+      - text: GitHub Copilot
+      - button "登录"
+    - listitem:
+      - text: Kimi For Coding
+      - button "登录"
+    - listitem:
+      - text: Meta
+      - button "登录"
+    - listitem:
+      - text: OpenAI Codex
+      - button "登录"
+    - listitem:
+      - text: OpenRouter
+      - button "登录"
+    - listitem:
+      - text: Radius
+      - button "登录"
+    - listitem:
+      - text: xAI
+      - button "登录"
+  - list:
+    - listitem:
+      - text: DeepSeek deepseek-official API 密钥
+      - textbox "API 密钥":
+        - /placeholder: 输入 API 密钥
+      - group: 自定义设置
+      - button "取消"
+      - button "保存"
+  - button "添加模型提供商"

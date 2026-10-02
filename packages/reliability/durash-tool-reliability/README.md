@@ -35,7 +35,7 @@ With the workflow switch off, ask the current model to declare the required chec
 
 With the switch on, select implementation and review models, declare the same task requirements, then use `dsh_reliability_handoff`. It automatically binds the active acceptance task. The host rejects completion when checks or candidate/target identities fail despite a model approval. The [runtime reference](../durash-reliability-loop/README.md#task-acceptance-evidence) owns receipt semantics and limits.
 
-Use `status` with `taskId` and `checkId` to inspect a check’s stored definition and raw receipts. Root conversations own plan revisions; only the owning root and its live descendants can run or read a task. Changed host status enters logged plugin context before the next model request.
+Use `status` with `taskId` and `checkId` to inspect a check’s stored definition and raw receipts. Root conversations own plan revisions; only the owning root and its live descendants can run or read a task. Changed host status enters the Session log before the next model request as a `durash-acceptance` notice. Readers preserve this attribution without the producer; it grants no authority or replay obligations.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
@@ -43,7 +43,7 @@ Use `status` with `taskId` and `checkId` to inspect a check’s stored definitio
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The tool requires the live root agent, a direct human user message on that Session, and enabled policy routes. Cancellation of the tool signal cancels the live loop. The compact result is the loop's terminal stage, a bounded summary, and the reviewer verdict when one exists.
+The tool requires the live root agent, a direct human user message on that Session, and enabled policy routes. An already-cancelled call starts no loop; cancellation during startup cancels the loop as soon as its handle is available. The call releases its cancellation listener when the loop result settles and awaits disposal before returning. The compact result is the loop's terminal stage, a bounded summary, and the reviewer verdict when one exists.
 
 No runtime invariant companion is published because this tool owns no independent state or event stream; the policy and loop companions own the relationships it consumes.
 

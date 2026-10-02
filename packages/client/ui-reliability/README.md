@@ -27,6 +27,10 @@ This package renders the composer **Workflow** on/off chip. Opening it shows the
 
 Mount this plugin with the conversation input-left list and the reliability-policy Remote. The chip is always visible in a Session composer. Off is the default; turning it on requires both lanes to name catalog models.
 
+Turning the workflow on or off also saves the models and efforts currently selected in the panel. The saved choices remain selected after the Host confirms the change and when the Session is reopened.
+
+When the Host reads a saved policy whose selected model is absent from the current directory, it disables the workflow without replacing the saved selection. The panel identifies the unavailable models; select replacements before enabling the workflow again.
+
 Recorded task acceptance stays visible beside the chip even when the workflow is off. It separates checks passed, independent review, and acceptance; expanding it shows unmet requirements and test-change risks. The controller refreshes after tool results and turn settlement, and displays an unverified state when the Host read fails. Sessions without an acceptance task show no acceptance indicator. Reading this state never invokes another model.
 
 -----
@@ -38,6 +42,8 @@ Recorded task acceptance stays visible beside the chip even when the workflow is
 <summary>Implementation internals — click to expand</summary>
 
 A process-wide controller caches per-Session snapshots. The dock loads on mount, ensures the catalog when the panel opens, and refuses to enable an incomplete selection. The panel is body-portaled and anchored above the composer through the shared positioning primitives; effort uses the shared portaled `Menu`, and the model directory has its own body portal so the panel's scroll region cannot clip either choice surface. The panel and model picker use the shared prominent elevation stroke, neutral control outlines use the shared 0.5px hairline, and the status pill keeps circular corners. Model listing is grouped by provider; a Cursor channel switch appears only when a `cursor` provider is in the catalog.
+
+Controls use the shared regular icon exports and preserve explicit icon sizing in the model picker and close button.
 
 No runtime invariant companion is published because the Host policy service owns the authoritative state; this browser projection has no independent durable event stream or second state source.
 

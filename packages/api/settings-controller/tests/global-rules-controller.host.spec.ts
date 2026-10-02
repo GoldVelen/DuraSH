@@ -6,7 +6,9 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import AgentPresets, { serviceForScope } from '@deepseek-ai/dsh-agent-presets'
+import Group from '@deepseek-ai/cordis-plugin-group'
+import AgentPreset from '@deepseek-ai/dsh-agent-preset'
+import AgentPresets, { serviceForScope } from '@deepseek-ai/dsh-agent-preset-registry'
 import * as AgentInstructions from '@deepseek-ai/dsh-agent-instructions'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
@@ -78,20 +80,9 @@ describe('the settings API reading a Loader-mounted default preset', () => {
     const ctx = new Context()
     contexts.push(ctx)
     const home = join(root, 'configured-home')
-    const presetRoot = join(root, 'presets')
-    const presetDir = join(presetRoot, 'ordinary')
     await mkdir(home)
-    await mkdir(presetDir, { recursive: true })
     const path = join(home, 'AGENTS.md')
     await writeFile(path, 'original preset rules')
-    await writeFile(join(presetDir, 'agent.cordis.yml'), `- id: instructions
-  name: cordis:instructions
-  isolate:
-    globalRules: true
-  config:
-    dshHome: ${JSON.stringify(home)}
-    maxBytes: 8192
-`)
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, `- name: cordis:sessionProjection
 - name: cordis:localFs
@@ -100,16 +91,24 @@ describe('the settings API reading a Loader-mounted default preset', () => {
 - name: cordis:presets
   config:
     default: ordinary
-    includeShippedRoot: false
-    includeUserRoot: false
-    roots:
-      - path: ${JSON.stringify(presetRoot)}
-        trust: user
+- name: cordis:preset
+  config:
+    id: ordinary
+    plugins:
+      - id: instructions
+        name: cordis:instructions
+        isolate:
+          globalRules: true
+        config:
+          dshHome: ${JSON.stringify(home)}
+          maxBytes: 8192
 - name: cordis:settingsController
 `)
     ctx.baseUrl = pathToFileURL(root).href + '/'
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include
+    ctx.loader.builtins.group = Group
+    ctx.loader.builtins.preset = AgentPreset
     ctx.loader.builtins.instructions = AgentInstructions
     ctx.loader.builtins.sessionProjection = SessionProjectionRegistry
     ctx.loader.builtins.localFs = LocalFileSystem
@@ -120,8 +119,8 @@ describe('the settings API reading a Loader-mounted default preset', () => {
     expect(ctx.get('globalRules')).toBeUndefined()
     const initial = await ctx.settingsController.readGlobalRules()
     expect(initial).toMatchObject({ path, content: 'original preset rules', loadingEnabled: true })
-    const key = await ctx.agentPresets.standingKeyFor()
-    const provider = serviceForScope(ctx, key, 'globalRules')
+    await using scope = await ctx.agentPresets.acquireScope()
+    const provider = serviceForScope(ctx, scope.key, 'globalRules')
     expect(provider).toBeDefined()
     const saved = await ctx.settingsController.saveGlobalRules('updated preset rules', initial!.revision)
     expect(await provider!.read()).toEqual(saved)

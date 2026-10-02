@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { TOOL_RUNTIME_SCHEDULER } from '@deepseek-ai/dsh-tools'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ReliabilityLoopRecord } from '@durash/dsh-reliability-loop'
@@ -20,7 +20,18 @@ function testAgent(options: { human?: boolean; status?: 'idle' | 'running'; id?:
       source: { kind: 'user' },
     }), { surfaceOp: 'append' })
   }
-  return { id: session.id, session, status: options.status ?? 'running' } as unknown as Agent
+  const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
+  const unsupported = (): never => { throw new Error('Unexpected test Agent capability access') }
+  return {
+    id: session.id, session, status: options.status ?? 'running', options: {}, ctx,
+    inbox: {
+      nextTurn: [], nextStep: [], clear: unsupported, append: unsupported,
+      prepend: unsupported, replace: unsupported, remove: unsupported, splice: unsupported,
+    },
+    cancel: unsupported, whenIdle: unsupported, runMaintenance: unsupported,
+    send: unsupported, followup: unsupported, steer: unsupported, inject: unsupported,
+  }
 }
 
 function completedRecord(): ReliabilityLoopRecord {
@@ -42,6 +53,7 @@ async function setup(options: {
   getAgent?: (id: string) => Agent | undefined
   currentInitiator?: () => Agent | undefined
   roots?: () => Agent[]
+  acceptanceTaskId?: string
 } = {}): Promise<{ ctx: Context; agent: Agent; start: ReturnType<typeof vi.fn> }> {
   const agent = options.agent ?? testAgent()
   const start = options.start ?? vi.fn(async () => ({
@@ -51,6 +63,7 @@ async function setup(options: {
     dispose: async () => undefined,
   }))
   const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
   ctx.provide('agents', {
     get: options.getAgent ?? ((id: string) => id === String(agent.id) ? agent : undefined),
     currentInitiator: options.currentInitiator ?? (() => agent),
@@ -66,7 +79,7 @@ async function setup(options: {
       : undefined,
   })
   ctx.provide('reliabilityLoopRuntime', {
-    start, acceptance: { activeTask: () => undefined }, acceptanceView: () => Promise.resolve(null),
+    start, acceptance: { activeTask: () => options.acceptanceTaskId }, acceptanceView: () => Promise.resolve(null),
   })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -202,6 +215,22 @@ describe('durash-tool-reliability', () => {
     expect(result.value).toMatchObject({ status: 'completed', verdict: 'approved' })
   })
 
+  it('passes the active acceptance task and the bounded blocked diagnostic through the foreground handoff', async () => {
+    const record: ReliabilityLoopRecord = { ...completedRecord(), stage: 'blocked', diagnostic: 'Required checks failed on candidate-a',
+      implement: { round: 2, summary: 'reworked', agentsStarted: 1 },
+      review: { round: 2, verdict: 'changes-requested', feedback: 'still failing', agentsStarted: 1 } }
+    const start = vi.fn(async () => ({
+      loopId: record.loopId, result: Promise.resolve(record), cancel: vi.fn(), dispose: vi.fn(async () => {}),
+    }))
+    const { ctx, agent } = await setup({ enabled: true, start, acceptanceTaskId: 'acceptance-task' })
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('active-acceptance'),
+      name: 'dsh_reliability_handoff', arguments: { objective: record.objective }, agent })
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ acceptanceTaskId: 'acceptance-task' }))
+    expect(result.isError).toBe(false)
+    if (result.isError) throw new Error('expected blocked diagnostic')
+    expect(result.value).toMatchObject({ status: 'blocked', diagnostic: record.diagnostic, summary: 'still failing' })
+  })
+
   it('compacts each terminal result and bounds a long implementation summary', async () => {
     const base = completedRecord()
     const records: ReliabilityLoopRecord[] = [
@@ -292,5 +321,103 @@ describe('durash-tool-reliability', () => {
     settled.resolve(completedRecord())
     await expect(executing).resolves.toMatchObject({ isError: true })
     expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('refuses an already-cancelled handoff before starting a loop', async () => {
+    const { ctx, agent, start } = await setup({ enabled: true })
+    const controller = new AbortController()
+    try {
+      const handoff = ctx.tools.get('dsh_reliability_handoff')!
+      const prepared = await ctx.tools[TOOL_RUNTIME_SCHEDULER].prepare({
+        agent, signal: controller.signal, callId: ToolCallId('already-cancelled-handoff'),
+        name: 'dsh_reliability_handoff', arguments: { objective: 'ship the widget' },
+      })
+      if (prepared.kind !== 'dispatch') throw new Error('Expected prepared handoff')
+      controller.abort(new Error('already stopped'))
+      // Exercise the executor's own cancellation check without the registry's pre-dispatch guard.
+      await expect(handoff.execute(prepared.exec.arguments, prepared.exec)).rejects.toThrow('already stopped')
+      expect(start).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('cancels a loop published after its handoff was stopped during startup', async () => {
+    const releaseStart = Promise.withResolvers<undefined>()
+    const settled = Promise.withResolvers<ReliabilityLoopRecord>()
+    const awaitingResult = vi.fn(() => settled.promise)
+    const cancel = vi.fn()
+    const dispose = vi.fn(async () => undefined)
+    const start = vi.fn(async () => {
+      await releaseStart.promise
+      return {
+        loopId: 'loop-1', cancel, dispose,
+        get result() {
+          return awaitingResult()
+        },
+      }
+    })
+    const { ctx, agent } = await setup({ enabled: true, start })
+    const controller = new AbortController()
+    const executing = ctx.tools.execute({
+      signal: controller.signal, callId: ToolCallId('cancel-starting-handoff'),
+      name: 'dsh_reliability_handoff', arguments: { objective: 'ship the widget' }, agent,
+    })
+    try {
+      await vi.waitFor(() => { expect(start).toHaveBeenCalledOnce() })
+      controller.abort()
+      releaseStart.resolve(undefined)
+      await vi.waitFor(() => { expect(awaitingResult).toHaveBeenCalledOnce() })
+      expect(cancel).toHaveBeenCalledExactlyOnceWith('reliability handoff cancelled')
+      settled.resolve({ ...completedRecord(), stage: 'cancelled', implement: undefined, review: undefined })
+      const result = await executing
+      expect(result).toMatchObject({ isError: true, error: { info: { code: 'ABORTED' } } })
+      expect(result).not.toHaveProperty('value')
+      expect(dispose).toHaveBeenCalledOnce()
+    } finally {
+      releaseStart.resolve(undefined)
+      settled.resolve(completedRecord())
+      try { await executing }
+      finally { await ctx.fiber.dispose() }
+    }
+  })
+
+  it.each(['completed', 'rejected'] as const)('detaches cancellation while disposing a %s loop result', async (outcome) => {
+    const cancel = vi.fn()
+    const disposal = Promise.withResolvers<undefined>()
+    const dispose = vi.fn(() => disposal.promise)
+    const start = vi.fn(async () => ({
+      loopId: 'loop-1', cancel, dispose,
+      get result() {
+        return outcome === 'completed' ? Promise.resolve(completedRecord()) : Promise.reject(new Error('storage failed'))
+      },
+    }))
+    const { ctx, agent } = await setup({ enabled: true, start })
+    const controller = new AbortController()
+    const executing = ctx.tools.execute({
+      signal: controller.signal, callId: ToolCallId(`settled-handoff-${outcome}`),
+      name: 'dsh_reliability_handoff', arguments: { objective: 'ship the widget' }, agent,
+    })
+    let executionSettled = false
+    void executing.then(
+      () => { executionSettled = true },
+      () => { executionSettled = true },
+    )
+    try {
+      await vi.waitFor(() => { expect(dispose).toHaveBeenCalledOnce() })
+      expect(executionSettled).toBe(false)
+      controller.abort()
+      expect(cancel).not.toHaveBeenCalled()
+      disposal.resolve(undefined)
+      const result = await executing
+      expect(result).toMatchObject(outcome === 'completed'
+        ? { isError: true, error: { info: { code: 'ABORTED' } } }
+        : { isError: true, error: { message: 'storage failed' } })
+      expect(result).not.toHaveProperty('value')
+    } finally {
+      disposal.resolve(undefined)
+      try { await executing }
+      finally { await ctx.fiber.dispose() }
+    }
   })
 })

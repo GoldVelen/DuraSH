@@ -1,0 +1,7 @@
+- menu "模型与推理等级":
+  - menuitemradio "Default" [checked]
+  - menuitemradio "Low"
+  - menuitemradio "Medium"
+  - menuitemradio "High"
+  - menuitemradio "Xhigh"
+  - menuitemradio "Max"

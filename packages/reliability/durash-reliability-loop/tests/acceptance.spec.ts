@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateAcceptance, acceptanceDigest } from '../src/acceptance.ts'
-import type { AcceptanceRecord } from '../src/acceptance-schema.ts'
+import type { AcceptanceEvidence, AcceptanceRecord, AcceptanceRequirement } from '../src/acceptance-schema.ts'
 
 function record(): AcceptanceRecord {
   return {
@@ -9,7 +9,7 @@ function record(): AcceptanceRecord {
     plans: [], evidence: [], baseline: 'base', risks: [], review: null,
   }
 }
-function evidence() {
+function evidence(): AcceptanceEvidence {
   return { id: 'run', checkId: 'suite', checkSpecDigest: acceptanceDigest(record().requirements[0]), revision: 1, startedAt: 'start', endedAt: 'end', command: 'pytest', cwd: '/repo', source: { head: 'head', digest: 'source', files: {} }, afterDigest: 'source', outcome: 'passed' as const, exitCode: 0, raw: 'tests pass', attachments: {}, report: { tests: 1, passed: 1, failed: 0, skipped: 0 }, problems: [] }
 }
 
@@ -64,6 +64,72 @@ describe('acceptance requirements', () => {
     expect(evaluateAcceptance(task, { suite: 'source', simulator: 'source' }, 'candidate').status).toBe('pending')
     delete task.evidence[1]!.report.skips
     expect(evaluateAcceptance(task, { suite: 'source', simulator: 'source' }, 'candidate').status).toBe('pending')
+  })
+
+  it('requires every UI attachment and each declared logical target constraint', () => {
+    const task = record()
+    const check = task.requirements[0]!
+    check.level = 'ui'; check.attachments = ['result.png', 'detail.png']
+    check.target = { adapter: 'fixture', expected: 'target', constraints: { app: 'required-app' } }
+    const receipt = { ...evidence(), checkSpecDigest: acceptanceDigest(check), attachments: { 'result.png': 'image-a' },
+      target: { adapter: 'fixture', digest: 'target', detail: '{}', identity: { app: 'required-app' } } }
+    task.evidence = [receipt]
+    expect(evaluateAcceptance(task, { suite: 'source' }).checksPassed).toBe(false)
+    task.evidence[0]!.attachments['detail.png'] = 'image-b'
+    expect(evaluateAcceptance(task, { suite: 'source' }).checksPassed).toBe(true)
+    delete task.evidence[0]!.target!.identity
+    expect(evaluateAcceptance(task, { suite: 'source' }).checksPassed).toBe(false)
+    delete check.target.constraints
+    task.evidence[0]!.checkSpecDigest = acceptanceDigest(check)
+    expect(evaluateAcceptance(task, { suite: 'source' }).checksPassed).toBe(true)
+  })
+
+  it.each(['absent', 'duplicate', 'failed', 'cycle'] as const)('rejects a skip with an %s prerequisite proof', (problem) => {
+    const task = record()
+    const check = task.requirements[0]!
+    check.allowSkipIf = ['prerequisite']
+    const binding = { testId: 'device', reason: 'hardware unavailable', prerequisite: 'prerequisite' }
+    check.skipBindings = problem === 'absent' ? undefined : problem === 'duplicate' ? [binding, binding] : [binding]
+    const prerequisite: AcceptanceRequirement = { ...check, id: 'prerequisite', required: false, kind: 'command', level: 'process',
+      allowSkipIf: [], skipBindings: [] }
+    task.requirements.push(prerequisite)
+    task.evidence = [{ ...evidence(), checkSpecDigest: acceptanceDigest(check), report: { tests: 1, passed: 0, failed: 0, skipped: 1,
+      skips: [{ testId: 'device', reason: 'hardware unavailable' }] } }]
+    if (problem === 'failed') task.evidence.push({ ...evidence(), checkId: prerequisite.id, checkSpecDigest: acceptanceDigest(prerequisite),
+      report: undefined, outcome: 'failed', problems: ['prerequisite failed'] })
+    if (problem === 'cycle') {
+      binding.prerequisite = 'suite'; check.allowSkipIf = ['suite']
+      task.evidence[0]!.checkSpecDigest = acceptanceDigest(check)
+    }
+    const result = evaluateAcceptance(task, { suite: 'source', prerequisite: 'source' })
+    expect(result.status).toBe('pending')
+    expect(result.reasons.join('; ')).toContain('unverified skip')
+  })
+
+  it('binds a check to the current passing build receipt and its captured outputs', () => {
+    const task = record(); const check = task.requirements[0]!
+    check.buildCheckId = 'build'
+    const build: AcceptanceRequirement = { ...check, id: 'build', kind: 'command', level: 'process', buildCheckId: undefined, required: false }
+    task.requirements.push(build)
+    const receipt = { ...evidence(), checkSpecDigest: acceptanceDigest(check), buildEvidenceId: 'build-1' }
+    task.evidence = [receipt]
+    expect(evaluateAcceptance(task, { suite: 'source', build: 'source' }).checksPassed).toBe(false)
+    const buildReceipt = { ...evidence(), id: 'build-1', checkId: 'build', checkSpecDigest: acceptanceDigest(build), report: undefined }
+    task.evidence.unshift(buildReceipt)
+    expect(evaluateAcceptance(task, { suite: 'source', build: 'source' }).checksPassed).toBe(false)
+    task.evidence[0]!.outputs = 'captured-output-digest'
+    expect(evaluateAcceptance(task, { suite: 'source', build: 'source' }).checksPassed).toBe(true)
+    task.evidence[1]!.buildEvidenceId = 'an-older-build'
+    expect(evaluateAcceptance(task, { suite: 'source', build: 'source' }).checksPassed).toBe(false)
+    task.evidence[1]!.buildEvidenceId = 'build-1'; task.evidence[0]!.outcome = 'failed'
+    expect(evaluateAcceptance(task, { suite: 'source', build: 'source' }).checksPassed).toBe(false)
+  })
+
+  it('refuses a circular build proof instead of accepting its own outputs', () => {
+    const task = record(); const check = task.requirements[0]!
+    check.buildCheckId = check.id
+    task.evidence = [{ ...evidence(), checkSpecDigest: acceptanceDigest(check), outputs: 'outputs', buildEvidenceId: 'run' }]
+    expect(evaluateAcceptance(task, { suite: 'source' }).status).toBe('pending')
   })
 
 })
