@@ -321,7 +321,7 @@ describe('refused executor observations', () => {
     { command: 'for dsh_evidence_path', stdout: 'directory\n', message: 'Unrecognized file mode' },
   ])('rejects $message instead of minting a source identity', async ({ command, stdout, message }) => {
     const io = sourceIO({ 'src/app.ts': 'candidate' })
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (text, cwd, abort) => text.includes(command) ? ok(stdout) : run(text, cwd, abort)
     await expect(captureSource(io, '/repo', ['src'], signal)).rejects.toThrow(message)
   })
@@ -336,7 +336,7 @@ describe('refused executor observations', () => {
     const io = sourceIO({ 'app.ts': 'candidate' })
     expect((await captureSource(io, '/repo', ['.'], signal)).files['app.ts']).toBeDefined()
     const abort = new AbortController()
-    const read = io.read
+    const read = io.read.bind(io)
     io.read = async (path, current) => {
       const bytes = await read(path, current)
       abort.abort(new Error('read cancelled'))
@@ -428,14 +428,14 @@ describe('signed bundle metadata refusals', () => {
     signed('<key>application-identifier</key><string>TEAM.test.app</string><key>com.apple.security.application-groups</key><array><integer>1</integer></array>'),
   ])('refuses invalid signed entitlements %s', async (xml) => {
     const io = iosIO('2', ['group.shared'])
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (command, cwd, abort) => command.startsWith('codesign') ? ok(xml) : run(command, cwd, abort)
     await expect(captureIOSIdentity(io, options, signal)).rejects.toThrow()
   })
 
   it('reports different signing teams even when bundle ids, builds and App Groups agree', async () => {
     const io = iosIO('2', ['group.shared'])
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (command, cwd, abort) => {
       const result = await run(command, cwd, abort)
       return command.startsWith('codesign') && command.includes('Widget.appex')

@@ -242,7 +242,7 @@ describe('acceptance persistence and executor refusals', () => {
 
   it.each([{ exitCode: 1, incomplete: false }, { exitCode: 0, incomplete: true }])('refuses an existing or unverified fresh report %j', async (outcome) => {
     const { store, io, check, plan } = controlledExecution()
-    const original = io.run
+    const original = io.run.bind(io)
     io.run = async (command, cwd, abort) => command.startsWith('test ! -e') ? { ...outcome, stdout: '', stderr: '' } : original(command, cwd, abort)
     const task = await plan([{ ...check, command: 'pytest results/{run}.xml', reportPath: 'results/{run}.xml', kind: 'pytest-junit', level: 'test' }])
     const receipt = await store.run(task.taskId, 'suite', io, signal)
@@ -252,7 +252,7 @@ describe('acceptance persistence and executor refusals', () => {
 
   it.each([{ exitCode: 1, incomplete: false, outcome: 'failed' }, { exitCode: 0, incomplete: true, outcome: 'unverified' }])('retains the executor outcome $outcome', async ({ exitCode, incomplete, outcome }) => {
     const { store, io, plan } = controlledExecution()
-    const original = io.run
+    const original = io.run.bind(io)
     io.run = async (command, cwd, abort) => command === 'verify candidate' ? { exitCode, incomplete, stdout: 'actual output', stderr: '' } : original(command, cwd, abort)
     const task = await plan()
     const receipt = await store.run(task.taskId, 'suite', io, signal)
@@ -273,7 +273,7 @@ describe('acceptance persistence and executor refusals', () => {
 
   it('detects input changes during execution instead of accepting the exit code', async () => {
     const { store, io, plan } = controlledExecution()
-    const run = io.run
+    const run = io.run.bind(io)
     let changed = false
     io.run = async (command, cwd, abort) => {
       if (command === 'verify candidate') changed = true
@@ -304,7 +304,7 @@ describe('current artifacts and independent review', () => {
     const contexts: Context[] = []
     const { io, request, check } = controlledExecution()
     const commands: string[] = []
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (command, cwd, abort) => {
       commands.push(command)
       return run(command, cwd, abort)
@@ -361,7 +361,7 @@ describe('current artifacts and independent review', () => {
     { stage: 'tests', exitCode: 0, incomplete: true },
   ])('refuses incomplete xcresult $stage observations %j', async ({ stage, exitCode, incomplete }) => {
     const { store, io, check, plan } = controlledExecution()
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (command, cwd, abort) => command.includes(`test-results ${stage}`) ? { exitCode, incomplete, stdout: '{}', stderr: '' } : run(command, cwd, abort)
     const task = await plan([{ ...check, command: 'xcodebuild results/{run}.xcresult', kind: 'xcresult', level: 'test', reportPath: 'results/{run}.xcresult' }])
     expect((await store.run(task.taskId, 'suite', io, signal)).outcome).toBe('unverified')
@@ -392,7 +392,7 @@ describe('current artifacts and independent review', () => {
     { command: 'git diff --no-index', exitCode: null, incomplete: false, message: 'Untracked diff' },
   ])('refuses incomplete candidate review evidence: $message', async ({ command, exitCode, incomplete, message }) => {
     const { store, io, plan, success } = controlledExecution()
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (text, cwd, abort) => text.startsWith(command) ? { exitCode, incomplete, stdout: '', stderr: '' }
       : text.startsWith('git ls-files --others') ? success('tests/new.spec.ts\0') : run(text, cwd, abort)
     const task = await plan()
@@ -404,7 +404,7 @@ describe('current artifacts and independent review', () => {
   it('keeps optional unreadable checks out of blocking reasons and bounds the handoff index', async () => {
     const { store, io, plan, check } = controlledExecution({ maxIndexChars: 256 })
     const task = await plan([{ ...check, required: false }])
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (command, cwd, abort) => command === 'git rev-parse --show-toplevel' ? { exitCode: 1, incomplete: false, stdout: '', stderr: '' } : run(command, cwd, abort)
     const state = await store.inspect(task.taskId)
     expect(state.reasons.join()).not.toContain('suite:')
@@ -441,7 +441,7 @@ describe('current artifacts and independent review', () => {
     const task = await plan([{ ...check, target: { adapter: 'fixture', expected: 'target' } }])
     expect((await store.run(task.taskId, 'suite', io, signal)).problems.join()).toContain('differs from the declared target')
     digest = 'target'
-    const run = io.run
+    const run = io.run.bind(io)
     io.run = async (command, cwd, abort) => {
       if (command === 'verify candidate') digest = 'new-target'
       return run(command, cwd, abort)
