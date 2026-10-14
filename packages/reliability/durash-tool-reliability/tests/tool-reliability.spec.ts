@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ReliabilityLoopRecord } from '@durash/dsh-reliability-loop'
@@ -292,5 +293,87 @@ describe('durash-tool-reliability', () => {
     settled.resolve(completedRecord())
     await expect(executing).resolves.toMatchObject({ isError: true })
     expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('refuses an already-cancelled handoff before starting a loop', async () => {
+    const { ctx, agent, start } = await setup({ enabled: true })
+    const controller = new AbortController()
+    controller.abort(new Error('already stopped'))
+    try {
+      const handoff = ctx.tools.get('dsh_reliability_handoff')!
+      // Exercise the executor's own cancellation check without the registry's pre-dispatch guard.
+      await expect(handoff.execute({ objective: 'ship the widget' }, {
+        agent, signal: controller.signal,
+      } as ToolRunContext)).rejects.toThrow('already stopped')
+      expect(start).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('cancels a loop published after its handoff was stopped during startup', async () => {
+    const enteredStart = Promise.withResolvers<undefined>()
+    const releaseStart = Promise.withResolvers<undefined>()
+    const awaitingResult = Promise.withResolvers<undefined>()
+    const settled = Promise.withResolvers<ReliabilityLoopRecord>()
+    const cancel = vi.fn()
+    const dispose = vi.fn(async () => undefined)
+    const start = vi.fn(async () => {
+      enteredStart.resolve(undefined)
+      await releaseStart.promise
+      return {
+        loopId: 'loop-1', cancel, dispose,
+        get result() {
+          awaitingResult.resolve(undefined)
+          return settled.promise
+        },
+      }
+    })
+    const { ctx, agent } = await setup({ enabled: true, start })
+    const controller = new AbortController()
+    const executing = ctx.tools.execute({
+      signal: controller.signal, callId: ToolCallId('cancel-starting-handoff'),
+      name: 'dsh_reliability_handoff', arguments: { objective: 'ship the widget' }, agent,
+    })
+    try {
+      await enteredStart.promise
+      controller.abort()
+      releaseStart.resolve(undefined)
+      await awaitingResult.promise
+      expect(cancel).toHaveBeenCalledExactlyOnceWith('reliability handoff cancelled')
+      settled.resolve({ ...completedRecord(), stage: 'cancelled' })
+      await expect(executing).resolves.toMatchObject({ isError: true })
+      expect(dispose).toHaveBeenCalledOnce()
+    } finally {
+      releaseStart.resolve(undefined)
+      settled.resolve(completedRecord())
+      await executing
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each(['completed', 'rejected'] as const)('detaches cancellation after a %s loop result', async (outcome) => {
+    const cancel = vi.fn()
+    const dispose = vi.fn(async () => undefined)
+    const start = vi.fn(async () => ({
+      loopId: 'loop-1', cancel, dispose,
+      get result() {
+        return outcome === 'completed' ? Promise.resolve(completedRecord()) : Promise.reject(new Error('storage failed'))
+      },
+    }))
+    const { ctx, agent } = await setup({ enabled: true, start })
+    const controller = new AbortController()
+    try {
+      const result = await ctx.tools.execute({
+        signal: controller.signal, callId: ToolCallId(`settled-handoff-${outcome}`),
+        name: 'dsh_reliability_handoff', arguments: { objective: 'ship the widget' }, agent,
+      })
+      expect(result.isError).toBe(outcome === 'rejected')
+      expect(dispose).toHaveBeenCalledOnce()
+      controller.abort()
+      expect(cancel).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 })
