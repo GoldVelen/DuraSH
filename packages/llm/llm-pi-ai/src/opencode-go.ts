@@ -24,14 +24,15 @@ function requiredText(value: unknown, field: string): string {
   return value
 }
 
-function duration(value: unknown, field: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value * 1000 > MAX_TIMER_DELAY_MS) {
+function duration(value: unknown, field: string, maxMilliseconds: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value * 1000 > maxMilliseconds) {
     throw new Error(`OpenCode authorization: invalid ${field}`)
   }
   return value * 1000
 }
 
 function grant(body: Record<string, unknown>, previous?: OAuthCredential): OAuthCredential {
+  const now = Date.now()
   const orgId = body.org_id
   if (orgId !== undefined && orgId !== null && typeof orgId !== 'string') {
     throw new Error('OpenCode authorization: invalid org_id')
@@ -40,13 +41,14 @@ function grant(body: Record<string, unknown>, previous?: OAuthCredential): OAuth
     type: 'oauth',
     access: requiredText(body.access_token, 'access_token'),
     refresh: requiredText(body.refresh_token, 'refresh_token'),
-    expires: Date.now() + duration(body.expires_in, 'expires_in'),
+    expires: now + duration(body.expires_in, 'expires_in', Number.MAX_SAFE_INTEGER - now),
     ...typeof orgId === 'string' ? { orgId } : previous?.orgId === undefined ? {} : { orgId: previous.orgId },
   }
 }
 
 /**
  * Create the Console device flow using the launcher's proxy-aware global fetch by default.
+ * Access-token lifetimes become persisted timestamps independently of device-flow timer limits.
  * Refresh runs under pi-ai's CredentialStore.modify lock and returns the rotated grant for persistence.
  * @param fetcher - HTTP transport; injection does not change the Console authority.
  * @param refreshTimeoutMs - Resolved independent refresh deadline in milliseconds.
@@ -82,8 +84,8 @@ export function openCodeGoOAuth(
       if (verification.protocol !== 'https:' || verification.origin !== new URL(CONSOLE_URL).origin) {
         throw new Error('OpenCode authorization: verification URL must belong to the OpenCode Console')
       }
-      let interval = device.body.interval === undefined ? 5000 : duration(device.body.interval, 'interval')
-      using timeout = deadline(interaction.signal, duration(device.body.expires_in, 'expires_in'), 'OPENCODE_AUTH_TIMEOUT')
+      let interval = device.body.interval === undefined ? 5000 : duration(device.body.interval, 'interval', MAX_TIMER_DELAY_MS)
+      using timeout = deadline(interaction.signal, duration(device.body.expires_in, 'expires_in', MAX_TIMER_DELAY_MS), 'OPENCODE_AUTH_TIMEOUT')
       interaction.notify({ type: 'device_code', userCode, verificationUri: verification.href })
       for (;;) {
         await sleep(interval, undefined, { signal: timeout.signal })

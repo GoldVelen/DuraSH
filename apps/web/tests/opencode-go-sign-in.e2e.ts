@@ -18,6 +18,7 @@ const expectedDir = fileURLToPath(new URL('./expected/opencode-go-sign-in', impo
 const key = credentialKey('llm-pi-ai', 'opencode-go')
 const fixtureAccess = 'go-browser-fixture-access'
 const fixtureApiKey = 'go-api-key-fixture'
+const accessLifetimeSeconds = 30 * 24 * 60 * 60
 
 describe.skipIf(mode === 'record')('web e2e: OpenCode Go sign-in', () => {
   let scaffold: WebScaffold
@@ -39,7 +40,7 @@ describe.skipIf(mode === 'record')('web e2e: OpenCode Go sign-in', () => {
       } else if (request.method === 'POST' && request.url === '/console/auth/device/token') {
         if (!allowToken) response.writeHead(400).end(JSON.stringify({ error: 'authorization_pending' }))
         else response.end(JSON.stringify({ access_token: fixtureAccess, refresh_token: 'go-fixture-refresh',
-          expires_in: 3600, org_id: 'go-fixture-workspace' }))
+          expires_in: accessLifetimeSeconds, org_id: 'go-fixture-workspace' }))
       } else response.writeHead(404).end(JSON.stringify({ error: 'unexpected fixture request' }))
     })
     await new Promise<void>((resolve, reject) => {
@@ -107,6 +108,7 @@ describe.skipIf(mode === 'record')('web e2e: OpenCode Go sign-in', () => {
     go = settings.getByRole('listitem', { name: 'OpenCode Go', exact: true })
     await go.getByText('GO-LOGIN-CODE', { exact: true }).waitFor()
     expect(requests.filter(request => request === 'POST /console/auth/device/code')).toHaveLength(1)
+    const authorizedAfter = Date.now()
     allowToken = true
     await go.getByText('已登录，该提供方已启用。可在对话中选择模型，或在下方编辑模型目录。', { exact: true }).waitFor()
     await vi.waitUntil(() => scaffold.ctx.llm.listProviders().some(provider => provider.id === 'opencode-go'))
@@ -116,7 +118,12 @@ describe.skipIf(mode === 'record')('web e2e: OpenCode Go sign-in', () => {
     }
     expect(saved['llm-pi-ai'].providers['opencode-go']).toEqual({})
     expect(saved['llm-pi-ai'].providers['opencode']).toBeUndefined()
-    expect(await scaffold.ctx.credentials.readRecord(key)).toMatchObject({ kind: 'grant', payload: { access: fixtureAccess } })
+    const record = await scaffold.ctx.credentials.readRecord(key)
+    expect(record).toMatchObject({ kind: 'grant', payload: { access: fixtureAccess } })
+    const payload = record?.kind === 'grant' ? record.payload : undefined
+    if (typeof payload !== 'object' || payload === null || !('expires' in payload)) throw new Error('missing persisted token expiration')
+    expect(payload.expires).toBeGreaterThanOrEqual(authorizedAfter + accessLifetimeSeconds * 1000)
+    expect(payload.expires).toBeLessThanOrEqual(Date.now() + accessLifetimeSeconds * 1000)
 
     await go.getByRole('button', { name: '改用 API 密钥', exact: true }).click()
     const secret = go.getByLabel('Enter OpenCode API key', { exact: true })

@@ -81,6 +81,35 @@ describe('OpenCode Go authorization', () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
+  it('preserves access-token expiration beyond the Node timer range in login and refresh', async () => {
+    const expiresIn = 365 * 24 * 60 * 60
+    const replies = [Response.json(device), Response.json({ ...token, expires_in: expiresIn }),
+      Response.json({ ...token, expires_in: expiresIn })]
+    const oauth = openCodeGoOAuth(() => Promise.resolve(replies.shift()!))
+    const before = Date.now()
+    const signedIn = await oauth.login({ signal: new AbortController().signal,
+      notify: () => {}, prompt: () => Promise.reject(new Error('device login must not prompt for a secret')) })
+    const refreshed = await oauth.refresh(signedIn, new AbortController().signal)
+    for (const grant of [signedIn, refreshed]) {
+      expect(grant.expires).toBeGreaterThanOrEqual(before + expiresIn * 1000)
+      expect(grant.expires).toBeLessThanOrEqual(Date.now() + expiresIn * 1000)
+    }
+  })
+
+  it.each([0, -1, null, '3600', Number.MAX_VALUE])('rejects invalid access-token lifetime %s', async (expiresIn) => {
+    const oauth = openCodeGoOAuth(() => Promise.resolve(Response.json({ ...token, expires_in: expiresIn })))
+    await expect(oauth.refresh({ type: 'oauth', access: 'old', refresh: 'old-refresh', expires: 0 }, new AbortController().signal))
+      .rejects.toThrow('invalid expires_in')
+  })
+
+  it.each(['interval', 'expires_in'])('rejects overflowing device-flow timer %s before notifying', async (field) => {
+    const notify = vi.fn()
+    const oauth = openCodeGoOAuth(() => Promise.resolve(Response.json({ ...device, [field]: 365 * 24 * 60 * 60 })))
+    await expect(oauth.login({ signal: new AbortController().signal, notify, prompt: () => Promise.resolve('unused') }))
+      .rejects.toThrow(`invalid ${field}`)
+    expect(notify).not.toHaveBeenCalled()
+  })
+
   it('rejects an unowned verification destination and failed refresh without exposing response tokens', async () => {
     const oauth = openCodeGoOAuth(() => Promise.resolve(Response.json({ ...device,
       verification_uri_complete: 'https://other.example/login' })))

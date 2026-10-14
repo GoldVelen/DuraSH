@@ -28,7 +28,7 @@ it('loads Go through cordis.yml, commits browser credentials, and serves the sel
     }
     if (url === 'https://opencode.ai/console/auth/device/token') {
       authPaths.push(url)
-      return Response.json({ access_token: 'loader-go-access', refresh_token: 'loader-go-refresh', expires_in: 3600 })
+      return Response.json({ access_token: 'loader-go-access', refresh_token: 'loader-go-refresh', expires_in: 30 * 24 * 60 * 60 })
     }
     return originalFetch(input, init)
   }

@@ -93,7 +93,7 @@ kind: "package-reference"
 
 pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程提供 OAuth 或交互式密钥提示（密钥键入 pi-ai 自己的登录提示，而非设置表单），得到的凭据存储在 harness 凭据存储的 `llm-pi-ai/<provider id>` 记录中。存储的登录在其路由的 `apiKeyEnv` 覆盖之下完成认证，并在存储的跨进程锁下自行刷新；退出登录即删除存储记录。落在记录文法之外——小写连字符标识符——的手工声明路由键无法登录，因为对它的记录写入会以 `LlmError('UNSTORABLE_PROVIDER_ID')` 拒绝；这类路由改用 `apiKeyEnv` 或提供方 ambient 设置认证。
 
-OpenCode Go 提供 [Console 浏览器登录](https://opencode.ai/v2/docs/console/api/#device-flow)和原生 API key 方式。设备授权流程使用本客户端标识 `durash`，绑定用户在浏览器选定的工作区，并采用服务端返回的轮询间隔和过期时间。轮换后的令牌保存在 `llm-pi-ai/opencode-go`；pi-ai 在凭据存储锁内刷新，再生成 bearer 请求头。取消请求时调用方立即返回，已开始的刷新仍完成并保存替换令牌；提供方 profile 的 `oauthRefreshTimeoutMs` 限制这次交换的时长（默认值与上限均为 15,000 毫秒）。启用不含 `apiKeyEnv` 覆盖的 `opencode-go` 提供方 profile，即可使用已存储的登录。
+OpenCode Go 提供 [Console 浏览器登录](https://opencode.ai/v2/docs/console/api/#device-flow)和原生 API key 方式。设备授权流程使用本客户端标识 `durash`，绑定用户在浏览器选定的工作区，并采用服务端返回的轮询间隔和过期时间。访问令牌的有效期存为过期时间戳，不受设备授权定时器上限限制。轮换后的令牌保存在 `llm-pi-ai/opencode-go`；pi-ai 在凭据存储锁内刷新，再生成 bearer 请求头。取消请求时调用方立即返回，已开始的刷新仍完成并保存替换令牌；提供方 profile 的 `oauthRefreshTimeoutMs` 限制这次交换的时长（默认值与上限均为 15,000 毫秒）。启用不含 `apiKeyEnv` 覆盖的 `opencode-go` 提供方 profile，即可使用已存储的登录。
 
 Go 保留内置目录中各模型的协议：Messages 使用 `https://opencode.ai/inference/go`，Chat Completions 和 Responses 使用 `https://opencode.ai/inference/go/v1`。所有 OpenCode 请求保留 Harness User-Agent，并从持久化会话 id 生成 `x-opencode-session`；没有 id 的请求不会凭空生成一个。客户端遭到拒绝后不会切换到按量计费端点。OpenCode 的 [Use balance 设置](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits)仍可能在 Go 额度耗尽后扣除 Console 余额；本适配器不改变该账户设置。Go 模型清单继续使用已安装目录，不进行在线目录刷新。
 
