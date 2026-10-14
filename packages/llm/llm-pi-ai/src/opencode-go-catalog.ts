@@ -71,6 +71,7 @@ function protocol(value: unknown): Api {
     case '@ai-sdk/anthropic':
     case '@opencode/ai/providers/anthropic':
     case '@opencode/ai/providers/anthropic-compatible': return 'anthropic-messages'
+    case '@ai-sdk/google': return 'google-generative-ai'
     default: return invalid('unsupported model package')
   }
 }
@@ -130,7 +131,7 @@ function headers(provider: Fields, model: Fields): Record<string, string> | unde
   for (const source of [provider.headers, model.headers]) {
     for (const [name, value] of Object.entries(optionalObject(source, 'model headers'))) {
       if (typeof value !== 'string') return invalid('model header value')
-      if (/^(authorization|x-api-key|api-key)$/iu.test(name)) continue
+      if (/^(authorization|x-api-key|api-key|x-goog-api-key)$/iu.test(name)) continue
       try { merged.set(name, value) } catch { return invalid('model header') }
     }
   }

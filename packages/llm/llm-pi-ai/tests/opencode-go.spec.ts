@@ -15,14 +15,39 @@ import { createModels } from '../src/models.ts'
 import { openCodeGoOAuth, openCodeSessionHeaders } from '../src/opencode-go.ts'
 import { memoryAuth } from './auth-double.ts'
 
+vi.mock('node:timers/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:timers/promises')>()
+  return { ...actual, setTimeout: (...args: Parameters<typeof actual.setTimeout>) => {
+    if (!vi.isFakeTimers()) return actual.setTimeout(...args)
+    // The builtin ESM sleep retains its original timer; these polling cases own a fake clock.
+    const [delay, value, options] = args
+    const signal = options?.signal
+    return new Promise<unknown>((resolve, reject) => {
+      if (signal?.aborted) { reject(new DOMException('The operation was aborted', 'AbortError')); return }
+      const onAbort = (): void => {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+        reject(new DOMException('The operation was aborted', 'AbortError'))
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve(value)
+      }, delay)
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  } }
+})
+
 const device = { device_code: 'device-fixture', user_code: 'GO-1234', verification_uri_complete: '/console/device?user_code=GO-1234',
   expires_in: 600, interval: 0.001 }
 const token = { access_token: 'fixture-access', refresh_token: 'fixture-refresh', expires_in: 3600, org_id: 'fixture-org' }
 const roots: string[] = []
 const contexts: Context[] = []
 const servers: Server[] = []
+const pollingCleanups: (() => Promise<void>)[] = []
 
 afterEach(async () => {
+  for (const close of pollingCleanups.splice(0)) await close()
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   await Promise.all(servers.splice(0).map(server => new Promise<void>((resolve, reject) => {
     server.closeAllConnections()
@@ -50,6 +75,22 @@ function requestUrl(input: RequestInfo | URL): string {
 function formBody(init: RequestInit | undefined): URLSearchParams {
   if (!(init?.body instanceof URLSearchParams)) throw new Error('fixture expected a form request')
   return init.body
+}
+
+/** Own the device-flow timer and cancellation until the login promise settles. */
+function timedLogin(fetcher: typeof fetch) {
+  vi.useFakeTimers()
+  const controller = new AbortController()
+  const notified = Promise.withResolvers<AuthEvent>()
+  const result = openCodeGoOAuth(fetcher).login({ signal: controller.signal,
+    notify: (event) => { notified.resolve(event) }, prompt: () => Promise.reject(new Error('device flow must not collect a key')) })
+  const settled = result.then(() => undefined, (_error: unknown) => undefined)
+  pollingCleanups.push(async () => {
+    controller.abort()
+    await settled
+    vi.useRealTimers()
+  })
+  return { controller, notified: notified.promise, result }
 }
 
 describe('OpenCode Go authorization', () => {
@@ -121,6 +162,118 @@ describe('OpenCode Go authorization', () => {
     const malformed = openCodeGoOAuth(() => Promise.resolve(new Response('{"access_token":"must-not-expose",')))
     await expect(malformed.refresh({ type: 'oauth', access: 'old', refresh: 'old-refresh', expires: 0 }, new AbortController().signal))
       .rejects.toThrow('response is not valid JSON')
+  })
+
+  it.each(['device_code', 'user_code', 'verification_uri_complete'])('rejects an incomplete device response missing %s before opening a login', async (field) => {
+    const notify = vi.fn()
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(Response.json({ ...device, [field]: '' })))
+    await expect(openCodeGoOAuth(fetcher).login({ signal: new AbortController().signal,
+      notify, prompt: () => Promise.resolve('unused') })).rejects.toThrow(`missing ${field}`)
+    expect(notify).not.toHaveBeenCalled()
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it.each(['access_token', 'refresh_token'])('rejects a rotated grant missing %s instead of returning a partial credential', async (field) => {
+    const oauth = openCodeGoOAuth(() => Promise.resolve(Response.json({ ...token, [field]: '' })))
+    await expect(oauth.refresh({ type: 'oauth', access: 'old', refresh: 'old-refresh', expires: 0 }, new AbortController().signal))
+      .rejects.toThrow(`missing ${field}`)
+  })
+
+  it('rejects an invalid workspace id without exposing a token-bearing response', async () => {
+    const oauth = openCodeGoOAuth(() => Promise.resolve(Response.json({ ...token, org_id: 42, access_token: 'must-not-expose' })))
+    await expect(oauth.refresh({ type: 'oauth', access: 'old', refresh: 'old-refresh', expires: 0 }, new AbortController().signal))
+      .rejects.toThrow('OpenCode authorization: invalid org_id')
+  })
+
+  it.each([undefined, null])('preserves the workspace on refresh when the replacement omits its association: %s', async (orgId) => {
+    const oauth = openCodeGoOAuth(() => Promise.resolve(Response.json({ ...token, org_id: orgId })))
+    const rotated = await oauth.refresh({ type: 'oauth', access: 'old', refresh: 'old-refresh', expires: 0,
+      orgId: 'existing-workspace' }, new AbortController().signal)
+    expect(rotated).toMatchObject({ access: 'fixture-access', refresh: 'fixture-refresh', orgId: 'existing-workspace' })
+    expect(await oauth.toAuth(rotated)).toEqual({ headers: { authorization: 'Bearer fixture-access' } })
+  })
+
+  it.each([null, [], 'refused'])('rejects a non-object Console JSON response before notifying: %s', async (body) => {
+    const notify = vi.fn()
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(Response.json(body)))
+    await expect(openCodeGoOAuth(fetcher).login({ signal: new AbortController().signal,
+      notify, prompt: () => Promise.resolve('unused') })).rejects.toThrow('OpenCode authorization: invalid JSON response')
+    expect(notify).not.toHaveBeenCalled()
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it('stops a refused device-code request without polling or showing response secrets', async () => {
+    const notify = vi.fn()
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(Response.json({ error: 'access_denied',
+      device_code: 'must-not-expose' }, { status: 403 })))
+    await expect(openCodeGoOAuth(fetcher).login({ signal: new AbortController().signal,
+      notify, prompt: () => Promise.resolve('unused') })).rejects.toThrow('OpenCode device login refused (403)')
+    expect(notify).not.toHaveBeenCalled()
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it('rejects an HTTP verification URL on the Console host before notifying', async () => {
+    const notify = vi.fn()
+    const oauth = openCodeGoOAuth(() => Promise.resolve(Response.json({ ...device,
+      verification_uri_complete: 'http://opencode.ai/console/device' })))
+    await expect(oauth.login({ signal: new AbortController().signal, notify, prompt: () => Promise.resolve('unused') }))
+      .rejects.toThrow('verification URL must belong to the OpenCode Console')
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('waits the default interval, keeps polling pending authorization and honors a longer slow-down interval', async () => {
+    const replies = [Response.json({ ...device, interval: undefined }),
+      Response.json({ error: 'authorization_pending' }, { status: 400 }),
+      Response.json({ error: 'slow_down' }, { status: 400 }), Response.json({ ...token, org_id: undefined })]
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(replies.shift()!))
+    const login = timedLogin(fetcher)
+    await login.notified
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(9999)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetcher).toHaveBeenCalledTimes(4)
+    const signedIn = await login.result
+    expect(signedIn).toMatchObject({ type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh' })
+    expect(signedIn).not.toHaveProperty('orgId')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cancels a slow-down wait without requesting the queued grant or leaving a polling timer', async () => {
+    const replies = [Response.json({ ...device, interval: 1 }),
+      Response.json({ error: 'slow_down' }, { status: 400 }), Response.json(token)]
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(replies.shift()!))
+    const login = timedLogin(fetcher)
+    await login.notified
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(5999)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    login.controller.abort(new Error('fixture polling cancelled'))
+    await expect(login.result).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(replies).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each([[400, 'access_denied'], [503, 'service_unavailable']] as const)('stops an unexpected polling refusal %s without retrying', async (status, error) => {
+    const replies = [Response.json(device), Response.json({ error, access_token: 'must-not-expose' }, { status })]
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(replies.shift()!))
+    const login = timedLogin(fetcher)
+    await login.notified
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(login.result).rejects.toThrow(`OpenCode device login refused (${String(status)}); sign in again`)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('rotates a single-use refresh token once for concurrent requests and survives a Host restart', async () => {

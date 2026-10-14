@@ -1,7 +1,8 @@
 /** OpenCode Go's Console device login and subscription inference addresses. */
 
 import { setTimeout as sleep } from 'node:timers/promises'
-import type { Model, Api, OAuthAuth, OAuthCredential, Provider } from '@earendil-works/pi-ai'
+import type { Model, Api, OAuthAuth, OAuthCredential, Provider, StreamOptions } from '@earendil-works/pi-ai'
+import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 
@@ -113,18 +114,40 @@ export function openCodeGoOAuth(
   }
 }
 
+/** The Google SDK requires an API key; Go authenticates both stored keys and OAuth access tokens with Bearer. */
+function googleGoOptions(options: StreamOptions = {}): StreamOptions {
+  const entries = Object.entries(options.headers ?? {})
+  const supplied = entries.filter((entry): entry is [string, string] => entry[1] !== null)
+  const headers = new Headers(supplied)
+  const apiKey = options.apiKey ?? /^Bearer (.+)$/iu.exec(headers.get('authorization') ?? '')?.[1]
+  if (!apiKey) throw new Error('OpenCode Go requires account sign-in or an API key')
+  const userAgent = headers.get('user-agent')
+  const hasUserAgent = entries.some(([name]) => name.toLowerCase() === 'user-agent')
+  return { ...options, apiKey, headers: {
+    ...Object.fromEntries(entries.filter(([name]) => !['authorization', 'user-agent'].includes(name.toLowerCase()))),
+    authorization: `Bearer ${apiKey}`,
+    // Match the Google adapter's default header key so Harness attribution replaces it.
+    ...hasUserAgent ? { 'User-Agent': userAgent } : {},
+  } }
+}
+
 /**
- * Add Console OAuth while retaining Go's native API-key auth, metadata and three implementations.
+ * Add Console OAuth and Google's native implementation while retaining Go's API-key auth and installed protocols.
  * @param native - Installed OpenCode Go provider.
  * @returns Subscription provider using canonical Go addresses without a pay-as-you-go fallback.
  */
 export function openCodeGoProvider(native: Provider): Provider {
+  const google = googleGenerativeAIApi()
   return {
     ...native,
     auth: { ...native.auth, oauth: openCodeGoOAuth() },
     getModels: () => native.getModels().map(model => ({ ...model,
       baseUrl: model.api === 'anthropic-messages' ? GO_URL : `${GO_URL}/v1`,
     })),
+    stream: (model, context, options) => model.api === 'google-generative-ai'
+      ? google.stream(model, context, googleGoOptions(options)) : native.stream(model, context, options),
+    streamSimple: (model, context, options) => model.api === 'google-generative-ai'
+      ? google.streamSimple(model, context, googleGoOptions(options)) : native.streamSimple(model, context, options),
   }
 }
 

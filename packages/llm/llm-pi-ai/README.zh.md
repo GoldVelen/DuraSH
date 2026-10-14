@@ -97,7 +97,7 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程�
 
 OpenCode Go 提供 [Console 浏览器登录](https://opencode.ai/v2/docs/console/api/#device-flow)和原生 API key 方式。设备授权流程使用本客户端标识 `durash`，绑定用户在浏览器选定的工作区，并采用服务端返回的轮询间隔和过期时间。访问令牌的有效期存为过期时间戳，不受设备授权定时器上限限制。轮换后的令牌保存在 `llm-pi-ai/opencode-go`；pi-ai 在凭据存储锁内刷新，再生成 bearer 请求头。取消请求时调用方立即返回，已开始的刷新仍完成并保存替换令牌；提供方 profile 的 `oauthRefreshTimeoutMs` 限制这次交换的时长（默认值与上限均为 15,000 毫秒）。启用不含 `apiKeyEnv` 覆盖的 `opencode-go` 提供方 profile，即可使用已存储的登录。
 
-Go 从经过认证的 Console 配置读取当前工作区的模型清单：请求使用的模型 id、协议、各模型端点和上限来自该账号目录。公开的 `models.dev` 元数据补充模型能力与推理设置；已安装的同协议元数据补充其他已知兼容信息。目录只接受 Go 提供方，并要求公布的推理端点位于 OpenCode 的 HTTPS Go 路径内。所有 OpenCode 请求保留 Harness User-Agent，并从持久化会话 id 生成 `x-opencode-session`；没有 id 的请求不会凭空生成一个。客户端遭到拒绝后不会切换到按量计费端点。OpenCode 的 [Use balance 设置](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits)仍可能在 Go 额度耗尽后扣除 Console 余额；本适配器不改变该账户设置。
+Go 从经过认证的 Console 配置读取当前工作区的模型清单：请求使用的模型 id、协议、各模型端点和上限来自该账号目录。Go 目录提供 Chat Completions、Responses、Anthropic Messages 和 Google Generative AI 四类原生协议。Gemini 使用已安装 SDK 和 Console 提供的完整 `/inference/go/google/v1beta` 端点；Go bearer 认证与 SDK 额外附加的 `x-goog-api-key` 请求头只发送到该 Go 端点。公开的 `models.dev` 元数据补充模型能力与推理设置；已安装的同协议元数据补充其他已知兼容信息。目录只接受 Go 提供方，并要求公布的推理端点位于 OpenCode 的 HTTPS Go 路径内。所有 OpenCode 请求保留 Harness User-Agent，并从持久化会话 id 生成 `x-opencode-session`；没有 id 的请求不会凭空生成一个。客户端遭到拒绝后不会切换到按量计费端点。OpenCode 的 [Use balance 设置](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits)仍可能在 Go 额度耗尽后扣除 Console 余额；本适配器不改变该账户设置。
 
 ### 解析模型目录
 

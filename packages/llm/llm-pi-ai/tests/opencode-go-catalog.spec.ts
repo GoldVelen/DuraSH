@@ -76,6 +76,26 @@ describe('OpenCode Go live catalog', () => {
     expect(models[2]?.compat).toBeUndefined()
   })
 
+  it.each(['aisdk:@ai-sdk/google', '@ai-sdk/google'])('retains Flash when the account directory includes a Google model declared by %s', async (packageName) => {
+    respond(provider({
+      'deepseek-v4.1-flash': {},
+      'gemini-4-argon-contributor': { package: packageName,
+        settings: { baseURL: 'https://opencode.ai/inference/go/google/v1beta/' },
+        limit: { context: 500_000, output: 32_768 }, capabilities: { input: ['text', 'image'] } },
+    }))
+    const models = await fetchOpenCodeGoCatalog(new Headers())
+    expect(models.map(model => model.id)).toEqual(['deepseek-v4.1-flash', 'gemini-4-argon-contributor'])
+    expect(models[0]?.api).toBe('openai-completions')
+    expect(models[1]).toMatchObject({ api: 'google-generative-ai',
+      baseUrl: 'https://opencode.ai/inference/go/google/v1beta', contextWindow: 500_000,
+      maxTokens: 32_768, input: ['text', 'image'], reasoning: false })
+  })
+
+  it('rejects an unknown model package instead of guessing from a Gemini model id', async () => {
+    respond(provider({ 'gemini-4-argon-contributor': { package: 'aisdk:@ai-sdk/unknown' } }))
+    await expect(fetchOpenCodeGoCatalog(new Headers())).rejects.toThrow('unsupported model package')
+  })
+
   it('serializes declared Anthropic reasoning effort instead of silently substituting a token budget', async () => {
     respond(provider({ 'qwen3.8-max': { package: 'aisdk:@ai-sdk/anthropic', settings: { baseURL: 'https://opencode.ai/inference/go/anthropic/v1' } } }),
       metadata({ 'qwen3.8-max': entry({ canonical_model_id: 'alibaba/qwen3.8-max',
@@ -237,7 +257,7 @@ describe('OpenCode Go live catalog', () => {
 
   it('omits disabled models and credential-bearing response settings and headers', async () => {
     respond({ ...provider({ 'deepseek-v4.1-flash': { settings: { apiKey: 'fixture-model-key' },
-      headers: { authorization: 'Bearer fixture-model-key', 'x-org-id': 'fixture-org' } }, hidden: { disabled: true } }),
+      headers: { authorization: 'Bearer fixture-model-key', 'x-goog-api-key': 'fixture-model-key', 'x-org-id': 'fixture-org' } }, hidden: { disabled: true } }),
     headers: { 'x-api-key': 'fixture-provider-key', 'X-Org-ID': 'provider-org' }, settings: { baseURL: 'https://opencode.ai/inference/go/v1', apiKey: 'fixture-provider-key' } })
     const models = await fetchOpenCodeGoCatalog(new Headers())
     expect(models).toHaveLength(1)
