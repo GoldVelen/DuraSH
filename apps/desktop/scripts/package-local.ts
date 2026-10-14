@@ -150,7 +150,7 @@ export async function packageLocalDesktop(args: readonly string[]): Promise<void
   const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
     !/^DSH_DESKTOP_|^CSC_|^APPLE_|^DSH_HOME$|^NODE_OPTIONS$|^NODE_PATH$/u.test(name)))
   Object.assign(environment, { DSH_DESKTOP_TARGET_PLATFORM: process.platform, DSH_DESKTOP_TARGET_ARCH: process.arch,
-    CSC_IDENTITY_AUTO_DISCOVERY: 'false', NPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false' })
+    CSC_IDENTITY_AUTO_DISCOVERY: 'false', pnpm_config_verify_deps_before_run: 'false' })
   if (!values['skip-build']) await runPnpm(['run', 'build:durash'], REPOSITORY_ROOT, environment)
   readClientBuildRecord(REPOSITORY_ROOT, durashClientBuildEnvironment(REPOSITORY_ROOT, environment))
   await runPnpm(['run', 'prepare:runtime'], APP_ROOT, environment)
