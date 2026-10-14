@@ -29,6 +29,7 @@ describe('DuraSH source-only package constraints', () => {
     ['packages/bundle/durash-web-profile', '@durash/dsh-web-profile'],
     ['packages/client/ui-brand-durash', '@durash/dsh-client-ui-brand'],
     ['packages/client/ui-reliability', '@durash/dsh-client-ui-reliability'],
+    ['packages/client/ui-settings-global-rules', '@durash/dsh-client-ui-settings-global-rules'],
     ['packages/reliability/durash-reliability-loop', '@durash/dsh-reliability-loop'],
     ['packages/reliability/durash-reliability-policy', '@durash/dsh-reliability-policy'],
     ['packages/reliability/durash-tool-reliability', '@durash/dsh-tool-reliability'],
@@ -80,6 +81,44 @@ describe('DuraSH source-only package constraints', () => {
     }).filter(error => error.includes('source-only DuraSH'))).toEqual([
       `${join('packages/bundle/durash-web-profile', 'package.json')}: @durash/dsh-web-profile: source-only DuraSH package must set "private": true`,
       `${join('packages/bundle/durash-web-profile', 'package.json')}: @durash/dsh-web-profile: source-only DuraSH package must not set publishConfig`,
+    ])
+  })
+})
+
+describe('DuraSH local Desktop deployment root', () => {
+  const dir = 'apps/desktop-local-runtime'
+  const manifest = JSON.parse(readFileSync(new URL('../apps/desktop-local-runtime/package.json', import.meta.url), 'utf8')) as WorkspaceManifest['manifest']
+
+  it('accepts the private dependency manifest without an application entry', () => {
+    expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
+  })
+
+  it('rejects publication and runtime entries', () => {
+    expect(checkWorkspaceManifest({ dir, manifest: {
+      ...manifest, private: false, publishConfig: { access: 'public' }, files: ['lib/index.js'], main: 'lib/index.js',
+    } })).toEqual([
+      expect.stringContaining('DuraSH deployment root must set "private": true'),
+      expect.stringContaining('DuraSH deployment root must not set publishConfig'),
+      expect.stringContaining('DuraSH deployment root files must be []'),
+      expect.stringContaining('DuraSH deployment root must not declare runtime entries or dsh composition'),
+    ])
+  })
+
+  it('does not classify adjacent app directories as private deployment roots', () => {
+    expect(checkWorkspaceManifest({ dir: `${dir}-other`, manifest }).filter(error => error.includes('release member')))
+      .toEqual([
+        expect.stringContaining('release member must not set "private": true'),
+        expect.stringContaining('release member must set publishConfig.access to "public"'),
+        expect.stringContaining('release member repository must use'),
+      ])
+  })
+
+  it('rejects an unrelated package identity or repository at the deployment-root path', () => {
+    expect(checkWorkspaceManifest({ dir, manifest: {
+      ...manifest, name: '@durash/dsh-other', repository: { ...manifest.repository, directory: 'apps/other' },
+    } })).toEqual([
+      expect.stringContaining('DuraSH deployment root must name @durash/dsh-desktop-local-runtime'),
+      expect.stringContaining('DuraSH deployment root repository must use'),
     ])
   })
 })

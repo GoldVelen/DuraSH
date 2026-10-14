@@ -56,8 +56,10 @@ const durashRepositoryUrl = 'git+https://github.com/GoldVelen/DuraSH.git'
 const durashPackagePrefix = '@durash/'
 /** Downstream packages intentionally distributed only as part of the source checkout. */
 const durashSourceOnlyPackageDirectory = new RegExp(
-  '^packages/(?:bundle/durash-web-profile|client/(?:ui-brand-durash|ui-reliability)|reliability/(?:durash-reliability-loop|durash-reliability-policy|durash-tool-reliability))$',
+  '^packages/(?:bundle/durash-web-profile|client/(?:ui-brand-durash|ui-reliability|ui-settings-global-rules)|reliability/(?:durash-reliability-loop|durash-reliability-policy|durash-tool-reliability))$',
 )
+/** Private dependency manifest used only to assemble the local Desktop runtime. */
+const durashDesktopDeploymentRootDirectory = 'apps/desktop-local-runtime'
 /** Packages that participate in the experimental policy. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** npm namespace reserved for experimental packages. */
@@ -370,6 +372,22 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
       || manifest.repository.url !== publishedRepositoryUrl
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${publishedRepositoryUrl} with directory ${expectedDirectory}`)
+    }
+  } else if (dir === durashDesktopDeploymentRootDirectory) {
+    if (manifest.name !== '@durash/dsh-desktop-local-runtime') {
+      errors.push(`${label}: DuraSH deployment root must name @durash/dsh-desktop-local-runtime`)
+    }
+    if (manifest.private !== true) errors.push(`${label}: DuraSH deployment root must set "private": true`)
+    if (manifest.publishConfig !== undefined) errors.push(`${label}: DuraSH deployment root must not set publishConfig`)
+    if (!sameStringList(manifest.files, [])) errors.push(`${label}: DuraSH deployment root files must be []`)
+    if (manifest.main !== undefined || manifest.types !== undefined || manifest.bin !== undefined
+      || manifest.exports !== undefined || manifest.dsh !== undefined) {
+      errors.push(`${label}: DuraSH deployment root must not declare runtime entries or dsh composition`)
+    }
+    if (manifest.repository?.type !== 'git'
+      || manifest.repository.url !== durashRepositoryUrl
+      || manifest.repository.directory !== dir) {
+      errors.push(`${label}: DuraSH deployment root repository must use ${durashRepositoryUrl} with directory ${dir}`)
     }
   } else if (durashSourceOnlyPackageDirectory.test(dir)) {
     if (manifest.private !== true) {

@@ -3,6 +3,11 @@
   "description": "Private dependency closure for the local DuraSH desktop package",
   "version": "0.1.6-alpha.2",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GoldVelen/DuraSH.git",
+    "directory": "apps/desktop-local-runtime"
+  },
   "license": "MIT",
   "type": "module",
   "files": [],
