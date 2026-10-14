@@ -69,7 +69,7 @@ describe('desktop development project', () => {
     expect(manifest.dependencies['@deepseek-ai/dsh']).toBe('1.2.3')
     expect(manifest.dependencies['@deepseek-ai/dsh-desktop-host']).toBe('1.2.3')
     expect(manifest.dsh.profile.bundles).toEqual([
-      '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile',
+      '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app',
     ])
     const manager = new DesktopProjectManager(resolveDesktopPaths(join(root, 'home')), {
       dsh: project,

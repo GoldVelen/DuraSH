@@ -2331,9 +2331,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
-      '@durash/dsh-client-ui-settings-global-rules':
-        specifier: workspace:^
-        version: link:../../client/ui-settings-global-rules
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -13020,6 +13017,9 @@ importers:
       '@durash/dsh-client-ui-reliability':
         specifier: workspace:^
         version: link:../../client/ui-reliability
+      '@durash/dsh-client-ui-settings-global-rules':
+        specifier: workspace:^
+        version: link:../../client/ui-settings-global-rules
       '@durash/dsh-reliability-loop':
         specifier: workspace:^
         version: link:../../reliability/durash-reliability-loop

@@ -14,7 +14,12 @@ describe('DuraSH Web profile overlay', () => {
   it('composes the shipped layers with a live PTC workflow engine and its runtime', () => {
     const layers = ['base', 'web-app', 'durash-web-profile'].map(name =>
       loadOverlayPatches('durash profile test', resolve(import.meta.dirname, '../../', name, 'cordis.patch.yml')))
+    const upstream = composeEntries(layers.slice(0, 2))
+    expect(upstream.some(entry => entry.name?.startsWith('@durash/'))).toBe(false)
     const entries = composeEntries(layers)
+    expect(entries.filter(entry => entry.id === 'ui-settings-global-rules')).toEqual([
+      { id: 'ui-settings-global-rules', name: '@durash/dsh-client-ui-settings-global-rules' },
+    ])
     const workflow = entries.find(entry => entry.id === 'workflow-ptc')
     const runtime = entries.find(entry => entry.id === 'ptc-runtime')
     expect(workflow).toMatchObject({ name: '@deepseek-ai/dsh-workflow-ptc', disabled: false })
@@ -31,6 +36,10 @@ describe('DuraSH Web profile overlay', () => {
     expect(document).toEqual([
       {
         insert: [
+          {
+            id: 'ui-settings-global-rules',
+            name: '@durash/dsh-client-ui-settings-global-rules',
+          },
           {
             id: 'ui-brand-durash',
             name: '@durash/dsh-client-ui-brand',

@@ -115,6 +115,7 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 
 - [组合包索引](../README.zh.md)——基于同一核心构建的表层。
 - [dsh-base](../base/README.zh.md)——GUI 运行其上的共享核心。
+- [DuraSH 产品 profile](../durash-web-profile/README.zh.md)——加入全局规则编辑器与 DuraSH 工作流控件。
 - [dsh-client-hmr](../../client/hmr/README.zh.md)——开发期间客户端插件变更如何重载。
 - [frontend-static](../../host/frontend-static/README.zh.md)——已构建的前端如何被服务。
 - [生成配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-app)——每个受支持配置字段及其源声明。

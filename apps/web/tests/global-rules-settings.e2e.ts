@@ -9,6 +9,8 @@ import { captureStableAria, compareOrRefreshGolden, launchWebScaffold, watchCons
 import { ZH_BROWSER_LOCALE } from './support.ts'
 
 const expectedPath = fileURLToPath(new URL('./expected/global-rules-settings/editor.expected.md', import.meta.url))
+const productOverlay = fileURLToPath(new URL('../../../packages/bundle/durash-web-profile/cordis.patch.yml', import.meta.url))
+const productInstallAnchor = fileURLToPath(new URL('../../../packages/bundle/durash-web-profile/package.json', import.meta.url))
 const mode = webSnapshotMode()
 const original = '# User rules\n\n  Preserve this text.  \n'
 
@@ -26,7 +28,7 @@ describe('web e2e: global instruction file settings', () => {
     await mkdir(harnessHome)
     rulesPath = join(harnessHome, 'AGENTS.md')
     await writeFile(rulesPath, original)
-    scaffold = await launchWebScaffold({ harnessHome })
+    scaffold = await launchWebScaffold({ harnessHome, extraOverlayPath: productOverlay, extraInstallAnchors: [productInstallAnchor] })
     browser = await chromium.launch()
     page = await browser.newPage({ viewport: { width: 1360, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     tripwire = watchConsole(page)

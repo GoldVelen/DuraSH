@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package is the DuraSH product overlay applied after the current upstream `dsh-base` and `dsh-web-app` bundles. It adds the product-owned browser-brand plugin, the reliability-loop runtime, the per-session workflow policy, the gated handoff tool, and the composer workflow switch, and re-enables the upstream `workflow-ptc` row (the web app ships it disabled) so the loop can drive its stage runs through the base bundle’s Node PTC runtime. The upstream official-brand package and the disabled `workflow`/`ralph` tools are unchanged. That separation keeps upstream merges small and makes every downstream-owned row visible in one patch layer.
+This package is the DuraSH product overlay applied after the current upstream `dsh-base` and `dsh-web-app` bundles. It adds the product-owned global-rules editor, browser-brand plugin, the reliability-loop runtime, the per-session workflow policy, the gated handoff tool, and the composer workflow switch, and re-enables the upstream `workflow-ptc` row (the web app ships it disabled) so the loop can drive its stage runs through the base bundle’s Node PTC runtime. The upstream official-brand package and the disabled `workflow`/`ralph` tools are unchanged. That separation keeps upstream merges small and makes every downstream-owned row visible in one patch layer.
 
 ## Table of Contents
 
@@ -35,7 +35,7 @@ Build the client with `pnpm run build:durash`, then start the source checkout wi
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`cordis.patch.yml` inserts the DuraSH brand row, the reliability-loop runtime, the per-session policy, the gated handoff tool, and the composer workflow switch. The product layer remains additive: replacing an upstream row is permitted only when no compatible extension point exists, and the exact exception must first be recorded in the repository's integration-status document.
+`cordis.patch.yml` inserts the global-rules editor, the DuraSH brand row, the reliability-loop runtime, the per-session policy, the gated handoff tool, and the composer workflow switch. The product layer remains additive: replacing an upstream row is permitted only when no compatible extension point exists, and the exact exception must first be recorded in the repository's integration-status document.
 
 No runtime invariant companion is published because this package carries only a static patch list; each inserted package owns the mutable relationships it activates.
 
@@ -47,6 +47,7 @@ No runtime invariant companion is published because this package carries only a 
 ## Further Exploration
 
 - [DuraSH browser brand](../../client/ui-brand-durash/README.md) — the product-owned slot occupants this bundle inserts.
+- [Global-rules editor](../../client/ui-settings-global-rules/README.md) — edit the Host instruction file from DuraSH Settings.
 - [DuraSH reliability loop](../../reliability/durash-reliability-loop/README.md) — the host-side reliability runtime this bundle composes into the `durash` profile.
 - [Composer workflow switch](../../client/ui-reliability/README.md) — the on/off chip this bundle inserts into the composer.
 - [Profile composition](../../boot/app-boot/README.md#profiles) — the ordered bundle and patch semantics used at startup.

@@ -5,7 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promis
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createDevelopmentProjectMetadata, createPluginProfile } from '../src/project-manager.ts'
+import { createDevelopmentProjectMetadata, createPluginProfile, desktopProfileBundles } from '../src/project-manager.ts'
 import { removeOwnedDirectory } from '../src/owned-directory.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 
@@ -28,7 +28,7 @@ try {
       { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true }).trim(),
     pnpmVersion: pnpm.version, hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION }
   createDevelopmentProjectMetadata(project, release)
-  createPluginProfile(profile)
+  createPluginProfile(profile, desktopProfileBundles(['@durash/dsh-web-profile']))
   await writeFile(join(project, 'desktop-runtime.json'), JSON.stringify({
     schemaVersion: 1, release, platform: process.platform, arch: process.arch, files: [],
     sharedPackages: ['@deepseek-ai/dsh', '@deepseek-ai/dsh-desktop-host']

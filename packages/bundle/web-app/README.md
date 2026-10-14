@@ -115,6 +115,7 @@ Read these pages when you want to go deeper into the shared core, the browser re
 
 - [Bundle package map](../README.md) — the surfaces built on the same core.
 - [dsh-base](../base/README.md) — the shared core the GUI runs on.
+- [DuraSH product profile](../durash-web-profile/README.md) — adds the global-rules editor and DuraSH workflow controls.
 - [dsh-client-hmr](../../client/hmr/README.md) — how client-plugin changes reload during development.
 - [frontend-static](../../host/frontend-static/README.md) — how the built frontend is served.
 - [Generated configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-app) — every accepted config field and its source declaration.

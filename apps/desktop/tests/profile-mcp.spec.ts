@@ -6,13 +6,13 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { composeEntries, loadProfileDirectory } from '@deepseek-ai/dsh-app-boot'
-import { createPluginProfile } from '../src/project-manager.ts'
+import { createPluginProfile, desktopProfileBundles } from '../src/project-manager.ts'
 
 it('loads the DuraSH product layer with one shared Desktop resource consumer', () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-profile-mcp-'))
   try {
     const profileDir = join(home, 'profiles', 'desktop')
-    createPluginProfile(profileDir)
+    createPluginProfile(profileDir, desktopProfileBundles(['@durash/dsh-web-profile']))
     const installAnchor = fileURLToPath(new URL('../../cli/package.json', import.meta.url))
     const profile = loadProfileDirectory('dsh desktop', profileDir, installAnchor)
     expect(profile.layers.map(layer => layer.packageName)).toEqual([

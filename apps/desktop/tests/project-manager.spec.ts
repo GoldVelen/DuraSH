@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopPaths } from '../src/paths.ts'
 import { createDevelopmentProjectMetadata, createRuntimeProjectMetadata, DesktopProjectManager } from '../src/project-manager.ts'
 import { readProfilePlugins } from '@deepseek-ai/dsh-app-boot'
-import { runtimeFixture } from './runtime-fixture.ts'
+import { runtimeFixture, writePackage } from './runtime-fixture.ts'
+import { writeDesktopRuntime } from '../src/runtime-tree.ts'
 
 const roots: string[] = []
 const builtInBundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@durash/dsh-web-profile']
@@ -34,10 +35,18 @@ function plugins(manager: DesktopProjectManager) {
     installAnchor: join(manager.runtime.dsh, 'node_modules/@deepseek-ai/dsh/package.json') }).dependencies
     .map(({ name, version, enabled }) => ({ name, version, enabled }))
 }
-function setup(): { root: string; manager: DesktopProjectManager } {
+function setup(product = true): { root: string; manager: DesktopProjectManager } {
   const root = temporaryRoot()
   const dsh = join(root, 'resources', 'dsh')
-  runtimeFixture(dsh)
+  const runtime = runtimeFixture(dsh)
+  if (product) {
+    const name = '@durash/dsh-web-profile'
+    const bundle = writePackage(join(dsh, 'node_modules'), name, {
+      version: runtime.release.version, dsh: { bundle: { patch: './bundle.yml' } },
+    })
+    writeFileSync(join(bundle, 'bundle.yml'), '[]\n')
+    writeDesktopRuntime(dsh, runtime.release, [...runtime.sharedPackages.map(entry => entry.name), name])
+  }
   return { root, manager: new DesktopProjectManager(resolveDesktopPaths(join(root, '.dsh')), { dsh }) }
 }
 afterEach(() => {
@@ -45,7 +54,7 @@ afterEach(() => {
 })
 
 describe('desktop external plugin profile', () => {
-  it('uses the same DuraSH bundles in runtime and development project metadata', () => {
+  it('keeps public package-set metadata independent of private product bundles', () => {
     const { root, manager } = setup()
     const release = runtimeFixture(join(root, 'metadata-runtime')).release
     const packaged = join(root, 'packaged-project')
@@ -65,7 +74,7 @@ describe('desktop external plugin profile', () => {
     createDevelopmentProjectMetadata(development, release)
     for (const project of [packaged, development]) {
       expect(JSON.parse(readFileSync(join(project, 'package.json'), 'utf8'))).toMatchObject({
-        dsh: { profile: { bundles: builtInBundles } },
+        dsh: { profile: { bundles: builtInBundles.slice(0, 2) } },
       })
     }
     expect(existsSync(manager.paths.profile)).toBe(false)
@@ -76,6 +85,16 @@ describe('desktop external plugin profile', () => {
     await manager.applyRelease()
     expect(JSON.parse(readFileSync(join(manager.paths.profile, 'package.json'), 'utf8'))).toMatchObject({
       dsh: { profile: { bundles: builtInBundles } },
+    })
+  })
+
+  it('initializes and recovers a public runtime without private product packages', async () => {
+    const { manager } = setup(false)
+    await manager.applyRelease()
+    seedPlugin(manager)
+    await manager.disableAllPlugins()
+    expect(JSON.parse(readFileSync(join(manager.paths.profile, 'package.json'), 'utf8'))).toMatchObject({
+      dsh: { profile: { bundles: builtInBundles.slice(0, 2) } },
     })
   })
 

@@ -48,7 +48,7 @@ Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 包含 pnpm �
 
 应用 preload 暴露启动就绪、致命启动失败上报和原生目录选择。产品页面还获得 Desktop 标记、更新展示数据和打开原生确认的操作，不能选择安装产物或授权安装。插件管理使用 Web 应用经过认证的 HTTP API；Electron 不提供插件管理 IPC 或独立管理页面。
 
-产品 UI 保留 Web 操作，包括通过共享认证 HTTP 路由执行的“打开方式…”。Desktop 使用 Web 的自动目录选择机制，在 base 和 Web bundle 之后加载 [DuraSH 产品 bundle](../../packages/bundle/durash-web-profile/README.zh.md)。该层提供 DuraSH 品牌、工作流控制、模型选择，以及有界实施与审查。已有 Desktop profile 会在已启用外部插件之前加入这一内置层；其他包元数据、用户 patch 和插件启用状态保持不变。
+产品 UI 保留 Web 操作，包括通过共享认证 HTTP 路由执行的“打开方式…”。Desktop 使用 Web 的自动目录选择机制。运行时包含 [DuraSH 产品 bundle](../../packages/bundle/durash-web-profile/README.zh.md) 时，会在 base 和 Web bundle 之后加载该层，提供品牌、工作流控制、模型选择，以及有界实施与审查。已有 Desktop profile 会在已启用外部插件之前加入运行时提供的内置 bundle；其他包元数据、用户 patch 和插件启用状态保持不变。公开发行运行时包含 base 和 Web bundle。
 
 Electron 根据应用语言选择类型化的英文或中文 shell 文案，并回退到英文。在 Windows 上，主文档的语言会更新桌面菜单、恢复与更新提示。仓库 Client UI i18n 检查覆盖桌面端源码。
 
@@ -72,7 +72,7 @@ macOS 上自定义应用菜单还会声明标准的 File、Window 和应用菜�
 
 原生弹窗详情最多包含 1,200 个 UTF-16 代码单元和八行诊断；完整的已报告错误写入 Electron 控制台。Host 错误诊断仅保留 stderr 输出的最后 64 Ki 个字符。更早的输出会被丢弃，避免长期运行的 Host 使壳的诊断缓冲区无限增长。
 
-恢复操作等待 Host 关闭后才修改插件启用状态。原生恢复操作在 profile 事务锁内调用共享 app-boot 恢复函数。它保留 base、Web 与 DuraSH 产品 bundle，禁用第三方 bundle，并将 profile 的 `cordis.patch.yml` 重命名为 `cordis.patch.yml.bak-<timestamp>`（重名时追加序号），无需解析；下次启动创建空 patch。已安装包和已有备份保留。home 级 patch 不变。Electron 控制台记录备份路径（或原文件不存在）以及 home 级 patch 未修改。profile 数据无效、重命名失败或写入失败会作为恢复操作错误报告；已完成的修改保留，Desktop 不会假装恢复成功后重启。Desktop 不提供 profile 重置操作或应急 HTML 文档。
+恢复操作等待 Host 关闭后才修改插件启用状态。原生恢复操作在 profile 事务锁内调用共享 app-boot 恢复函数。它保留 base 和 Web bundle，以及已存在于准备好的 profile 中的 DuraSH 产品层，禁用第三方 bundle，并将 profile 的 `cordis.patch.yml` 重命名为 `cordis.patch.yml.bak-<timestamp>`（重名时追加序号），无需解析；下次启动创建空 patch。已安装包和已有备份保留。home 级 patch 不变。Electron 控制台记录备份路径（或原文件不存在）以及 home 级 patch 未修改。profile 数据无效、重命名失败或写入失败会作为恢复操作错误报告；已完成的修改保留，Desktop 不会假装恢复成功后重启。Desktop 不提供 profile 重置操作或应急 HTML 文档。
 
 包事务独占 `$DSH_HOME/profiles/desktop/lock`，直到 pnpm 进程退出。pnpm 运行前，共享模块回退辅助函数只删除其拥有的链接，保留 pnpm 管理的目录；开发 Host 在启动时重建所需链接。链接清理保留目标目录。原生构建遵循 pnpm 配置的构建策略；发布准备使用独立的构建期允许列表。
 
@@ -104,9 +104,9 @@ Workspace 开发使用 Electron RunAsNode 运行当前 CLI 与私有 Desktop Hos
 pnpm run package:desktop:local
 ```
 
-[本地打包器](scripts/package-local.ts) 构建 DuraSH 客户端和 Electron 壳，并通过私有的 [local-runtime 项目](../desktop-local-runtime/package.json) 物化 Desktop Host 与 DuraSH 产品依赖。该项目没有应用入口。[Desktop profile 初始化](src/project-manager.ts) 为构建元数据、启动和恢复选用一致的 base、Web 与 DuraSH bundle 顺序。
+[本地打包器](scripts/package-local.ts) 构建 DuraSH 客户端和 Electron 壳，并通过私有的 [local-runtime 项目](../desktop-local-runtime/package.json) 物化 Desktop Host 与 DuraSH 产品依赖。该项目没有应用入口。[Desktop profile 初始化](src/project-manager.ts) 按准备好的运行时包清单选择 bundle，使公开发行版独立于私有产品层。
 
-应用生成在 `.desktop-build/targets/<target>/durash-artifacts/` 下，`<target>` 为 `mac-arm64` 或 `mac-x64`。将生成的 `DuraSH.app` 复制到 `~/Applications`，即可为当前用户安装。本地构建保留工作区版本，使用 ad-hoc 签名，不使用 Apple 签名凭据或公证，也不包含自动更新源。正式发布使用下文的签名与公证流程。`--skip-build` 复用已有的 DuraSH 客户端和壳产物；`--prepare-only` 准备并检查运行时，不生成应用。
+应用生成在 `.desktop-build/targets/<target>/durash-artifacts/` 下，`<target>` 为 `mac-arm64` 或 `mac-x64`。将生成的 `DuraSH.app` 复制到 `~/Applications`，即可为当前用户安装。本地构建保留工作区版本，使用 ad-hoc 签名，不使用 Apple 签名凭据或公证，也不包含自动更新源。下文的正式打包流程生成公开 Web 运行时。`--skip-build` 复用已有的 DuraSH 客户端和壳产物；`--prepare-only` 准备并检查运行时，不生成应用。
 
 已安装应用与 DuraSH Web 读取同一个 `$DSH_HOME` 下的产品数据，默认为 `~/.dsh`；可执行包和插件启用状态独立存于 `profiles/desktop`。使用同一个 home 启动 Desktop 前，先停止 Web Host：产品 JSON 存储会按各 Host 的内存状态重写整份文档，同时运行可能丢失更新。打包冒烟检查使用临时 home。
 
