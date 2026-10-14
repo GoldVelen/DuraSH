@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AuthorizationService from '@deepseek-ai/dsh-authorization'
@@ -86,12 +86,16 @@ function transport(answer: (request: Request) => Response | Promise<Response>) {
   return calls
 }
 
-/** Boot actual Include rows with credentials ready before the first automatic refresh. */
+/** Boot actual Include rows with configurable service initialization and saved route settings. */
 async function load(options: {
   route?: string
   profile?: LlmPiAi.PiAiProviderProfile
   record?: CredentialRecord
   refs?: Record<string, string>
+  baseProviders?: LlmPiAi.Config['providers']
+  storedProviders?: LlmPiAi.Config['providers']
+  injectedServices?: string[]
+  credentialsStart?: Promise<undefined>
 } = {}) {
   vi.stubEnv('OPENCODE_API_KEY', undefined)
   vi.stubEnv(REF, undefined)
@@ -104,14 +108,17 @@ async function load(options: {
   await writeFile(credentialsPath, JSON.stringify({ version: 1, refs: options.refs ?? {},
     records: { [recordKeyFor(route)]: record },
   }), { mode: 0o600 })
-  await writeFile(settingsPath, '{}\n')
+  await writeFile(settingsPath, JSON.stringify(options.storedProviders === undefined
+    ? {} : { 'llm-pi-ai': { providers: options.storedProviders } }) + '\n')
   await writeFile(configPath, JSON.stringify([
     { name: '@deepseek-ai/dsh-llm' },
     { name: '@deepseek-ai/dsh-authorization' },
     { name: '@deepseek-ai/dsh-credentials-local', config: { path: credentialsPath, watch: false } },
     { name: '@deepseek-ai/dsh-settings-file', config: { path: settingsPath, watch: false } },
-    { name: '@deepseek-ai/dsh-llm-pi-ai', inject: ['llm', 'authorization', 'credentials', 'settings'],
-      config: { providers: { [route]: options.profile ?? (route === 'opencode-go' ? {} : { catalogProvider: 'opencode-go' }) } },
+    { name: '@deepseek-ai/dsh-llm-pi-ai', inject: options.injectedServices ?? ['llm', 'authorization', 'credentials', 'settings'],
+      config: { providers: options.baseProviders ?? {
+        [route]: options.profile ?? (route === 'opencode-go' ? {} : { catalogProvider: 'opencode-go' }),
+      } },
     },
   ]))
   const ctx = new Context()
@@ -119,9 +126,16 @@ async function load(options: {
   ctx.baseUrl = `${pathToFileURL(root).href}/`
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
+  const start = options.credentialsStart
+  const credentialModule = start === undefined ? LocalCredentialProvider : class extends LocalCredentialProvider {
+    override async* [Service.init](): AsyncGenerator<() => Promise<void> | void, void, void> {
+      await start
+      yield* super[Service.init]()
+    }
+  }
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-llm', LlmRuntime], ['@deepseek-ai/dsh-authorization', AuthorizationService],
-    ['@deepseek-ai/dsh-credentials-local', LocalCredentialProvider], ['@deepseek-ai/dsh-settings-file', FileSettingsProvider],
+    ['@deepseek-ai/dsh-credentials-local', credentialModule], ['@deepseek-ai/dsh-settings-file', FileSettingsProvider],
     ['@deepseek-ai/dsh-llm-pi-ai', LlmPiAi],
   ])
   ctx.loader.internal = { version: 'v2', import: async (specifier: string) => {
@@ -134,6 +148,82 @@ async function load(options: {
 }
 
 describe('live Go catalog source Loader', () => {
+  it('registers persisted Go settings and refreshes their catalog at startup when the composition has no providers', async () => {
+    const calls = transport(() => {
+      const model = 'deepseek-v4.1-flash'
+      const payload = directory(model)
+      const go = payload.providers['opencode-go']
+      return Response.json({ providers: { 'opencode-go': { ...go, models: {
+        [model]: { ...go.models[model], name: 'DeepSeek V4.1 Flash' },
+      } } } })
+    })
+    const { ctx } = await load({ baseProviders: {}, storedProviders: { 'opencode-go': {} } })
+    await expect.poll(() => calls.filter(request => request.url === CONFIG_URL).length).toBe(1)
+    expect(await ctx.llm.listModels('opencode-go')).toContainEqual(expect.objectContaining({
+      id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash',
+    }))
+  })
+
+  it('refreshes a persisted Go route when durable credentials become ready after its first startup attempt', async () => {
+    const gate = Promise.withResolvers<undefined>()
+    releases.push(() => { gate.resolve(undefined) })
+    const calls = transport(() => Response.json(directory('deepseek-v4.1-flash')))
+    const loading = load({ baseProviders: {}, storedProviders: { 'opencode-go': {} },
+      injectedServices: ['llm'], credentialsStart: gate.promise,
+    })
+    await expect.poll(() => context?.get('llm')?.listConfigurableProviders()
+      .find(provider => provider.provider === 'opencode-go')?.error)
+      .toBe('OpenCode Go model discovery requires account sign-in or an API key')
+    expect(calls.filter(request => request.url === CONFIG_URL)).toHaveLength(0)
+    gate.resolve(undefined)
+    const { ctx } = await loading
+    expect(await ctx.credentials.readRecord(recordKeyFor('opencode-go'))).toEqual({ kind: 'api-key', key: 'stored-key' })
+    await expect.poll(() => calls.filter(request => request.url === CONFIG_URL).length).toBe(1)
+    await expect.poll(async () => (await ctx.llm.listModels('opencode-go')).map(model => model.id)).toEqual(['deepseek-v4.1-flash'])
+  })
+
+  it('withdraws a removed credential service and rejects its response after a replacement service publishes', async () => {
+    const entered = Promise.withResolvers<undefined>()
+    const obsolete = heldDirectory('account-a-model')
+    const calls = transport((request) => {
+      if (request.headers.get('authorization') === 'Bearer account-a-key') {
+        entered.resolve(undefined)
+        return obsolete.response
+      }
+      expect(request.headers.get('authorization')).toBe('Bearer account-b-key')
+      return Response.json(directory('account-b-model'))
+    })
+    const { ctx, credentialsPath } = await load({ injectedServices: ['llm'], record: { kind: 'api-key', key: 'account-a-key' } })
+    await entered.promise
+    const pending = ctx.llm.discoverModels('llm-pi-ai', { provider: 'opencode-go', refresh: true })
+      .then(() => 'published', () => 'invalidated')
+    const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name === '@deepseek-ai/dsh-credentials-local')
+    if (entry === undefined) throw new Error('the credential Loader entry was not mounted')
+    await ctx.loader.update(entry.id, { disabled: true })
+    await ctx.loader.await()
+    expect(ctx.get('credentials')).toBeUndefined()
+    expect(calls.filter(request => request.url === CONFIG_URL).every(request => request.signal?.aborted === true)).toBe(true)
+    expect(await ctx.llm.listModels('opencode-go')).toEqual([])
+
+    await writeFile(credentialsPath, JSON.stringify({ version: 1, refs: {}, records: {
+      [recordKeyFor('opencode-go')]: { kind: 'api-key', key: 'account-b-key' },
+    } }), { mode: 0o600 })
+    await ctx.loader.update(entry.id, { disabled: false })
+    await ctx.loader.await()
+    await expect.poll(async () => (await ctx.llm.listModels('opencode-go')).map(model => model.id)).toEqual(['account-b-model'])
+    obsolete.release()
+    expect(await pending).toBe('invalidated')
+    expect((await ctx.llm.listModels('opencode-go')).map(model => model.id)).toEqual(['account-b-model'])
+
+    const errors: unknown[] = []
+    ctx.logger.exporter({ export: (message) => { if (message.type === 'error') errors.push(message) } })
+    const providerEntry = [...ctx.loader.entries()].find(candidate => candidate.options.name === '@deepseek-ai/dsh-llm-pi-ai')
+    if (providerEntry === undefined) throw new Error('the provider Loader entry was not mounted')
+    await ctx.loader.update(providerEntry.id, { disabled: true })
+    await ctx.loader.await()
+    expect(errors).toEqual([])
+  })
+
   it.each(['opencode-go', 'go-work'])('replaces %s account metadata and rejects an obsolete response after record replacement', async (route) => {
     const entered = Promise.withResolvers<undefined>()
     const obsolete = heldDirectory('account-a-model')

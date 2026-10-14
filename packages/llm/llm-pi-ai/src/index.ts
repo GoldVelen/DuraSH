@@ -64,7 +64,7 @@
  * @module @deepseek-ai/dsh-llm-pi-ai
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import { FiberState, type Context } from '@deepseek-ai/cordis'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
@@ -468,6 +468,29 @@ export function apply(ctx: Context, config: Config): void {
       ensureRegistrationFacts()
       ensureDirectory()
       catalogs.notify()
+    })
+  })
+  let credentialsReady = ctx.get('credentials') !== undefined
+  ctx.inject(['credentials'], (credentialCtx) => {
+    /** Invalidate account metadata when the optional credential service becomes ready or leaves. */
+    function synchronizeCredentials(): void {
+      for (const provider of onlineProviders()) {
+        catalogs.invalidate(provider)
+        runtimeCatalogs.set(provider, [])
+        catalogErrors.delete(provider)
+        catalogRevision += 1
+      }
+      ensureRegistrationFacts()
+      ensureDirectory()
+      catalogs.notify()
+    }
+    credentialCtx.effect(() => {
+      if (!credentialsReady) synchronizeCredentials()
+      credentialsReady = true
+      return () => {
+        credentialsReady = false
+        if (ctx.fiber.state === FiberState.ACTIVE) synchronizeCredentials()
+      }
     })
   })
   ctx.effect(() => {

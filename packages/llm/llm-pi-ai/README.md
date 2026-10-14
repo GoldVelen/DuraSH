@@ -120,7 +120,7 @@ Profiles are re-read once per operation through the optional settings seam: the 
 <a id="synchronize-account-model-directories"></a>
 ### Synchronize account model directories
 
-Configured ChatGPT/Codex, OpenCode Go, and xAI routes synchronize at Host startup, after sign-in or a credential-source change, periodically, and on explicit refresh. They must retain their native API; a private endpoint opts into synchronization with `modelCatalogMode: live`. The installed catalog supplies the initial metadata until an account directory succeeds.
+Configured ChatGPT/Codex, OpenCode Go, and xAI routes synchronize at Host startup, after sign-in or a credential-source change, periodically, and on explicit refresh. When the credentials service finishes its initial load, is replaced, or is removed, the Host immediately invalidates the previous credential source's directory and starts synchronization. These routes must retain their native API; a private endpoint opts into synchronization with `modelCatalogMode: live`. The installed catalog supplies the initial metadata until an account directory succeeds.
 
 The Host retains complete model descriptors in RAM, scoped to the route and current account or endpoint. Model lists, resolution, and dispatch use that same metadata. A failed refresh keeps the last good directory for the same source and reports its diagnostic. An account or source change clears the old directory until the new source succeeds; it cannot expose another account’s models. Restarting the Host begins again from installed metadata.
 

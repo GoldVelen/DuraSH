@@ -120,7 +120,7 @@ profile 通过可选 settings seam 每次操作重新读取：base 与用户的 
 <a id="synchronize-account-model-directories"></a>
 ### 同步账号模型目录
 
-已配置的 ChatGPT/Codex、OpenCode Go 与 xAI 路由在 Host 启动、登录成功或凭据来源变化、定时以及显式刷新时同步目录。路由必须保留原生 API；私有端点通过 `modelCatalogMode: live` 明确启用同步。在账号目录首次读取成功前，已安装目录提供初始元数据。
+已配置的 ChatGPT/Codex、OpenCode Go 与 xAI 路由在 Host 启动、登录成功或凭据来源变化、定时以及显式刷新时同步目录。凭据服务完成首次加载、被替换或移除时，Host 立即使此前凭据来源的目录失效并发起同步。路由必须保留原生 API；私有端点通过 `modelCatalogMode: live` 明确启用同步。在账号目录首次读取成功前，已安装目录提供初始元数据。
 
 Host 在内存中保存完整模型描述，按路由及当前账号或端点隔离。模型列表、解析和分派使用同一份元数据。同一来源刷新失败时保留最后一次有效目录并显示诊断。账号或来源变化会清空旧目录，直到新来源读取成功；不会暴露另一个账号的模型。重启 Host 后重新从已安装元数据开始。
 
