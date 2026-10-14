@@ -25,12 +25,18 @@ const addedModel = 'deepseek-v4.1-pro'
 const publicModels = {
   'opencode-go': {
     api: 'https://opencode.ai/inference/go/openai/v1', npm: '@ai-sdk/openai-compatible',
-    models: Object.fromEntries([firstModel, addedModel].map(id => [id, {
+    models: { ...Object.fromEntries([firstModel, addedModel].map(id => [id, {
       id, name: id === firstModel ? 'DeepSeek V4.1 Flash' : 'DeepSeek V4.1 Pro',
       canonical_model_id: `deepseek/${id}`, limit: { context: 1048576, output: 98304 },
       modalities: { input: ['text'], output: ['text'] }, reasoning: true,
       reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }],
     }])),
+    'kimi-k2.7-code': {
+      name: 'Kimi K2.7 Code', canonical_model_id: 'moonshotai/kimi-k2.7-code',
+      limit: { context: 262144, output: 262144 },
+      modalities: { input: ['text', 'image', 'video'], output: ['text'] },
+      reasoning: true, reasoning_options: [], interleaved: { field: 'reasoning_content' },
+    } },
   },
 }
 
@@ -66,6 +72,7 @@ describe.skipIf(mode === 'record')('web e2e: OpenCode Go sign-in', () => {
           settings: { baseURL: 'https://opencode.ai/inference/go/openai/v1' },
           models: {
             [firstModel]: { name: 'DeepSeek V4.1 Flash' },
+            'kimi-k2.7-code': { name: 'Kimi K2.7 Code' },
             ...includeAddedModel ? { [addedModel]: { name: 'DeepSeek V4.1 Pro' } } : {},
             'claude-fixture': { name: 'Claude Go Fixture', package: '@opencode/ai/providers/anthropic',
               settings: { baseURL: 'https://opencode.ai/inference/go/anthropic/v1' },
@@ -189,6 +196,7 @@ describe.skipIf(mode === 'record')('web e2e: OpenCode Go sign-in', () => {
     const trigger = page.getByRole('button', { name: /^选择模型/ })
     await trigger.click()
     await page.getByRole('menuitem', { name: /模型/ }).click()
+    await page.getByRole('menuitemradio', { name: 'Kimi K2.7 Code', exact: true }).waitFor()
     await page.getByRole('menuitemradio', { name: 'DeepSeek V4.1 Flash', exact: true }).click()
     await expect.poll(() => trigger.getAttribute('aria-label')).toContain('DeepSeek V4.1 Flash')
     await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection()).toMatchObject({ provider: 'opencode-go', model: firstModel })

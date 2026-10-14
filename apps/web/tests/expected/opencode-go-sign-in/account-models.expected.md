@@ -8,5 +8,6 @@
     - menuitemradio "DeepSeek V4.1 Flash" [checked]:
       - text: DeepSeek V4.1 Flash
       - img
+    - menuitemradio "Kimi K2.7 Code"
     - menuitemradio "DeepSeek V4.1 Pro"
     - menuitemradio "Claude Go Fixture"

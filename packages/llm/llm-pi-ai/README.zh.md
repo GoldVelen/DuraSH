@@ -109,7 +109,7 @@ Go 从经过认证的 Console 配置读取当前工作区的模型清单：请�
 
 ### 带推理（reasoning）与协议兼容运行
 
-`reasoningEfforts` 声明可选推理档位：键是选择器提供的档位，值是请求中发送的拼写。省略时保留当前有效目录的能力；`false` 声明非推理模型。`compat` 按路由或模型调整受支持的请求字段。配置与目录都没有提供容量时，模型使用 `defaultContextWindow` 与 `defaultMaxTokens`。目录中的输出容量不会成为请求上限；只有显式配置的模型 `maxTokens` 会成为请求上限。
+`reasoningEfforts` 声明可选推理档位：键是选择器提供的档位，值是请求中发送的拼写。省略时保留当前有效目录的能力；`false` 声明非推理模型。目录未提供可选档位的推理模型仍可使用，推理行为采用提供方默认设置。`compat` 按路由或模型调整受支持的请求字段。配置与目录都没有提供容量时，模型使用 `defaultContextWindow` 与 `defaultMaxTokens`。目录中的输出容量不会成为请求上限；只有显式配置的模型 `maxTokens` 会成为请求上限。
 
 对于自托管 Chat Completions 端点，`thinkingTokenBudgetField` 选择推理预算参数，`vllmPriority` 在服务端启用优先级调度时设置整数调度优先级。模板参数接受 `$var: thinking.budget`。`openai-responses` 网关可设置 `supportsMaxOutputTokens: false` 来省略 `max_output_tokens`；Azure 与 Codex 传输会忽略这个共享兼容字段。这些控制均需显式启用；目录拥有的 Anthropic effort 和回退能力不是可配置开关。
 
