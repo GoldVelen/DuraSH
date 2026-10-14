@@ -471,6 +471,9 @@ export function apply(ctx: Context, config: Config): void {
     })
   })
   let credentialsReady = ctx.get('credentials') !== undefined
+  ctx.on('internal/service', (service) => {
+    if (service === 'credentials' && ctx.get('credentials') === undefined) credentialsReady = false
+  })
   ctx.inject(['credentials'], (credentialCtx) => {
     /** Invalidate account metadata when the optional credential service becomes ready or leaves. */
     function synchronizeCredentials(): void {

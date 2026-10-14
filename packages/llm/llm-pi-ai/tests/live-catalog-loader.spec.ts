@@ -96,6 +96,8 @@ async function load(options: {
   storedProviders?: LlmPiAi.Config['providers']
   injectedServices?: string[]
   credentialsStart?: Promise<undefined>
+  piAiStart?: Promise<undefined>
+  beforeInclude?: (ctx: Context) => void
 } = {}) {
   vi.stubEnv('OPENCODE_API_KEY', undefined)
   vi.stubEnv(REF, undefined)
@@ -140,8 +142,10 @@ async function load(options: {
   ])
   ctx.loader.internal = { version: 'v2', import: async (specifier: string) => {
     if (!modules.has(specifier)) throw new Error(`unexpected Loader module ${specifier}`)
+    if (specifier === '@deepseek-ai/dsh-llm-pi-ai') await options.piAiStart
     return modules.get(specifier)
   } } as unknown as NonNullable<typeof ctx.loader.internal>
+  options.beforeInclude?.(ctx)
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
   await ctx.loader.await()
   return { ctx, route, credentialsPath }
@@ -180,6 +184,48 @@ describe('live Go catalog source Loader', () => {
     expect(await ctx.credentials.readRecord(recordKeyFor('opencode-go'))).toEqual({ kind: 'api-key', key: 'stored-key' })
     await expect.poll(() => calls.filter(request => request.url === CONFIG_URL).length).toBe(1)
     await expect.poll(async () => (await ctx.llm.listModels('opencode-go')).map(model => model.id)).toEqual(['deepseek-v4.1-flash'])
+  })
+
+  it('refreshes a replacement credential service when the previous service left before its optional scope activated', async () => {
+    const start = Promise.withResolvers<undefined>()
+    releases.push(() => { start.resolve(undefined) })
+    let removal: Promise<void> | undefined
+    const calls = transport((request) => {
+      expect(request.headers.get('authorization')).toBe('Bearer account-b-key')
+      return Response.json(directory('account-b-model'))
+    })
+    const { ctx, credentialsPath } = await load({ injectedServices: ['llm'], piAiStart: start.promise,
+      record: { kind: 'api-key', key: 'account-a-key' },
+      beforeInclude: (host) => {
+        host.on('internal/plugin', (fiber) => {
+          if (fiber.runtime?.callback === LocalCredentialProvider) {
+            queueMicrotask(() => { void fiber.await().then(() => { start.resolve(undefined) }) })
+          }
+          if (removal !== undefined || fiber.parent.fiber.name !== 'llm-pi-ai'
+            || !Object.hasOwn(fiber.inject, 'credentials')) return
+          const credential = [...host.loader.entries()].find(entry => entry.options.name === '@deepseek-ai/dsh-credentials-local')
+          if (credential?.fiber === undefined) throw new Error('the initial credential service was not ready')
+          expect(host.get('credentials')).toBeDefined()
+          removal = Promise.resolve(credential.fiber.dispose())
+        })
+      },
+    })
+    expect(removal).toBeDefined()
+    await removal
+    await expect.poll(() => ctx.llm.listConfigurableProviders().find(provider => provider.provider === 'opencode-go')?.error)
+      .toBe('OpenCode Go model discovery requires account sign-in or an API key')
+    expect(calls.filter(request => request.url === CONFIG_URL)).toHaveLength(0)
+
+    await writeFile(credentialsPath, JSON.stringify({ version: 1, refs: {}, records: {
+      [recordKeyFor('opencode-go')]: { kind: 'api-key', key: 'account-b-key' },
+    } }), { mode: 0o600 })
+    const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name === '@deepseek-ai/dsh-credentials-local')
+    if (entry === undefined) throw new Error('the credential Loader entry was removed')
+    await ctx.loader.update(entry.id, { disabled: false })
+    await ctx.loader.await()
+    await expect.poll(async () => (await ctx.llm.listModels('opencode-go')).map(model => model.id)).toEqual(['account-b-model'])
+    expect(calls.filter(request => request.url === CONFIG_URL)).toHaveLength(1)
+    expect(ctx.llm.listConfigurableProviders().find(provider => provider.provider === 'opencode-go')?.error).toBeUndefined()
   })
 
   it('withdraws a removed credential service and rejects its response after a replacement service publishes', async () => {
