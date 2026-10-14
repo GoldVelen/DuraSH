@@ -23,7 +23,7 @@ import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import {
-  initProfile, PROFILE_TEMPLATES, sanitizeProfile, type ProfileTemplate,
+  initProfile, PROFILE_TEMPLATES, readProfileManifest, sanitizeProfile, writeProfileBundles, type ProfileTemplate,
 } from '@deepseek-ai/dsh-app-boot'
 import { migrateDesktopProfileLinks } from './profile-packages.ts'
 import { cleanProfileCorePackages } from './profile-core-cleanup.ts'
@@ -31,7 +31,9 @@ import { cleanProfileCorePackages } from './profile-core-cleanup.ts'
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
-const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
+const DESKTOP_PROFILE: ProfileTemplate = {
+  bundles: [...(PROFILE_TEMPLATES.web as ProfileTemplate).bundles, '@durash/dsh-web-profile'],
+}
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
@@ -76,7 +78,7 @@ export class DesktopProjectManager {
    * @returns Backup path after the locked profile write, or undefined if the patch was absent.
    */
   async disableAllPlugins(): Promise<string | undefined> {
-    return this.withLock(() => sanitizeProfile('dsh', this.paths.profile, WEB_PROFILE.bundles))
+    return this.withLock(() => sanitizeProfile('dsh', this.paths.profile, DESKTOP_PROFILE.bundles))
   }
 
   /**
@@ -133,7 +135,11 @@ export class DesktopProjectManager {
   }
 }
 
-/** Create build-only project metadata for materializing the signed runtime. */
+/**
+ * Create build-only project metadata for materializing the runtime.
+ * @param projectDir - Build directory containing the verified local package set.
+ * @param release - Release identity shared by the CLI package and Electron shell.
+ */
 export function createRuntimeProjectMetadata(projectDir: string, release: DesktopRelease): void {
   mkdirSync(projectDir, { recursive: true, mode: 0o700 })
   const packageSet = verifyDesktopCorePackageSet(projectDir, release.version)
@@ -142,7 +148,7 @@ export function createRuntimeProjectMetadata(projectDir: string, release: Deskto
     private: true,
     version: '0.0.0',
     dependencies: desktopCorePackageOverrides(packageSet),
-    dsh: { profile: { bundles: [...WEB_PROFILE.bundles] } },
+    dsh: { profile: { bundles: [...DESKTOP_PROFILE.bundles] } },
   }
   writeJson(join(projectDir, 'package.json'), manifest)
   writeFileSync(
@@ -167,13 +173,26 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
       [DSH_PACKAGE]: release.version,
       [DESKTOP_HOST_PACKAGE]: release.version,
     },
-    dsh: { profile: { bundles: [...WEB_PROFILE.bundles] } },
+    dsh: { profile: { bundles: [...DESKTOP_PROFILE.bundles] } },
   }
   writeJson(join(projectDir, 'package.json'), manifest)
   writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
 }
 
-/** Create the first external plugin profile without running a package manager. */
+/**
+ * Initialize the Desktop bundles before external plugins, preserving package metadata and user patches.
+ * @param projectDir - Desktop-owned profile directory; the caller excludes concurrent writes.
+ */
 export function createPluginProfile(projectDir: string): void {
-  initProfile(projectDir, WEB_PROFILE.bundles)
+  initProfile(projectDir, DESKTOP_PROFILE.bundles)
+  const manifest = readProfileManifest('dsh desktop', projectDir)
+  const declared = manifest.dsh?.profile?.bundles
+  if (declared !== undefined && (!Array.isArray(declared) || declared.some(name => typeof name !== 'string'))) {
+    throw new Error('desktop profile: dsh.profile.bundles must be an array of package names')
+  }
+  const previous = declared ?? []
+  const bundles = [...DESKTOP_PROFILE.bundles, ...previous.filter(name => !DESKTOP_PROFILE.bundles.includes(name))]
+  if (bundles.length !== previous.length || bundles.some((name, index) => name !== previous[index])) {
+    writeProfileBundles(projectDir, manifest, bundles)
+  }
 }

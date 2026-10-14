@@ -1,11 +1,11 @@
 {
   "en-US": {
     "menu": [
-      { "label": "About DeepSeek Harness", "role": "about" },
+      { "label": "About DuraSH", "role": "about" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "DeepSeek Harness",
+      "applicationName": "DuraSH",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",
@@ -14,11 +14,11 @@
   },
   "zh-CN": {
     "menu": [
-      { "label": "关于 DeepSeek Harness", "role": "about" },
+      { "label": "关于 DuraSH", "role": "about" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "DeepSeek Harness",
+      "applicationName": "DuraSH",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",

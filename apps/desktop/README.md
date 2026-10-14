@@ -1,10 +1,10 @@
-# DeepSeek Harness Desktop
+# DuraSH Desktop
 
 English | [中文](README.zh.md)
 
 The desktop application is an Electron shell around the complete dsh Web application. An Electron RunAsNode child starts the shared profile runner, and Electron immediately loads the packaged Web entry at `dsh-app://app/`. Its shared loading page waits for Host boot injections, then starts the client without navigating to another document. Electron forwards application HTTP requests to the authenticated Web Host; WebSocket streams connect to that Host with credentials attached only for the owned application window. Node IPC carries boot injections, readiness, and shutdown. Desktop defaults to port `19387`, separate from Web’s `3080`; a `webserver.config.port` patch can override it.
 
-The first application-menu command, **About DeepSeek Harness**, opens Electron's native About panel with the application icon, product name, and installed release version. The menu follows the Desktop shell locale. macOS reads the icon from its application bundle, so an unpackaged development launch displays Electron's icon; Windows receives the packaged PNG.
+The first application-menu command, **About DuraSH**, opens Electron's native About panel with the application icon, product name, and installed release version. The menu follows the Desktop shell locale. macOS reads the icon from its application bundle, so an unpackaged development launch displays Electron's icon; Windows receives the packaged PNG.
 
 Desktop’s local native directory flow opens an Electron folder dialog attached to the application window, restoring, showing, and focusing that window first. Concurrent requests share one dialog; cancellation returns no path and failures remain retryable. Ordinary Web uses the Host chooser. Browse mode lists Host directories. On Linux without zenity or kdialog, automatic selection uses browse instead of the Electron dialog.
 
@@ -48,7 +48,7 @@ Electron owns `$DSH_HOME/profiles/desktop`. Its `dependencies` contains packages
 
 The application preload exposes boot readiness, fatal startup reporting, and native directory selection. Product documents use the shared authenticated HTTP APIs and receive the Desktop marker, update presentation, and an action that opens native confirmation; they cannot choose artifacts or authorize installation. Plugin management uses the Web application's authenticated HTTP APIs. Electron exposes no plugin-management IPC or separate management document. No renderer receives filesystem access, raw Electron IPC, a shell, or arbitrary pnpm arguments.
 
-The product UI retains Web actions, including "Open In..." through the shared authenticated HTTP routes. Desktop uses Web's automatic directory-picker selection and initializes new profiles with the shared Web template's bundles.
+The product UI retains Web actions, including "Open In..." through the shared authenticated HTTP routes. Desktop uses Web's automatic directory-picker selection and loads the base and Web bundles followed by the [DuraSH product bundle](../../packages/bundle/durash-web-profile/README.md). This layer supplies DuraSH branding, workflow controls, model selection, and bounded implementation/review. Existing Desktop profiles receive this built-in layer before their enabled external plugins; other package metadata, user patches, and plugin activation remain intact.
 
 Electron chooses typed English or Chinese shell copy from its application locale and falls back to English. On Windows, the main document's language updates desktop menus, recovery and update prompts. The repository Client UI i18n gate checks desktop sources.
 
@@ -60,7 +60,7 @@ On macOS the custom application menu also declares the standard File, Window, an
 
 The signed `resources/app.asar/dsh/desktop-runtime.json` binds the shell version, Electron's Node version, platform, architecture, shared package versions, and final file inventory. Startup reads the metadata and checks shared package records. Release schema, shell version, target compatibility, and file integrity are verified during packaging. Core packages are never copied into profile storage or installed by pnpm at first launch.
 
-1. The main window displays the shared Web loading page from packaged static assets before profile preparation or backend startup. Shared profile initialization creates missing manifest, empty user patch, and pnpm workspace files without overwriting existing files.
+1. The main window displays the shared Web loading page from packaged static assets before profile preparation or backend startup. Profile initialization creates missing manifest, empty user patch, and pnpm workspace files. It updates only the built-in bundle order in existing manifests and preserves their other fields, user patches, and pnpm settings.
 2. Before production Host startup, Desktop removes profile copies and fallback links for packages listed by the current runtime or the recorded Desktop package set. It removes their dependency declarations and overrides, and discards the lockfile when cleanup changes package state. Other plugin files, configuration, and versions remain; development skips this cleanup and startup never runs pnpm.
 3. Changes to Electron's Node version, platform, or architecture preserve installed plugins. Native incompatibilities surface during loading and can be repaired through pnpm.
 4. The main application’s Plugins page uses the shared [plugin manager](../../packages/boot/plugin-manager/README.md) against the Desktop profile. Package operations use bundled pnpm with normal user and profile configuration.
@@ -72,7 +72,7 @@ Fatal main-window creation, main-document loading, preload, renderer, Web initia
 
 Native dialog details include at most 1,200 UTF-16 code units and eight diagnostic lines; the complete reported error is written to the Electron console. Host error diagnostics retain only the last 64 Ki characters written to stderr. Earlier output is discarded so a long-running Host does not grow the shell’s diagnostic buffer indefinitely.
 
-Recovery waits for Host shutdown before changing plugin activation. The native recovery action calls the shared app-boot recovery function under the profile transaction lock. It disables third-party bundles and renames the profile’s `cordis.patch.yml` to `cordis.patch.yml.bak-<timestamp>` (with an ordinal on collisions) without parsing it; the next startup creates an empty patch. Installed packages and earlier backups remain. The home-level patch is unchanged. The Electron console records the backup path (or its absence) and the unchanged home-level patch. Invalid profile data, rename failures, or write failures are reported as recovery-operation errors; completed changes remain, and Desktop does not restart as though recovery succeeded. Desktop has no profile-reset action or emergency HTML document.
+Recovery waits for Host shutdown before changing plugin activation. The native recovery action calls the shared app-boot recovery function under the profile transaction lock. It retains the base, Web, and DuraSH product bundles, disables third-party bundles, and renames the profile’s `cordis.patch.yml` to `cordis.patch.yml.bak-<timestamp>` (with an ordinal on collisions) without parsing it; the next startup creates an empty patch. Installed packages and earlier backups remain. The home-level patch is unchanged. The Electron console records the backup path (or its absence) and the unchanged home-level patch. Invalid profile data, rename failures, or write failures are reported as recovery-operation errors; completed changes remain, and Desktop does not restart as though recovery succeeded. Desktop has no profile-reset action or emergency HTML document.
 
 
 ## Develop
@@ -93,13 +93,29 @@ pnpm run start:desktop
 
 Workspace development runs the current CLI and private Desktop Host packages under Electron RunAsNode. Plugin management and recovery use `$DSH_HOME/profiles/desktop`, separate from the disposable workspace runtime. The Host uses runtime module resolution in both development and packaged builds without creating official-package fallback links; developer-installed packages, including links, retain native priority. Use an unpacked application to exercise Electron RunAsNode, bundled pnpm, bundled dsh resources, plugin installation and repair paths.
 
+<a id="local-durash-macos-application"></a>
+
+### Local DuraSH application on macOS
+
+Build the current checkout for the Mac's native architecture:
+
+```sh
+pnpm run package:desktop:local
+```
+
+The [local packer](scripts/package-local.ts) builds the DuraSH client and Electron shell and uses the private [local-runtime project](../desktop-local-runtime/package.json) to materialize the Desktop Host and DuraSH product dependencies. The project has no application entry point. [Desktop profile initialization](src/project-manager.ts) selects the same base, Web, and DuraSH bundle order for build metadata, startup, and recovery.
+
+The application is generated under `.desktop-build/targets/<target>/durash-artifacts/`, with `<target>` set to `mac-arm64` or `mac-x64`. Copy the generated `DuraSH.app` into `~/Applications` to install it for the current user. This local build keeps the checkout's version, uses ad-hoc signing without Apple signing credentials or notarization, and includes no automatic-update feed. Formal release packaging uses the signing and notarization process below. `--skip-build` reuses existing DuraSH client and shell artifacts; `--prepare-only` prepares and checks the runtime without generating an application.
+
+The installed application reads the same `$DSH_HOME` product data as DuraSH Web, defaulting to `~/.dsh`, while keeping executable packages and plugin activation in its own `profiles/desktop`. Stop the Web Host before starting Desktop with the same home: product JSON storage rewrites complete documents from each Host's in-memory state, so concurrent Hosts can lose updates. Packaging smoke checks use temporary homes.
+
 ## Package
 
 <a id="release-versions"></a>
 
 ### Release versions
 
-Before each Desktop packaging run, first confirm the complete version string with the current user. Check the selected deployment, dsh base version, retained release records, and published objects, then propose the exact version for approval. Do not change release-family manifests or start packaging until the user confirms that version; the deployment setting alone does not authorize a version choice.
+Before each formal Desktop release packaging run, first confirm the complete version string with the current user. Check the selected deployment, dsh base version, retained release records, and published objects, then propose the exact version for approval. Do not change release-family manifests or start packaging until the user confirms that version; the deployment setting alone does not authorize a version choice.
 
 Record the current dsh version as the base before changing any manifests. A production Desktop release uses that exact version, including any `alpha`, `beta`, or `rc` identifiers. A test release preserves the complete prerelease base and appends `.YYYYMMDD.index`; a stable base uses `-test.YYYYMMDD.index` instead.
 

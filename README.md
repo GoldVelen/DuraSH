@@ -46,6 +46,10 @@ pnpm start
 
 The default build and start commands select the DuraSH client and `durash` runtime profile together. The Web UI starts at `http://127.0.0.1:3080` by default. Use `pnpm run build:local` before `pnpm dsh web` for the upstream source-development client, or `pnpm run build:official` for official release artifacts; the SDK and headless runtime profiles remain intact.
 
+### Use the desktop application
+
+Build a local macOS application with `pnpm run package:desktop:local`. The [Desktop guide](apps/desktop/README.md#local-durash-macos-application) covers installation and switching existing Harness data from Web to Desktop.
+
 ## What is DuraSH-owned?
 
 - the DuraSH name, mark, favicon, wordmark, and `durash` build/profile;

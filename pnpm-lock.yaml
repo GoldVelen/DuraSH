@@ -624,6 +624,15 @@ importers:
         specifier: workspace:^
         version: link:../../packages/core/tools
 
+  apps/desktop-local-runtime:
+    dependencies:
+      '@deepseek-ai/dsh-desktop-host':
+        specifier: workspace:^
+        version: link:../desktop-host
+      '@durash/dsh-web-profile':
+        specifier: workspace:^
+        version: link:../../packages/bundle/durash-web-profile
+
   apps/web:
     devDependencies:
       '@deepseek-ai/cordis-plugin-group':

@@ -26,6 +26,7 @@
 | 带持久 blocker 停机的有界自动返工 | 有界闭环已实现 | 一轮返工，以携带最终审查反馈的持久 `blocked` 停机收尾；旧分叉在该停机之外的 `needs_replan` 轮次词汇未迁移 |
 | 重启后恢复与独立取消/quiescence | 有界闭环已实现 | `resume()` 只重跑记录中第一个未完成阶段；取消与运行时拆卸都收敛到持久终态记录，不遗留后台写入者（聚焦回归在循环包内） |
 | 旧分叉的 token 剪枝/压缩与溢出重试策略 | 未迁移 | 当前 DSH 有通用 compaction/token-meter 服务，但尚未证明与旧 workflow 专用策略等价 |
+| DuraSH Desktop Harness | 支持本地 macOS 打包 | 应用包含产品 bundle、复用现有 Harness 数据，并独立保存 Desktop 可执行包；参见[本地打包](apps/desktop/README.zh.md#本地-durash-macos-应用) |
 | DuraSH npm 发行版 | 未准备 | 源码运行已支持；DuraSH 自有包已标记为 private 并从继承的 DSH release family 排除，因此既不宣传 npm 包，也不会被意外发布 |
 
 ## 当前上游漂移

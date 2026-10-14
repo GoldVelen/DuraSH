@@ -1,0 +1,13 @@
+{
+  "name": "@durash/dsh-desktop-local-runtime",
+  "description": "Private dependency closure for the local DuraSH desktop package",
+  "version": "0.1.6-alpha.2",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": [],
+  "dependencies": {
+    "@deepseek-ai/dsh-desktop-host": "workspace:^",
+    "@durash/dsh-web-profile": "workspace:^"
+  }
+}

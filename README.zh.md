@@ -48,6 +48,10 @@ pnpm start
 
 默认构建与启动命令会同时选择 DuraSH 客户端和 `durash` 运行 profile。Web UI 默认启动在 `http://127.0.0.1:3080`。如需上游源码开发客户端，请先运行 `pnpm run build:local`，再运行 `pnpm dsh web`；如需官方发布产物，请运行 `pnpm run build:official`。SDK 与 headless 运行 profile 保持不变。
 
+### 使用桌面客户端
+
+通过 `pnpm run package:desktop:local` 构建本机 macOS 应用。[桌面说明](apps/desktop/README.zh.md#local-durash-macos-application)包含安装步骤，以及将现有 Harness 数据从 Web 切换到桌面的操作。
+
 ## 哪些内容属于 DuraSH？
 
 - DuraSH 名称、标志、favicon、wordmark 与 `durash` 构建/profile；

@@ -288,7 +288,7 @@ beforeEach(() => {
   vi.spyOn(console, 'info').mockImplementation(() => {})
   vi.stubEnv('DSH_DESKTOP_PNPM_ENTRY', 'test-pnpm')
   vi.stubEnv('DSH_DESKTOP_DSH_DIR', 'test-runtime')
-  vi.stubGlobal('process', { ...process, platform: 'win32', resourcesPath: 'desktop-test-resources' })
+  vi.stubGlobal('process', { ...process, platform: 'win32', arch: 'x64', resourcesPath: 'desktop-test-resources' })
   vi.stubEnv('DSH_DESKTOP_HOST_INSPECT_PORT', undefined)
   vi.stubEnv('DSH_DESKTOP_MANDATORY_UPDATE_CONFIG', undefined)
   vi.stubEnv('DSH_DESKTOP_UPDATE_JOURNAL_DIR', undefined)
@@ -308,12 +308,12 @@ afterEach(async () => {
 
 describe('desktop main startup', () => {
   it.each([
-    ['darwin', true, 'en-US'],
-    ['darwin', false, 'zh-CN'],
-    ['win32', true, 'zh-CN'],
-    ['win32', false, 'en-US'],
-  ] as const)('offers the native About panel before other commands on %s (packaged=%s, locale=%s)', async (platform, packaged, locale) => {
-    vi.stubGlobal('process', { ...process, platform })
+    ['darwin', true, 'en-US', 'arm64'],
+    ['darwin', false, 'zh-CN', 'x64'],
+    ['win32', true, 'zh-CN', 'x64'],
+    ['win32', false, 'en-US', 'x64'],
+  ] as const)('offers the native About panel before other commands on %s (packaged=%s, locale=%s, arch=%s)', async (platform, packaged, locale, arch) => {
+    vi.stubGlobal('process', { ...process, platform, arch })
     harness.app.isPackaged = packaged
     vi.spyOn(harness.app, 'getLocale').mockReturnValue(locale)
     await readyForUpdate()
@@ -547,7 +547,7 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
     expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 DeepSeek Harness', 'separator', '检查更新…', 'separator', '退出',
+      '关于 DuraSH', 'separator', '检查更新…', 'separator', '退出',
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')

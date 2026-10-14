@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -96,6 +96,25 @@ async function checkPty() {
   }
 }
 
+/** Acquire, contend, and release the packaged POSIX session writer lock. */
+async function checkFlock() {
+  if (process.platform === 'win32') return
+  const { tryLockExclusive } = await import(requireRuntime.resolve('@deepseek-ai/node-addon-system/flock'))
+  const path = join(scratch, 'session-writer-lock')
+  let writer = openSync(path, 'wx', 0o600)
+  const contender = openSync(path, 'r')
+  try {
+    await tryLockExclusive(writer)
+    await assert.rejects(tryLockExclusive(contender), error => ['EAGAIN', 'EWOULDBLOCK'].includes(error.code))
+    closeSync(writer)
+    writer = undefined
+    await tryLockExclusive(contender)
+  } finally {
+    if (writer !== undefined) closeSync(writer)
+    closeSync(contender)
+  }
+}
+
 /** Resolve one system function through Koffi's packaged native module. */
 function checkKoffi() {
   const koffi = requireRuntime('koffi')
@@ -139,6 +158,7 @@ function checkHtml() {
 try {
   checkPnpm()
   checkKoffi()
+  await checkFlock()
   await checkSharp()
   checkHtml()
   await checkPty()
@@ -150,5 +170,5 @@ try {
 // Natural event-loop drain includes node-pty's worker and console-list helper teardown.
 process.once('beforeExit', () => {
   console.log(JSON.stringify({ node: process.versions.node, platform: process.platform, arch: process.arch,
-    koffi: true, sharp: true, html: true, pty: true, pnpm: true }))
+    koffi: true, flock: process.platform === 'win32' ? 'unsupported' : true, sharp: true, html: true, pty: true, pnpm: true }))
 })

@@ -26,6 +26,7 @@ This document separates current source truth from the older DSH fork's accepted 
 | Bounded automatic rework with persistent-blocker stop | Implemented for the bounded loop | One rework round with a durable `blocked` stop carrying the final reviewer feedback; the old fork's `needs_replan` round vocabulary beyond that stop is not migrated |
 | Restart-safe resume and independent cancel/quiescence | Implemented for the bounded loop | `resume()` re-runs only the record's first unsettled stage; cancellation and runtime teardown reach durable terminal records with no background writer (focused regressions in the loop package) |
 | Older fork's token pruning/compaction and overflow retry policy | Not migrated | Current DSH has generic compaction/token-meter services; equivalence with the old workflow-specific policy is not established |
+| DuraSH Desktop Harness | Local macOS packaging supported | The app includes the product bundle, shares existing Harness data, and keeps Desktop executable packages separate; see [local packaging](apps/desktop/README.md#local-durash-macos-application) |
 | DuraSH npm distribution | Not prepared | Source execution is supported; DuraSH-owned packages are marked private and excluded from the inherited DSH release family, so no npm package is advertised or accidentally published |
 
 ## Current upstream drift
