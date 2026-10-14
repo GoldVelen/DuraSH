@@ -1,4 +1,10 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import { credentialKey } from '@deepseek-ai/dsh-credentials'
+import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import {
   createProcessShutdown,
   PROCESS_SHUTDOWN_TIMEOUT_MS,
@@ -20,6 +26,59 @@ afterEach(() => {
 })
 
 describe('process shutdown', () => {
+  it('drains a rotated credential mutation beyond five seconds before completing naturally', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-shutdown-credential-'))
+    const path = join(root, 'credentials.yaml')
+    const ctx = new Context()
+    const response = deferred()
+    let mutation: Promise<unknown> | undefined
+    let closing: Promise<void> | undefined
+    try {
+      await ctx.plugin(LocalCredentialProvider, { path, watch: false })
+      const key = credentialKey('fixture', 'refresh')
+      await ctx.credentials.modifyRecord(key, async () => ({
+        kind: 'grant', payload: { refresh: 'fixture-original-refresh' },
+      }))
+      const consumed = deferred()
+      mutation = ctx.credentials.modifyRecord(key, async (current) => {
+        expect(current).toEqual({ kind: 'grant', payload: { refresh: 'fixture-original-refresh' } })
+        consumed.resolve()
+        await response.promise
+        return { kind: 'grant', payload: { refresh: 'fixture-replacement-refresh' } }
+      })
+      await consumed.promise
+      vi.useFakeTimers()
+      const exit = vi.fn()
+      const complete = vi.fn()
+      const shutdown = createProcessShutdown(() => ctx.fiber.dispose(), exit, complete)
+      closing = shutdown.shutdown(0)
+
+      await vi.advanceTimersByTimeAsync(5_001)
+      expect(exit).not.toHaveBeenCalled()
+      expect(complete).not.toHaveBeenCalled()
+      expect(await readFile(path, 'utf8')).toContain('fixture-original-refresh')
+
+      response.resolve()
+      await mutation
+      await closing
+      const saved = await readFile(path, 'utf8')
+      expect(saved).toContain('fixture-replacement-refresh')
+      expect(saved).not.toContain('fixture-original-refresh')
+      expect(complete).toHaveBeenCalledExactlyOnceWith(0)
+      expect(exit).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(PROCESS_SHUTDOWN_TIMEOUT_MS)
+      expect(exit).not.toHaveBeenCalled()
+    } finally {
+      response.resolve()
+      const cleanup = await Promise.allSettled([mutation, closing, ctx.fiber.dispose()])
+      vi.useRealTimers()
+      await rm(root, { recursive: true, force: true })
+      const failures: unknown[] = []
+      for (const result of cleanup) if (result.status === 'rejected') failures.push(result.reason as unknown)
+      if (failures.length > 0) throw new AggregateError(failures, 'credential shutdown fixture cleanup failed')
+    }
+  })
+
   it('completes naturally after disposal resolves and forces exit when it rejects', async () => {
     const resolvedExit = vi.fn()
     const resolvedComplete = vi.fn()

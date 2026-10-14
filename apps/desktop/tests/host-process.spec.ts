@@ -1,11 +1,18 @@
+import { ChildProcess, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DesktopHostProcess, DesktopHostUncleanExitError } from '../src/host-process.ts'
 
+vi.mock('node:child_process', async (original) => {
+  const actual = await original<typeof import('node:child_process')>()
+  return { ...actual, spawn: vi.fn(actual.spawn) }
+})
+
 const roots: string[] = []
 const hosts: DesktopHostProcess[] = []
+const controlledChildren: ChildProcess[] = []
 
 const HTTP_HOST = `
 import { createServer } from 'node:http'
@@ -61,9 +68,35 @@ function hostProcess(
   return host
 }
 
+async function controlledHost() {
+  const runtime = projectWithHost()
+  const child = new ChildProcess()
+  controlledChildren.push(child)
+  Object.assign(child, { connected: true })
+  const send = vi.fn((_message: Parameters<ChildProcess['send']>[0], ..._options: unknown[]) => true)
+  child.send = send
+  const kill = vi.spyOn(child, 'kill').mockReturnValue(true)
+  vi.mocked(spawn).mockReturnValueOnce(child)
+  const host = hostProcess(runtime)
+  const started = host.start()
+  child.emit('message', { type: 'ready', url: 'http://127.0.0.1:3080/' })
+  await started
+  return { runtime, host, child, send, kill }
+}
+
 afterEach(async () => {
-  await Promise.all(hosts.splice(0).map(host => host.stop()))
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  try {
+    for (const child of controlledChildren.splice(0)) {
+      Object.assign(child, { connected: false, exitCode: child.exitCode ?? 0 })
+      child.emit('close', child.exitCode)
+    }
+    await Promise.all(hosts.splice(0).map(host => host.stop()))
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  } finally {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.mocked(spawn).mockReset()
+  }
 })
 
 describe('desktop host process', () => {
@@ -108,6 +141,65 @@ describe('desktop host process', () => {
     expect(existsSync(join(runtime, 'stopped'))).toBe(true)
     await expect(fetch(ready.url)).rejects.toThrow()
     expect(failure).not.toHaveBeenCalled()
+  })
+
+  it('allows saved teardown and acknowledgement just before the forty-second deadline', async () => {
+    vi.useFakeTimers()
+    const { runtime, host, child, send, kill } = await controlledHost()
+    send.mockImplementation((message) => {
+      expect(message).toEqual({ type: 'shutdown' })
+      setTimeout(() => {
+        writeFileSync(join(runtime, 'stopped'), '')
+        child.emit('message', { type: 'shutdown-complete' })
+        Object.assign(child, { connected: false, exitCode: 0 })
+        child.emit('close', 0)
+      }, 39_999)
+      return true
+    })
+    const stopped = host.stop(true).then(() => undefined, (error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(39_998)
+    expect(kill).not.toHaveBeenCalled()
+    expect(existsSync(join(runtime, 'stopped'))).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await stopped).toBeUndefined()
+    expect(existsSync(join(runtime, 'stopped'))).toBe(true)
+    expect(kill).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('escalates after forty seconds, then five seconds, and refuses forced update handoff', async () => {
+    vi.useFakeTimers()
+    const { host, child, kill } = await controlledHost()
+    const stopped = host.stop(true).then(() => undefined, (error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(39_999)
+    expect(kill).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(kill.mock.calls).toEqual([['SIGTERM']])
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(kill).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(kill.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+    Object.assign(child, { connected: false, signalCode: 'SIGKILL' })
+    child.emit('close', null)
+    const error = await stopped
+    expect(error).toBeInstanceOf(DesktopHostUncleanExitError)
+    expect(String(error)).toContain('graceful deadline exceeded true')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('refuses to confirm exit when SIGKILL also exceeds its five-second deadline', async () => {
+    vi.useFakeTimers()
+    const { host, kill } = await controlledHost()
+    const settled = vi.fn()
+    const stopped = host.stop(true).then(() => { settled() }, (error: unknown) => { settled(); return error })
+    await vi.advanceTimersByTimeAsync(49_999)
+    expect(kill.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    const error = await stopped
+    expect(error).toEqual(new Error('dsh desktop host did not exit after SIGKILL'))
+    expect(error).not.toBeInstanceOf(DesktopHostUncleanExitError)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('passes external dependencies and runtime profile resolution to the Host', async () => {

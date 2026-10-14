@@ -124,7 +124,7 @@ export async function withDefaultWeb(test: TestContext, inspect: (app: DefaultWe
         forced = true
         child.kill('SIGKILL')
       }
-      // The CLI owns its 5-second graceful deadline; the outer watchdog also allows that process exit to settle.
+      // The CLI owns its graceful deadline; the outer watchdog also allows that process exit to settle.
       const kill = setTimeout(force, PROCESS_SHUTDOWN_TIMEOUT_MS * 2)
       try {
         if (!exited && child.connected) {

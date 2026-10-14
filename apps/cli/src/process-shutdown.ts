@@ -1,7 +1,7 @@
 /** Bounded, escalating process shutdown for the long-lived CLI surfaces. */
 
 /** Maximum grace allowed for the application tree to dispose before process exit. */
-export const PROCESS_SHUTDOWN_TIMEOUT_MS = 5_000
+export const PROCESS_SHUTDOWN_TIMEOUT_MS = 30_000
 
 /** Process-exit controller shared by normal completion and Unix signal handlers. */
 export interface ProcessShutdown {

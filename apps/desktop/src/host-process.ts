@@ -186,7 +186,7 @@ export class DesktopHostProcess {
   }
 
   /**
-   * Request teardown and await child exit, escalating termination when needed.
+   * Request teardown and wait up to forty seconds for child exit before escalating termination.
    * @param requireGraceful - Reject update handoff after forced termination or unsuccessful child exit.
    * @returns Completion of owned process teardown. DesktopHostUncleanExitError confirms exit but refuses installation;
    * other failures do not confirm exit.
@@ -197,7 +197,7 @@ export class DesktopHostProcess {
     this.stopping = true
     if (child.connected) child.send({ type: 'shutdown' }, (error) => { if (error !== null) this.fail(error) })
     const exited = this.exitPromise ?? Promise.resolve()
-    const graceful = await exitsWithin(exited, 10_000)
+    const graceful = await exitsWithin(exited, 40_000)
     if (!graceful) child.kill('SIGTERM')
     if (!await exitsWithin(exited, 5_000)) {
       child.kill('SIGKILL')
