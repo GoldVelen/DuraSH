@@ -4,11 +4,12 @@
  *
  * Two constructions, one decision: a route the installed catalog ships, whose
  * profile does not override the wire protocol, **reuses that catalog provider**
- * with its models replaced — the catalog provider owns API implementations this
- * package cannot reconstruct (Bedrock loads its Smithy module through a
+ * with its effective Host models replaced — the catalog provider owns API
+ * implementations this package cannot reconstruct (Bedrock loads its Smithy module through a
  * separate entry point), so rebuilding it from parts would silently narrow
- * which providers work. Every other route — one pi-ai has never heard of, or a
- * catalog route pointed at a different protocol — is built by `createProvider`
+ * which providers work. Runtime models retain their own protocols and endpoints;
+ * installed-list membership does not restrict them. Every other route — one
+ * pi-ai has never heard of, or a catalog route pointed at a different protocol — is built by `createProvider`
  * over the protocol table below.
  *
  * Credentials never reach this module's storage: the harness resolves a route's
@@ -97,7 +98,7 @@ export interface ProviderSpec {
   api?: string
   /** Endpoint override already applied to {@link models}; kept for provider-level display. */
   baseURL?: string
-  /** The route's materialized models, in configuration order. */
+  /** The route's effective model descriptors, retaining per-model protocols and endpoints. */
   models: readonly Model<Api>[]
   /**
    * Whether the profile names a credential, which it does through `apiKeyEnv`

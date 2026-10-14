@@ -1,5 +1,5 @@
 ---
-description: "面向用户与维护者的 pi-ai 多提供方适配器说明：通过 pi-ai 目录与手工声明网关路由 harness LLM（大语言模型）服务。"
+description: "通过 pi-ai 发送多提供方模型请求、同步账号模型目录、使用 OAuth 登录，并配置手工声明的网关。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`@deepseek-ai/dsh-llm-pi-ai` 通过一份配置把模型请求路由到多个 pi-ai 提供方、OpenAI 兼容网关或自托管服务器。已安装的 pi-ai 提供方会提供端点、协议和模型目录默认值；自定义路由可以直接声明这些值，无需修改代码。profile 与凭据按请求解析，因此设置变更会在下一个请求生效，无需重启。受支持的提供方可以使用已存储的 OAuth 或交互式密钥登录，并通过跨进程锁刷新凭据。本包可以在没有路由时启动，并在用户设置添加路由后将其激活。
+`@deepseek-ai/dsh-llm-pi-ai` 把模型请求路由到多个提供方、OpenAI 兼容网关或自托管服务器。已安装的 pi-ai 元数据提供初始默认值；ChatGPT/Codex、OpenCode Go 与 xAI 的账号目录会自动刷新模型元数据。配置中的模型列表既可限制可选模型，也可只定制对应账号模型，同时接纳新的模型 id。profile 与凭据按请求解析，配置变更无需重启即可生效。受支持的登录流程会存储 OAuth 或交互式密钥凭据，并通过跨进程锁刷新。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当组合需要通过 pi-ai 的提供方目录、或通过 pi-ai 已安装目录未描述的网关路由模型请求时挂载本插件。`providers` 字典就是整个配置面：每个键都是请求用 `GenerateOptions.provider` 选择的提供方路由名。
+当组合需要通过 pi-ai 提供方目录或其已安装目录未描述的网关发送模型请求时，挂载本插件。`providers` 的每个键都是请求通过 `GenerateOptions.provider` 选择的路由；根级计时字段控制原生目录同步。
 
 ### 何时选择
 
@@ -75,10 +75,11 @@ kind: "package-reference"
 | `apiKeyEnv` | 无 | 按请求解析的凭据引用；省略时交由 pi-ai 环境发现 |
 | `displayName` | 提供方名 | 选择器界面显示的标签 |
 | `catalogProvider` | 提供方名 | 提供目录、协议、端点与 auth 默认值的已安装提供方，不改变路由键 |
-| `api` | 目录协议 | 协议格式；仅目录不提供的路由需要 |
-| `baseURL` | 目录端点 | 路由上所有模型的端点 |
-| `models` | 已安装目录 | 整体替换路由目录；每个条目从已安装模型取默认值 |
-| `modelOverrides` | 无 | 重塑个别已安装目录模型，而不替换其余模型 |
+| `api` | 目录中各模型的协议 | 覆盖每个模型的协议；手工声明的路由必须设置 |
+| `baseURL` | 目录中各模型的端点 | 覆盖每个模型的端点 |
+| `models` | 当前有效目录 | 选择模型 id；`modelCatalogMode` 为 live 时只定制同 id 的模型 |
+| `modelCatalogMode` | 未设置 | `live` 跟随目录 id；`configured` 或省略时保留显式模型名单 |
+| `modelOverrides` | 无 | 未设置 `models` 列表时，定制当前有效目录中的个别模型 |
 | `compat` | 目录检测 | 无法识别端点的协议兼容开关 |
 | `defaultContextWindow` | `262,144` | 未描述模型的容量回退 |
 | `defaultMaxTokens` | `32,768` | 未描述模型的输出上限回退 |
@@ -95,17 +96,19 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程�
 
 OpenCode Go 提供 [Console 浏览器登录](https://opencode.ai/v2/docs/console/api/#device-flow)和原生 API key 方式。设备授权流程使用本客户端标识 `durash`，绑定用户在浏览器选定的工作区，并采用服务端返回的轮询间隔和过期时间。访问令牌的有效期存为过期时间戳，不受设备授权定时器上限限制。轮换后的令牌保存在 `llm-pi-ai/opencode-go`；pi-ai 在凭据存储锁内刷新，再生成 bearer 请求头。取消请求时调用方立即返回，已开始的刷新仍完成并保存替换令牌；提供方 profile 的 `oauthRefreshTimeoutMs` 限制这次交换的时长（默认值与上限均为 15,000 毫秒）。启用不含 `apiKeyEnv` 覆盖的 `opencode-go` 提供方 profile，即可使用已存储的登录。
 
-Go 保留内置目录中各模型的协议：Messages 使用 `https://opencode.ai/inference/go`，Chat Completions 和 Responses 使用 `https://opencode.ai/inference/go/v1`。所有 OpenCode 请求保留 Harness User-Agent，并从持久化会话 id 生成 `x-opencode-session`；没有 id 的请求不会凭空生成一个。客户端遭到拒绝后不会切换到按量计费端点。OpenCode 的 [Use balance 设置](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits)仍可能在 Go 额度耗尽后扣除 Console 余额；本适配器不改变该账户设置。Go 模型清单继续使用已安装目录，不进行在线目录刷新。
+Go 从经过认证的 Console 配置读取当前工作区的模型清单：请求使用的模型 id、协议、各模型端点和上限来自该账号目录。公开的 `models.dev` 元数据补充模型能力与推理设置；已安装的同协议元数据补充其他已知兼容信息。目录只接受 Go 提供方，并要求公布的推理端点位于 OpenCode 的 HTTPS Go 路径内。所有 OpenCode 请求保留 Harness User-Agent，并从持久化会话 id 生成 `x-opencode-session`；没有 id 的请求不会凭空生成一个。客户端遭到拒绝后不会切换到按量计费端点。OpenCode 的 [Use balance 设置](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits)仍可能在 Go 额度耗尽后扣除 Console 余额；本适配器不改变该账户设置。
 
 ### 解析模型目录
 
 除非 `catalogProvider` 显式点名另一个已安装提供方，否则 profile 的目录来源就是路由键。私有网关以部署专用路由名服务官方提供方模型时可使用前一种方式：路由保留自己的端点、凭据与选择身份，同时继承上下文、模态和推理档位等模型能力。DSH 不会根据模型 id 猜测来源，因为不同网关可能用相同 id 实现不同能力；空值或不存在的来源会被拒绝。
 
-profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
+未设置 `modelCatalogMode: live` 时，非空 `models` 列表会替换当前有效目录的模型 id。每个条目从当前同 id 模型继承未设置字段，因此显式子集保留可选范围，更新后的元数据仍能提供协议、端点、模态和能力。`modelCatalogMode: configured` 显式选择该模式；省略时保留相同行为。
+
+设置 `modelCatalogMode: live` 后，当前账号目录提供全部 id，包括新发布的模型。已保存的 `models` 行只定制对应 id，不限制名单。已保存行的 id 离开目录时仍可编辑并显示诊断，但不会提供该模型，也不会阻止其他模型。`modelOverrides` 仅在没有 `models` 列表时定制目录条目；未知的覆盖 id 仍属无效配置。
 
 ### 带推理（reasoning）与协议兼容运行
 
-`reasoningEfforts` 声明模型可选择的 thinking 等级：每个键都是选择器提供的等级，其值是分派时在协议中发送的拼写，因此 `max: ultra` 可以为拥有自有词汇的网关重命名等级。省略该字段时保留已安装目录条目的能力；`false` 声明非推理模型。对于 pi-ai 无法识别的端点，`compat` 开关重塑请求——哪个角色携带系统提示词、哪个字段限制输出、thinking 等级如何传递——可逐路由、逐模型配置。条目与已安装目录都没有尺寸的模型，会采用路由的 `defaultContextWindow` 与 `defaultMaxTokens` 回退值。
+`reasoningEfforts` 声明可选推理档位：键是选择器提供的档位，值是请求中发送的拼写。省略时保留当前有效目录的能力；`false` 声明非推理模型。`compat` 按路由或模型调整受支持的请求字段。配置与目录都没有提供容量时，模型使用 `defaultContextWindow` 与 `defaultMaxTokens`。目录中的输出容量不会成为请求上限；只有显式配置的模型 `maxTokens` 会成为请求上限。
 
 对于自托管 Chat Completions 端点，`thinkingTokenBudgetField` 选择推理预算参数，`vllmPriority` 在服务端启用优先级调度时设置整数调度优先级。模板参数接受 `$var: thinking.budget`。`openai-responses` 网关可设置 `supportsMaxOutputTokens: false` 来省略 `max_output_tokens`；Azure 与 Codex 传输会忽略这个共享兼容字段。这些控制均需显式启用；目录拥有的 Anthropic effort 和回退能力不是可配置开关。
 
@@ -113,21 +116,35 @@ profile 的 `models` 列表会替换而非扩展路由的已安装目录；每�
 
 profile 通过可选 settings seam 每次操作重新读取：base 与用户的 `llm-pi-ai:` 设置分节按提供方合并，因此用户可以新增路由、覆盖组合路由的一个字段或把路由指向另一个代理，全部在下一个请求生效、无需重启。适配器无法服务的分节会在写入处被拒绝——`settings.mutate` 回答 `settings-rejected`——之后失效的已存储分节会保留 namespace 最后有效值。当路由集合或某路由的重试策略变化时，插件会原子地重新注册：冲突路由会让此前路由继续服务。
 
+<a id="synchronize-account-model-directories"></a>
+### 同步账号模型目录
+
+已配置的 ChatGPT/Codex、OpenCode Go 与 xAI 路由在 Host 启动、登录成功或凭据来源变化、定时以及显式刷新时同步目录。路由必须保留原生 API；私有端点通过 `modelCatalogMode: live` 明确启用同步。在账号目录首次读取成功前，已安装目录提供初始元数据。
+
+Host 在内存中保存完整模型描述，按路由及当前账号或端点隔离。模型列表、解析和分派使用同一份元数据。同一来源刷新失败时保留最后一次有效目录并显示诊断。账号或来源变化会清空旧目录，直到新来源读取成功；不会暴露另一个账号的模型。重启 Host 后重新从已安装元数据开始。
+
+以下字段位于插件配置根级，与 `providers` 并列；均接受大于零且不超过 `2,147,483,647` 的有限毫秒数。
+
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `modelCatalogRefreshMs` | `60,000` | 原生目录的刷新间隔 |
+| `modelCatalogTimeoutMs` | `15,000` | 一次共享原生目录请求的截止时间 |
+
 ### 从端点发现模型
 
-插件会回答「该提供方可以提供哪些模型？」，供配置界面正在编辑或起草的路由使用。被动查询从已安装目录读取，不发网络请求，并将其 `input` 数组保留为发现结果的 `inputModalities`。显式刷新 xAI 时，Host 会按 id 合并经过认证的 `GET /models` 与 `GET /language-models`：语言模型目录确定聊天候选，两个响应共同提供上下文长度、输入类型与受支持的推理档位；未返回的输出上限保持未指定。现有订阅登录经 pi-ai 正常刷新，草稿密钥或已配置的凭据引用优先。目录读取失败会使刷新报错，不会返回旧的内置列表。
+被动发现优先读取 Host 当前的账号元数据，否则读取已安装目录，不自行发起网络请求。显式刷新已存储的原生来源还会更新运行时目录，无需写入设置。未保存的端点、协议或密钥探测只返回编辑器候选，不能替换该目录。xAI 按 id 合并经过认证的 `GET /models` 与 `GET /language-models`，由语言目录选择聊天模型，两份响应共同提供能力信息。草稿密钥或已配置的凭据引用优先于订阅认证。刷新失败会直接报错，不会把旧名单当作成功结果返回。
 
-显式刷新 Codex 时，Host 使用当前订阅凭据与账号 id 请求 `GET {baseURL}/codex/models?client_version=0.155.0`；若根地址已以 `/codex` 结尾，则直接使用。客户端版本标识受支持的目录响应，与已安装模型名单无关。仅提供 `visibility: list` 的条目，包括公共 API 不提供的订阅模型。候选信息保留模型 id、名称、上下文窗口、输入类型及已安装适配器支持的推理档位；缺失的输出上限保持未指定。刷新失败会报错，不回退到内置列表。获取目录不改变已保存模型；采纳并保存候选后，后续请求使用持久化的模型元数据。
+Codex 使用当前订阅凭据与账号 id 请求 `GET {baseURL}/codex/models?client_version=0.155.0`；根地址已以 `/codex` 结尾时直接使用。仅提供 `visibility: list` 的条目，包括公共 API 不提供的模型。模型 id、名称、上下文窗口、输入类型与受支持的推理档位进入原生运行时元数据，包含已安装 SDK 尚未收录的 id。编辑器候选中缺失的输出上限保持未指定。刷新目录不会改写已保存的模型定制。
 
-其他内置提供方仍使用本地目录，手工声明的路由查询其端点。`openai-completions` 与 `openai-responses` 使用带 bearer 鉴权的 `GET {baseURL}/models`，`anthropic-messages` 则以 `x-api-key` 和 `anthropic-version` 使用原生 `GET /v1/models?limit=1000` 语义；其列表 URL 接受带或不带末尾 `/v1` 的 API 根地址，因为网关文档两种写法都会发布，且只有该列表 URL 会归一化这一段，模型请求收到的仍是配置原样的 `baseURL`。已配置且具名的路由会在 Host 内部提供已存凭据与 profile `headers`，因此通过 `settings.yaml` 或 Cordis 配置设置的部署标头可以到达模型发现请求，但不会成为发现请求或 Models 页面的字段；表单中新键入的密钥仍优先于已存凭据。解析器接受标准 `data` 数组或富信息 `models` 对象，并归一化每个候选的 id、显示名、上下文窗口与最大输出 token 数；Anthropic 的 `max_input_tokens` 与 `max_tokens` 会进入相同容量字段，即使对象条目点名了另一个规范 id，对象键仍是请求 id，原始类型的对象属性会被忽略，缺失的显示名则回退到该请求 id。回答是界面可以提供给用户采纳的候选元数据——不存储任何内容，`settings.yaml` 仍然是决定路由服务内容的唯一事实。
+其他内置提供方保留本地发现；手工声明路由查询其端点。`openai-completions` 与 `openai-responses` 使用带 bearer 认证的 `GET {baseURL}/models`；`anthropic-messages` 使用带 `x-api-key` 与 `anthropic-version` 的 `GET /v1/models?limit=1000`。Anthropic 列表查询归一化末尾 `/v1`，模型请求仍保留配置的 `baseURL`。已存储凭据与部署标头保留在 Host；一次性草稿密钥优先。解析器接受标准 `data` 数组或富信息 `models` 对象，保留对象键作为请求 id，并归一化名称、容量与模态。这些草稿结果保持为候选，直到编辑器采纳并保存。
 
 ### 失败与恢复
 
 pi-ai 不提供的路由需要 `api`、`baseURL` 与非空 `models` 列表；显式的 `catalogProvider` 必须点名已安装提供方。无法服务的 profile 会在写入处被拒绝，并点名路由与模型。失败携带稳定 code：无法使用的凭据以 `INVALID_CREDENTIAL` 失败并点名路由与引用，`apiKeyEnv` 引用解析为空的路由以 `MISSING_CREDENTIAL` 失败，未配置模型以 `UNKNOWN_MODEL` 失败，终止性提供方失败则区分 `QUOTA` 与暂时性 `RATE_LIMIT`。`GenerateOptions.stop` 以 `UNSUPPORTED_OPTION` 被拒绝，因为 pi-ai 的通用流式 UI 无法跨提供方保证它。
 
-Settings 写入会在合并组合层与用户层后严格校验每个新增或修改的提供方。命名空间注册时，已存储配置的目录解析错误会保留命名空间与提供方行，并通过 `LlmConfigurableProvider.error` 优先返回首个模型诊断，无模型诊断时返回路由错误；未修改的错误提供方不会阻止其他编辑。可解析的模型仍可选择，无法解析的模型保留在可编辑配置中，直接请求时会在网络 I/O 前以 `INVALID_CONFIG` 失败。修复或删除错误配置会清除诊断。Schema 与 profile 自身的约束错误仍会拒绝加载。后续外部文件编辑会校验变化的提供方，失败时保留最后一次接受的分节。
+Settings 写入会在合并组合层与用户层后严格校验每个新增或修改的提供方。命名空间注册时，已存储配置的目录解析错误会保留命名空间与提供方行，并通过 `LlmConfigurableProvider.error` 优先返回首个模型诊断，无模型诊断时返回路由错误；未修改的错误提供方不会阻止其他编辑。可解析的模型仍可选择，无法解析的模型保留在可编辑配置中，直接请求时会在网络 I/O 前以 `INVALID_CONFIG` 失败。修复或删除无效配置会清除诊断；缺失的 live id 再次出现在账号目录中时也会恢复。Schema 与 profile 自身的约束错误仍会拒绝加载。后续外部文件编辑会校验变化的提供方，失败时保留最后一次接受的分节。
 
-只修改 `displayName`、`apiKeyEnv` 或 `baseURL` 而未解决提供方的模型配置错误时，保存仍会被拒绝。例如，OpenRouter 路由的模型 `111` 缺少 `api` 时，不能单独保存路由名称的修改：需要在同一份编辑草稿中修复或删除该模型，再保存完整的提供方配置。中间修复状态保留在草稿中，直到整条提供方配置通过校验；其他提供方可以独立保存。
+已选模型的配置无效时，只修改 `displayName`、`apiKeyEnv` 或 `baseURL` 的保存仍会被拒绝。例如，OpenRouter 模型 `111` 没有可解析的 `api` 时，必须在同一草稿中修复或移除。live 定制的 id 不在账号目录中时会保留诊断，但不阻止其他模型。中间修复保留在草稿中，直到已选模型通过校验；其他提供方仍可独立保存。
 
 -----
 
@@ -141,7 +158,7 @@ Settings 写入会在合并组合层与用户层后严格校验每个新增或�
 
 ### 设计理念
 
-适配器建立在不可变快照与按操作解析之上。每个操作都会在第一次 `await` 前捕获整个快照——profile 加一个持有每条路由所构建 `Provider` 的 `createModels()` 集合——配置变更会构建新集合而非修改使用中的集合，因此在一个配置下开始的请求绝不会在另一个配置下结束。路由自己的凭据引用经 harness seam 解析，并以请求 `apiKey` 选项传入，pi-ai 将其视为优先级最高的 auth 覆盖——这正是明确失败引用语义的所在。该覆盖未覆盖的一切都经集合自身的 auth 到达 pi-ai：凭据存储持有登录写入、刷新轮换的记录（以 `llm-pi-ai/<provider id>` 寻址），auth context 回答提供方解析时提出的 ambient 问题。两者跨快照保持稳定，因此配置变更重建集合时不会忘记谁已登录。运行时 import 使用 pi-ai 的 provider、API 与 utility 入口；`src/models.ts` 提供本适配器所需的少量 model helper，而不会求值 pi-ai 聚合入口。
+每次操作在首次 `await` 前捕获不可变的 profile 与模型快照。配置变化或原生目录发布成功后，会为后续操作创建新的集合，因此进行中的请求保留启动时的模型描述。profile 凭据按请求解析；已存 OAuth 记录与环境认证跨目录版本共享。Host 拥有当前原生模型描述，刷新协调器负责并发请求、截止时间、来源失效与等待退出。运行时通过 pi-ai 的专用提供方、API 和工具入口导入；`src/models.ts` 提供模型辅助函数，不执行总入口。
 
 ### 源码地图
 
@@ -151,13 +168,15 @@ Settings 写入会在合并组合层与用户层后严格校验每个新增或�
 | [`src/auth.ts`](src/auth.ts) | 覆盖 harness 凭据平面的凭据存储与 ambient auth context |
 | [`src/login.ts`](src/login.ts) | 面向提供登录的已安装提供方的授权流程 |
 | [`src/config.ts`](src/config.ts) | Profile schema、解析与可服务性校验 |
-| [`src/catalog.ts`](src/catalog.ts) | 已安装目录集成与漂移门禁 |
+| [`src/catalog.ts`](src/catalog.ts) | 运行时或已安装模型默认值、选择模式与兼容校验 |
 | [`src/models.ts`](src/models.ts) | 基于 pi-ai 窄入口的 model collection、静态 provider 与 reasoning level |
 | [`src/provider.ts`](src/provider.ts) | 受支持协议表与提供方构建 |
 | [`src/context.ts`](src/context.ts) | Harness 到 pi-ai 的上下文转换、图片处理、回放恢复 |
 | [`src/stream.ts`](src/stream.ts) | 把 pi-ai 事件转换为 harness `StreamChunk` 值 |
 | [`src/replay.ts`](src/replay.ts) | 带版本的 `ReplayEnvelope` 存储与校验 |
-| [`src/discovery.ts`](src/discovery.ts) | 面向配置界面的端点询问 |
+| [`src/discovery.ts`](src/discovery.ts) | 原生目录读取与编辑器元数据发现 |
+| [`src/opencode-go-catalog.ts`](src/opencode-go-catalog.ts) | 合并 Console Go 路由与公开模型能力 |
+| [`src/live-catalog-sync.ts`](src/live-catalog-sync.ts) | 合并刷新、来源版本、截止时间与等待退场 |
 
 ### 注册与目录
 
@@ -229,9 +248,9 @@ pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish 
 - **设置可以新增或覆盖路由，不能移除组合路由**——用户层覆盖组合 base，因此删除 `cordis.yml` 提供的提供方属于组合变更。
 - **分层合并对字典键没有删除**——base 声明的 `reasoningEfforts` 等级、`modelOverrides` 条目或 `compat` 字段可以被用户层覆盖，但不能被移除。
 - **`headers` 可以携带 redactor 永远看不到的凭据**——profile 解析会拒绝 Fetch 无法表示的名称与值，但该字典仍是纯字符串；以 `apiKeyEnv` 引用存储凭据。
-- **路由目录不会自行刷新**——目录就是 `settings.yaml` 的内容；显式发现只返回候选，保存采纳的条目才更新目录。
+- **原生目录只保留在进程内**——重启会丢失最后一次有效的账号元数据，在同步成功前从已安装目录开始。
 - **Anthropic 模型发现最多读取 1,000 个模型**——请求使用 API 的最大页大小，但不会遍历 `has_more`；第一页之外的条目需要手工添加。
-- **每条路由一种协议格式**——混合协议目录路由无法承载另一协议格式的模型；把提供方拆到两个路由键是变通办法。
+- **配置的 `api` 覆盖每个模型**——手工声明路由使用同一种协议，原生目录路由则可以保留各模型不同的协议与端点。
 - **模态声明不受校验**——声明 `image` 而其网关不支持的模型会在提示词准入后被提供方拒绝。持久图片仍留在历史中，同一误声明模型可能再次失败；切换到纯文本模型仍然可行，因为共享 LLM 运行时会针对该请求把图片引用投影为稳定文本。
 - **未认证路由取决于其协议**——不点名凭据的路由解析为已配置但无密钥，但 pi-ai 的 OpenAI 兼容实现仍要求 API 密钥或 `Authorization` 标头，因此无密钥本地服务器需要由 `apiKeyEnv` 引用或 `headers` 中的 `Authorization` 条目提供的占位凭据。
 - **不支持 `GenerateOptions.stop`**——pi-ai 的通用流式选项无法跨提供方保证停止序列行为。

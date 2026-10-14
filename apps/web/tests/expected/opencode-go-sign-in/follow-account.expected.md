@@ -1,0 +1,13 @@
+- group:
+  - text: 自定义设置 API 地址
+  - textbox "API 地址":
+    - /placeholder: 提供方默认
+  - checkbox "跟随账号模型列表" [checked]
+  - text: 跟随账号模型列表 账号新增模型会自动出现，下方模型行按 ID 定制各项设置。
+  - region "模型目录":
+    - text: 模型目录 账号模型清单与自定义设置
+    - button "获取可用模型"
+    - paragraph: 暂无模型自定义设置，选择器使用账号模型清单。
+    - button "添加模型":
+      - img
+      - text: 添加模型

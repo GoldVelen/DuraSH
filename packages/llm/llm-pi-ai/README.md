@@ -1,5 +1,5 @@
 ---
-description: "The pi-ai-backed multi-provider adapter for users and maintainers routing the harness LLM service through pi-ai catalogs and hand-declared gateways."
+description: "Multi-provider model requests, account model-directory synchronization, OAuth sign-in, and hand-declared gateways through pi-ai."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-llm-pi-ai` routes model requests to multiple pi-ai providers, OpenAI-compatible gateways, or self-hosted servers from one configuration. Installed pi-ai providers supply endpoint, protocol, and model-catalog defaults; custom routes can declare those values without code changes. Profiles and credentials are resolved for each request, so settings changes take effect on the next request without a restart. Supported providers can use stored OAuth or interactive-key sign-in with cross-process refresh locking. The package may start with no routes and activate when user settings add them.
+`@deepseek-ai/dsh-llm-pi-ai` routes model requests to multiple providers, OpenAI-compatible gateways, or self-hosted servers. Installed pi-ai metadata supplies initial defaults; ChatGPT/Codex, OpenCode Go, and xAI account directories refresh model metadata automatically. Configured model lists can restrict selection or customize matching account models while new ids appear. Profiles and credentials resolve per request, so configuration changes take effect without restarting. Supported sign-in flows store OAuth or interactive-key credentials with cross-process refresh locking.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this plugin when a composition routes model requests through pi-ai's provider catalogs or through gateways that pi-ai's installed catalog does not describe. The `providers` dictionary is the whole configuration surface: each key is the provider route name a request selects with `GenerateOptions.provider`.
+Mount this plugin when a composition routes model requests through pi-ai's provider catalogs or through gateways that its installed catalog does not describe. Each `providers` key is the route a request selects with `GenerateOptions.provider`; root-level timing fields control native directory synchronization.
 
 ### When to choose it
 
@@ -75,10 +75,11 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
 | `apiKeyEnv` | absent | Credential reference resolved per request; omission defers to pi-ai ambient discovery |
 | `displayName` | provider name | Label shown by selector surfaces |
 | `catalogProvider` | provider name | Installed provider whose catalog, protocol, endpoint, and auth supply defaults without changing the route key |
-| `api` | catalog protocol | Wire protocol; only needed for routes the catalog does not supply |
-| `baseURL` | catalog endpoint | Endpoint of every model on the route |
-| `models` | installed catalog | Replaces the route's catalog wholesale; each entry defaults from the installed model |
-| `modelOverrides` | none | Reshapes individual installed-catalog models without replacing the rest |
+| `api` | per-model catalog protocol | Overrides every model’s wire protocol; required for hand-declared routes |
+| `baseURL` | per-model catalog endpoint | Overrides every model’s endpoint |
+| `models` | effective catalog | Selects model ids, or customizes matching ids when `modelCatalogMode` is live |
+| `modelCatalogMode` | absent | `live` follows catalog ids; `configured` or omission preserves an explicit model list |
+| `modelOverrides` | none | Customizes individual effective-catalog models when no `models` list is set |
 | `compat` | catalog detection | Wire-compatibility switches for unrecognized endpoints |
 | `defaultContextWindow` | `262,144` | Capacity fallback for undescribed models |
 | `defaultMaxTokens` | `32,768` | Output-cap fallback for undescribed models |
@@ -95,17 +96,19 @@ A provider pi-ai ships a login for can be signed into through the harness author
 
 OpenCode Go offers [Console browser login](https://opencode.ai/v2/docs/console/api/#device-flow) and its native API-key method. The device flow identifies this client as `durash`, binds the workspace selected in the browser, and uses the server's polling interval and expiration. Access-token lifetimes become persisted expiration timestamps without the device-flow timer limit. Rotated tokens remain in `llm-pi-ai/opencode-go`; pi-ai refreshes them under the credential store's lock before deriving bearer headers. Request cancellation returns to that caller while an active refresh completes and stores its replacement; the provider profile's `oauthRefreshTimeoutMs` bounds that exchange (default and maximum 15,000 ms). To serve the stored login, enable the `opencode-go` provider profile without an `apiKeyEnv` override.
 
-Go keeps the bundled catalog's per-model protocols: Messages uses `https://opencode.ai/inference/go`, while Chat Completions and Responses use `https://opencode.ai/inference/go/v1`. All OpenCode requests retain the Harness User-Agent and send `x-opencode-session` from their durable conversation id; requests without an id do not fabricate one. The client never switches to a pay-as-you-go endpoint after refusal. OpenCode's [Use balance setting](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits) can nevertheless charge the Console balance when Go allowances run out; this adapter does not change that account setting. The Go model list remains the installed catalog rather than a live directory refresh.
+Go reads its workspace model inventory from authenticated Console configuration: accepted wire ids, protocols, per-model endpoints, and limits come from that account directory. Public `models.dev` metadata fills capabilities and reasoning settings; installed same-protocol metadata supplies remaining known compatibility. The directory accepts only the Go provider and validates advertised inference endpoints within OpenCode's HTTPS Go subtree. All OpenCode requests retain the Harness User-Agent and send `x-opencode-session` from their durable conversation id; requests without an id do not fabricate one. The client never switches to a pay-as-you-go endpoint after refusal. OpenCode's [Use balance setting](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits) can nevertheless charge the Console balance when Go allowances run out; this adapter does not change that account setting.
 
 ### Resolve the model catalog
 
 A profile's catalog source is its route key unless `catalogProvider` explicitly names another installed provider. The latter is useful when a private gateway serves an official provider's models under a deployment-specific route name: the route keeps its own endpoint, credential, and selection identity while inheriting model capabilities such as context, modalities, and reasoning efforts. DSH does not infer this source from model ids because different gateways may implement the same id differently; an empty or unavailable source is refused.
 
-A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
+Without `modelCatalogMode: live`, a non-empty `models` list replaces the effective catalog’s ids. Each entry inherits unset fields from the current model of the same id, so an explicit subset keeps its selection while updated metadata supplies its protocol, endpoint, modalities, and capabilities. `modelCatalogMode: configured` makes that selection explicit; omission preserves the same behavior.
+
+With `modelCatalogMode: live`, the effective account directory supplies all ids, including new releases. Saved `models` rows customize matching ids without restricting the list. A saved row whose id leaves the directory stays editable with a diagnostic but is not served and does not block other models. `modelOverrides` customizes catalog entries only when no `models` list is present; unknown override ids remain invalid.
 
 ### Run with reasoning and wire compatibility
 
-`reasoningEfforts` declares a model's selectable thinking levels: each key is a level selectors offer, its value the spelling dispatch sends on the wire, so `max: ultra` renames a level for a gateway with its own vocabulary. Omitting the field keeps the installed catalog entry's capability; `false` declares a non-reasoning model. `compat` switches reshape the request for endpoints pi-ai cannot recognize — which role carries the system prompt, which field caps output, how a thinking level travels — configurable per route and per model. A model neither the entry nor the installed catalog sizes takes the route's `defaultContextWindow` and `defaultMaxTokens` fallbacks.
+`reasoningEfforts` declares selectable thinking levels: each key is a level selectors offer, and its value is the spelling sent on the wire. Omitting it keeps the effective catalog’s capability; `false` declares a non-reasoning model. `compat` adjusts supported request fields per route or model. Models with no declared or catalog capacity use `defaultContextWindow` and `defaultMaxTokens`. Catalog output capacity does not become a request cap; only an explicitly configured model `maxTokens` does.
 
 For self-hosted Chat Completions endpoints, `thinkingTokenBudgetField` selects the reasoning-budget parameter, and `vllmPriority` sets an integer scheduler priority when the server enables priority scheduling. Template arguments accept `$var: thinking.budget`. `openai-responses` gateways can set `supportsMaxOutputTokens: false` to omit `max_output_tokens`; Azure and Codex transports ignore this shared compatibility field. These controls are opt-in; catalog-owned Anthropic effort and fallback capabilities are not configurable switches.
 
@@ -113,21 +116,35 @@ For self-hosted Chat Completions endpoints, `thinkingTokenBudgetField` selects t
 
 Profiles are re-read once per operation through the optional settings seam: the base and the user's `llm-pi-ai:` settings section merge per provider, so a user can add a route, override one field of a composition route, or point a route at another proxy, all effective on the next request with no restart. A section the adapter could not serve is refused where it is written — `settings.mutate` answers `settings-rejected` — and a stored section that later fails keeps the namespace's last good value. When the route set or a route's retry policy changes, the plugin re-registers atomically: a conflicting route leaves the previous routes serving.
 
+<a id="synchronize-account-model-directories"></a>
+### Synchronize account model directories
+
+Configured ChatGPT/Codex, OpenCode Go, and xAI routes synchronize at Host startup, after sign-in or a credential-source change, periodically, and on explicit refresh. They must retain their native API; a private endpoint opts into synchronization with `modelCatalogMode: live`. The installed catalog supplies the initial metadata until an account directory succeeds.
+
+The Host retains complete model descriptors in RAM, scoped to the route and current account or endpoint. Model lists, resolution, and dispatch use that same metadata. A failed refresh keeps the last good directory for the same source and reports its diagnostic. An account or source change clears the old directory until the new source succeeds; it cannot expose another account’s models. Restarting the Host begins again from installed metadata.
+
+These fields belong at the plugin configuration root, beside `providers`; both accept positive finite milliseconds up to `2,147,483,647`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `modelCatalogRefreshMs` | `60,000` | Interval between native directory refreshes |
+| `modelCatalogTimeoutMs` | `15,000` | Deadline for a shared native directory request |
+
 ### Discover models from endpoints
 
-The plugin answers "which models can this provider serve?" for a route a configuration surface is editing or drafting. Passive queries use the installed catalog without network access, preserving its `input` array as discovery `inputModalities`. An explicit xAI refresh joins authenticated `GET /models` and `GET /language-models` by id: the language directory selects chat candidates, while the replies supply context length, input types, and supported reasoning efforts. Missing output limits remain unspecified. Existing subscription login refreshes through pi-ai; a draft key or configured credential reference takes precedence. Directory failures reject the refresh without returning the older installed list.
+Passive discovery reads the Host’s current account metadata when available, otherwise the installed catalog, without starting its own network request. An explicit refresh of a stored native source also updates the runtime directory without writing settings. An unsaved endpoint, protocol, or key probe returns editor candidates and cannot replace that directory. xAI joins authenticated `GET /models` and `GET /language-models` by id; the language directory selects chat models while both replies supply capabilities. A draft key or configured credential reference takes precedence over subscription auth. Refresh failures are reported rather than disguised as a successful older list.
 
-Explicit Codex refreshes use the current subscription grant and account id at `GET {baseURL}/codex/models?client_version=0.155.0`; a base already ending in `/codex` is used directly. The client version identifies the supported directory response, independently of the installed model catalog. Only entries with `visibility: list` are offered, including subscription models unavailable through the public API. Their ids, names, context windows, input types, and reasoning levels supported by the installed adapter become adoption candidates; absent output limits remain unspecified. Refresh failures reject without falling back to the bundled list. Fetching never changes saved models; adopting and saving candidates persists their metadata for subsequent requests.
+Codex uses the current subscription grant and account id at `GET {baseURL}/codex/models?client_version=0.155.0`; a base already ending in `/codex` is used directly. Only `visibility: list` entries are offered, including models unavailable through the public API. Their ids, names, context windows, input types, and supported reasoning levels enter the native runtime metadata, including ids absent from the installed SDK. Missing output limits remain unspecified in editor candidates. Refreshing the directory does not rewrite saved model customizations.
 
-Other installed providers retain local discovery; hand-declared routes query their endpoints. `openai-completions` and `openai-responses` use `GET {baseURL}/models` with bearer auth, while `anthropic-messages` uses native `GET /v1/models?limit=1000` semantics with `x-api-key` and `anthropic-version`; its listing URL accepts the API root with or without a trailing `/v1` because gateway documentation publishes both spellings, and only that listing URL normalizes the segment, so model requests receive the configured `baseURL` unchanged. A named configured route supplies its stored credential and profile `headers` inside the Host, so deployment headers configured through `settings.yaml` or Cordis config reach model discovery without becoming discovery-request or Models-page fields; a key typed into the form still wins over the stored credential. The parser accepts either the standard `data` array or an enriched `models` map, normalizing each candidate's id, display name, context window, and output-token cap; Anthropic's `max_input_tokens` and `max_tokens` feed the same capacity fields, a map key remains the request id even when its entry names a different canonical id, primitive-valued map properties are ignored, and a missing display name falls back to that request id. The reply is candidate metadata a surface may offer for adoption — nothing is stored, and `settings.yaml` remains the only thing that decides what a route serves.
+Other installed providers retain local discovery; hand-declared routes query their endpoints. `openai-completions` and `openai-responses` use bearer-authenticated `GET {baseURL}/models`; `anthropic-messages` uses `GET /v1/models?limit=1000` with `x-api-key` and `anthropic-version`. Anthropic listing normalizes a trailing `/v1`, while model requests retain the configured `baseURL`. Stored credentials and deployment headers stay on the Host; a one-shot draft key takes precedence. The parser accepts a standard `data` array or an enriched `models` map, preserving map keys as request ids and normalizing names, capacities, and modalities. These draft results remain candidates until the editor adopts and saves them.
 
 ### Failures and recovery
 
 A route pi-ai does not ship needs `api`, `baseURL`, and a non-empty `models` list; an explicit `catalogProvider` must name an installed provider. An unserviceable profile is refused where it is written, naming the route and model. Failures carry stable codes: a credential that cannot be used fails with `INVALID_CREDENTIAL` naming the route and reference, a route whose `apiKeyEnv` reference resolves to nothing fails with `MISSING_CREDENTIAL`, an unconfigured model fails with `UNKNOWN_MODEL`, and terminal provider failures distinguish `QUOTA` from transient `RATE_LIMIT`. `GenerateOptions.stop` is rejected with `UNSUPPORTED_OPTION` because pi-ai's common streaming UI cannot guarantee it across providers.
 
-Settings writes strictly validate each new or changed provider after merging its composition and user layers. During namespace registration, stored catalog failures retain the namespace and provider rows, with the first available model diagnostic or route failure in `LlmConfigurableProvider.error`; unchanged failed providers do not block edits elsewhere. Serviceable models remain selectable, while unresolved models remain in the editable configuration and fail with `INVALID_CONFIG` before network I/O if requested directly. Repairing or deleting the offending configuration clears its diagnostic. Schema and self-contained profile errors still reject loading. Later external edits validate changed providers and retain the last accepted section on failure.
+Settings writes strictly validate each new or changed provider after merging its composition and user layers. During namespace registration, stored catalog failures retain the namespace and provider rows, with the first available model diagnostic or route failure in `LlmConfigurableProvider.error`; unchanged failed providers do not block edits elsewhere. Serviceable models remain selectable, while unresolved models remain in the editable configuration and fail with `INVALID_CONFIG` before network I/O if requested directly. Repairing or deleting invalid configuration clears its diagnostic; a missing live id also recovers when the account directory offers it again. Schema and self-contained profile errors still reject loading. Later external edits validate changed providers and retain the last accepted section on failure.
 
-Changing `displayName`, `apiKeyEnv`, or `baseURL` without resolving the provider's model errors still rejects the save. For example, renaming an OpenRouter route whose model `111` needs an `api` cannot be saved on its own: repair or remove that model in the same editor draft, then save the complete provider configuration. Intermediate repairs remain in the draft until the whole provider validates; other providers can be saved independently.
+Invalid selected-model configuration still rejects a save that changes only `displayName`, `apiKeyEnv`, or `baseURL`. For example, an OpenRouter model `111` with no resolvable `api` must be repaired or removed in the same draft. A live customization whose id is absent from the account directory remains a diagnostic without blocking its other models. Intermediate repairs stay in the draft until the selected models validate; other providers can be saved independently.
 
 -----
 
@@ -141,7 +158,7 @@ This section explains the design behind the adapter; the observable behavior is 
 
 ### Design philosophy
 
-The adapter is built on immutable snapshots and per-operation resolution. Each operation captures a whole snapshot — the profiles plus a `createModels()` collection holding the `Provider` each route built — before its first `await`, and a configuration change builds a new collection rather than mutating the one in use, so a request that started under one configuration never finishes under another. A route's own credential reference resolves through the harness seam and rides as the request's `apiKey` option, which pi-ai treats as the highest-priority auth override — that is what keeps the fail-loud reference semantics. Everything that override does not cover reaches pi-ai through the collection's own auth: the credential store holds the records a login wrote and a refresh rotates (addressed as `llm-pi-ai/<provider id>`), and the auth context answers the ambient questions a provider asks while resolving. Both are stable across snapshots, so a configuration change rebuilds the collection without forgetting who is signed in. Runtime imports use pi-ai's provider, API, and utility entry points; `src/models.ts` supplies the small model-helper subset this adapter needs without evaluating pi-ai's aggregate entry point.
+Each operation captures an immutable profile and model snapshot before its first `await`. A configuration change or successful native directory publication creates a new collection for subsequent operations, so an in-flight request retains the model descriptors it started with. Profile credentials resolve per request; stored OAuth records and ambient authentication remain shared across catalog revisions. The Host owns the current native descriptors, while the refresh coordinator owns concurrent requests, deadlines, source invalidation, and awaited shutdown. Runtime imports use narrow pi-ai provider, API, and utility entry points; `src/models.ts` supplies the model helpers without evaluating the aggregate entry point.
 
 ### Source map
 
@@ -151,13 +168,15 @@ The adapter is built on immutable snapshots and per-operation resolution. Each o
 | [`src/auth.ts`](src/auth.ts) | The credential store and ambient auth context over the harness credential plane |
 | [`src/login.ts`](src/login.ts) | Authorization flows for the installed providers that ship a login |
 | [`src/config.ts`](src/config.ts) | Profile schema, resolution, and serviceability checks |
-| [`src/catalog.ts`](src/catalog.ts) | Installed-catalog integration and drift gates |
+| [`src/catalog.ts`](src/catalog.ts) | Runtime or installed model defaults, selection modes, and compatibility checks |
 | [`src/models.ts`](src/models.ts) | Model collections, static providers, and reasoning levels over narrow pi-ai entry points |
 | [`src/provider.ts`](src/provider.ts) | The supported-protocol table and provider construction |
 | [`src/context.ts`](src/context.ts) | Harness-to-pi-ai context conversion, image handling, replay restore |
 | [`src/stream.ts`](src/stream.ts) | pi-ai event conversion into harness `StreamChunk` values |
 | [`src/replay.ts`](src/replay.ts) | Versioned `ReplayEnvelope` storage and validation |
-| [`src/discovery.ts`](src/discovery.ts) | Endpoint interrogation for configuration surfaces |
+| [`src/discovery.ts`](src/discovery.ts) | Native directory reads and editor metadata discovery |
+| [`src/opencode-go-catalog.ts`](src/opencode-go-catalog.ts) | Console Go routing joined with public model capabilities |
+| [`src/live-catalog-sync.ts`](src/live-catalog-sync.ts) | Coalesced refresh, source epochs, deadlines, and awaited teardown |
 
 ### Registration and directory
 
@@ -229,9 +248,9 @@ These limits define where the adapter stops and future work begins. They are cur
 - **Settings can add or override routes, not remove composition routes** — the user layer merges over the composition base, so deleting a `cordis.yml`-provided provider is a composition change.
 - **The layered merge has no delete for dict keys** — a `reasoningEfforts` level, `modelOverrides` entry, or `compat` field the base declares can be overridden but not removed by the user layer.
 - **`headers` can carry a credential the redactor never sees** — profile resolution rejects names and values Fetch cannot represent, but the dict remains plain strings; store credentials as `apiKeyEnv` references.
-- **A route's catalog never refreshes itself** — the catalog is whatever `settings.yaml` says; explicit discovery only returns candidates; saving adopted entries updates the catalog.
+- **Native directories are process-local** — a restart loses the last successful account metadata and begins with the installed catalog until synchronization succeeds.
 - **Anthropic discovery reads at most 1,000 models** — the request uses the API's maximum page size but does not traverse `has_more`; entries beyond the first page must be added by hand.
-- **One wire protocol per route** — a mixed-protocol catalog route cannot host a model of the other protocol; splitting the provider across two route keys is the workaround.
+- **A configured `api` overrides every model** — hand-declared routes use one protocol, while native catalog routes can retain mixed per-model protocols and endpoints.
 - **A modality declaration is not verified** — a model declaring `image` its gateway does not serve is refused by the provider after prompt admission. The durable image remains in history and the same misdeclared model can fail again; switching to a text-only model remains possible because the shared LLM runtime projects image references into stable text for that request.
 - **An unauthenticated route depends on its protocol** — a route naming no credential resolves as configured-but-keyless, but pi-ai's OpenAI-compatible implementation still requires an API key or an `Authorization` header, so a keyless local server needs a placeholder credential referenced by `apiKeyEnv` or an `Authorization` entry in `headers`.
 - **`GenerateOptions.stop` is unsupported** — pi-ai's common stream options cannot guarantee stop-sequence behavior across providers.

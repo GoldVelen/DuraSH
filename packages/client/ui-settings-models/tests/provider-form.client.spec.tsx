@@ -7,6 +7,7 @@ import { bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { ProviderEditor } from '../src/client/ProviderEditor.tsx'
+import { ModelListEditor } from '../src/client/ModelListEditor.tsx'
 import { ModelsSection, providerCopy } from '../src/client/ModelsSection.tsx'
 import { SignInStore } from '../src/client/sign-in-store.ts'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
@@ -49,6 +50,8 @@ const PiAiConfig = Schema.object({
     displayName: Schema.string(),
     api: Schema.union(PROTOCOLS),
     baseURL: Schema.string(),
+    catalogProvider: Schema.string(),
+    modelCatalogMode: Schema.union(['live', 'configured']),
     models: Schema.array(Schema.object({
       id: Schema.string().required(),
       name: Schema.string(),
@@ -526,6 +529,154 @@ describe('capacity spellings', () => {
 })
 
 describe('endpoint interrogation', () => {
+  it('follows the account catalog without losing model customizations or other unsaved edits', async () => {
+    const originalModel = { id: 'gpt-old', name: 'My model', contextWindow: 12000, input: ['text'], reasoningEfforts: { high: 'high' } }
+    const discover = vi.fn()
+      .mockResolvedValueOnce(ok([{ id: 'gpt-old', inputModalities: ['text', 'image'] }]))
+      .mockResolvedValueOnce(ok([{ id: 'gpt-old' }, { id: 'gpt-new', name: 'New account model', contextWindow: 300000 }]))
+    const { mutate } = await mountSection({ discover,
+      providers: { 'openai-codex': { models: [originalModel], headers: { 'x-deployment': 'keep' } } },
+    })
+    openEditor('openai-codex')
+    await waitFor(() => { expect(discover).toHaveBeenCalledTimes(1) })
+    const follow = screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels })
+    expect(follow.checked).toBe(false)
+    fireEvent.change(screen.getByLabelText(`${en.modelName} 1`), { target: { value: 'Unsaved model name' } })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://draft.example/codex' } })
+    fireEvent.click(follow)
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelName} 1`).value).toBe('Unsaved model name')
+    expect(screen.getByLabelText<HTMLInputElement>(en.baseUrl).value).toBe('https://draft.example/codex')
+    expect(discover).toHaveBeenCalledTimes(1)
+    expect(mutate).not.toHaveBeenCalled()
+    expect({
+      following: follow.checked,
+      hint: screen.getByText(en.followAccountModelsHint).textContent,
+      catalog: screen.getByText(en.modelsLive).textContent,
+      modelId: screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value,
+      modelName: screen.getByLabelText<HTMLInputElement>(`${en.modelName} 1`).value,
+    }).toMatchInlineSnapshot(`
+      {
+        "catalog": "Account model list with customizations",
+        "following": true,
+        "hint": "New account models appear automatically. Rows below customize matching model IDs.",
+        "modelId": "gpt-old",
+        "modelName": "Unsaved model name",
+      }
+    `)
+    fireEvent.click(screen.getByText(en.fetchModels))
+    await screen.findByText(en.fetchTitle)
+    expect(lastProbe(discover)).toEqual({ settingsNs: 'llm-pi-ai', provider: 'openai-codex',
+      baseURL: 'https://draft.example/codex', refresh: true })
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 2`).value).toBe('gpt-new')
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate)).toEqual({ ns: 'llm-pi-ai', expectedRevision: 3, ops: [
+      { op: 'set', path: ['providers', 'openai-codex', 'models'], value: [
+        { ...originalModel, name: 'Unsaved model name' }, { id: 'gpt-new', name: 'New account model', contextWindow: 300000 },
+      ] },
+      { op: 'set', path: ['providers', 'openai-codex', 'baseURL'], value: 'https://draft.example/codex' },
+      { op: 'set', path: ['providers', 'openai-codex', 'modelCatalogMode'], value: 'live' },
+    ] })
+  })
+
+  it('stores configured mode when account following is disabled without deleting saved rows', async () => {
+    const models = [{ id: 'deepseek-old', maxTokens: 8192 }]
+    const { mutate, discover } = await mountSection({ providers: { 'opencode-go': { modelCatalogMode: 'live', models } } })
+    openEditor('opencode-go')
+    await waitFor(() => { expect(discover).toHaveBeenCalledTimes(1) })
+    const follow = screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels })
+    expect(follow.checked).toBe(true)
+    fireEvent.click(follow)
+    expect(screen.queryByText(en.followAccountModelsHint)).toBeNull()
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('deepseek-old')
+    expect(discover).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate)).toEqual({ ns: 'llm-pi-ai', expectedRevision: 3,
+      ops: [{ op: 'set', path: ['providers', 'opencode-go', 'modelCatalogMode'], value: 'configured' }] })
+  })
+
+  it('defaults an empty native profile to following and retains inherited configured model lists', async () => {
+    const { discover } = await mountSection({
+      providers: { xai: {} }, userProviders: { xai: {} }, baseProviders: {},
+    })
+    openEditor('xai')
+    await waitFor(() => { expect(discover).toHaveBeenCalledTimes(1) })
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels }).checked).toBe(true)
+    expect(screen.getByText(en.modelsLiveEmpty)).toBeTruthy()
+    cleanup()
+    const pinned = [{ id: 'gpt-pinned' }]
+    await mountSection({
+      providers: { 'openai-codex': { models: pinned } }, userProviders: { 'openai-codex': {} },
+      baseProviders: { 'openai-codex': { models: pinned } },
+    })
+    openEditor('openai-codex')
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels }).checked).toBe(false)
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('gpt-pinned')
+  })
+
+  it('uses the aliased route for passive account metadata and keeps unrelated providers unchanged', async () => {
+    const { discover } = await mountSection({ providers: {
+      'work-go': { catalogProvider: 'opencode-go', modelCatalogMode: 'live' },
+      openai: {},
+    }, declaredRoutes: ['work-go'] })
+    openEditor('work-go')
+    await waitFor(() => { expect(discover).toHaveBeenCalledExactlyOnceWith('llm-pi-ai', { provider: 'work-go' }) })
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels }).checked).toBe(true)
+    fireEvent.click(screen.getByText(en.cancel))
+    openEditor('openai')
+    expect(screen.queryByRole('checkbox', { name: en.followAccountModels })).toBeNull()
+  })
+
+  it('keeps implicit account following when the first manual customization is saved', async () => {
+    const { mutate, discover } = await mountSection({ providers: { 'opencode-go': {} } })
+    openEditor('opencode-go')
+    await waitFor(() => { expect(discover).toHaveBeenCalledTimes(1) })
+    fireEvent.click(screen.getByText(en.addModel))
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'deepseek-customized' } })
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels }).checked).toBe(true)
+    expect(discover).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate)).toEqual({ ns: 'llm-pi-ai', expectedRevision: 3, ops: [
+      { op: 'set', path: ['providers', 'opencode-go', 'models'], value: [{ id: 'deepseek-customized' }] },
+      { op: 'set', path: ['providers', 'opencode-go', 'modelCatalogMode'], value: 'live' },
+    ] })
+  })
+
+  it('honors explicit configured mode for an empty account profile', async () => {
+    await mountSection({ providers: { xai: { modelCatalogMode: 'configured' } } })
+    openEditor('xai')
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels }).checked).toBe(false)
+    expect(screen.queryByText(en.followAccountModelsHint)).toBeNull()
+    expect(screen.queryByText(en.modelsLiveEmpty)).toBeNull()
+  })
+
+  it('inherits an aliased account source and live mode from the composition while preserving edited rows', async () => {
+    const inherited = { catalogProvider: 'opencode-go', modelCatalogMode: 'live', models: [{ id: 'inherited-go', name: 'Inherited' }] }
+    const { mutate, discover } = await mountSection({
+      providers: { 'work-go': inherited }, userProviders: { 'work-go': {} }, baseProviders: { 'work-go': inherited },
+      declaredRoutes: ['work-go'],
+    })
+    openEditor('work-go')
+    await waitFor(() => { expect(discover).toHaveBeenCalledExactlyOnceWith('llm-pi-ai', { provider: 'work-go' }) })
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: en.followAccountModels }).checked).toBe(true)
+    fireEvent.change(screen.getByLabelText(`${en.modelName} 1`), { target: { value: 'My inherited model' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate)).toEqual({ ns: 'llm-pi-ai', expectedRevision: 3, ops: [
+      { op: 'set', path: ['providers', 'work-go', 'models'], value: [{ id: 'inherited-go', name: 'My inherited model' }] },
+    ] })
+  })
+
+  it('uses the catalog provider for passive metadata before an unsaved probe names a route', async () => {
+    const { face, discover } = scriptedFace()
+    render(<ModelListEditor models={[]} catalogProvider="openai-codex" probe={{ settingsNs: 'llm-pi-ai' }}
+      onChange={vi.fn()} operations={operationsWith(face)} disabled={false} t={t} />)
+    await waitFor(() => { expect(discover).toHaveBeenCalledExactlyOnceWith('llm-pi-ai', { provider: 'openai-codex' }) })
+  })
+
   it.each([[undefined], [[]], [['text']]])('renders catalog input inheritance for a stored declaration of %j', async (input) => {
     const discover = vi.fn(() => Promise.resolve(ok([
       { id: 'vision', inputModalities: ['text', 'image'] },
@@ -1738,6 +1889,23 @@ describe('API key field', () => {
 
 
 describe('subscription authentication in the provider editor', () => {
+  it.each([new Error('Account settings transport failed'), 'Account settings transport failed'])(
+    'preserves the credential field and model draft when switching account authentication rejects: %j', async (error) => {
+      const mutate = vi.fn().mockRejectedValue(error)
+      await mountSection({ mutate, providers: { xai: {
+        apiKeyEnv: 'XAI_API_KEY', models: [{ id: 'grok-existing', name: 'Existing model' }],
+      } } }, true)
+      openEditor('xai')
+      fireEvent.change(screen.getByLabelText(`${en.modelName} 1`), { target: { value: 'Unsaved name' } })
+      fireEvent.click(buttonNamed(en.useAccountAuth))
+      await screen.findByText('Account settings transport failed')
+      expect(screen.getByLabelText<HTMLInputElement>(`${en.modelName} 1`).value).toBe('Unsaved name')
+      expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
+      expect(screen.queryByText(en.accountAuthSaved)).toBeNull()
+      expect(mutate).toHaveBeenCalledTimes(1)
+    },
+  )
+
   it('keeps passwords unmounted and refreshes without a draft key or settings write', async () => {
     const { discover, mutate, set } = await mountSection({ providers: { xai: {} } }, true)
     openEditor('xai')

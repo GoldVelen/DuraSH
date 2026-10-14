@@ -1,8 +1,8 @@
 /**
- * Materialization of one provider route's model catalog. The installed pi-ai
- * catalog supplies defaults keyed by model id, and a profile's own model
- * entries override them field by field, so a route naming a catalog provider
- * stays configuration-free while a route pi-ai has never heard of is fully
+ * Materialization of one provider route's model catalog. A Host runtime
+ * catalog, or the installed pi-ai catalog, supplies defaults keyed by model id.
+ * A profile's own model entries override them field by field, so a route naming
+ * a catalog provider stays configuration-free while a route pi-ai has never heard of is fully
  * describable from `settings.yaml`.
  *
  * Strict resolution rejects unserviceable models before settings writes.
@@ -631,9 +631,11 @@ export interface RouteCatalogRequest {
   api?: string
   /** Endpoint override; absent defers to the catalog model, then the catalog provider. */
   baseURL?: string
-  /** Configured catalog; absent means the whole installed catalog for this route. */
+  /** Configured catalog; absent means the whole runtime or installed catalog for this route. */
   models?: readonly PiAiModelProfile[]
-  /** Installed-catalog customizations by model id; only meaningful while `models` is absent. */
+  /** Live mode follows catalog ids and applies configured model fields only to matching ids. */
+  modelCatalogMode?: 'live' | 'configured'
+  /** Catalog customizations by model id; only meaningful while `models` is absent. */
   modelOverrides?: Readonly<Record<string, PiAiModelOverride>>
   /** Route-level wire-compatibility switches, landing on each model whose protocol declares them; entries override per field. */
   compat?: PiAiCompatProfile
@@ -806,7 +808,7 @@ function resolveModelCompat(
 export interface RouteCatalog {
   /** The materialized models in configuration order. */
   models: readonly Model<Api>[]
-  /** Models that cannot be resolved, retained as diagnostics during stored-config reads. */
+  /** Model diagnostics, including live customizations whose ids are absent from the current catalog. */
   modelErrors: ReadonlyMap<string, string>
   /**
    * Per-request output caps this profile explicitly configured, by model id.
@@ -822,17 +824,19 @@ export interface RouteCatalog {
 }
 
 /**
- * Materialize one route's catalog by merging the installed catalog defaults
+ * Materialize one route's catalog by merging runtime or installed defaults
  * under the configured entries. A route with no configured `models` serves the
- * installed catalog unchanged, which is what keeps an existing
+ * selected catalog unchanged, which is what keeps an existing
  * `providers: { deepseek: { apiKeyEnv: … } }` profile working untouched.
  * @param request - the route-level catalog facts.
- * @param validation - strict writes reject every error; deferred reads retain model diagnostics.
+ * @param validation - strict writes reject unserviceable selected models; deferred reads retain their diagnostics.
+ * @param runtimeModels - authoritative Host catalog for this route, including an empty catalog; omission uses installed models.
  * @returns the materialized models and the explicitly configured request caps.
  */
 export function resolveRouteModels(
   request: RouteCatalogRequest,
   validation: 'strict' | 'deferred' = 'strict',
+  runtimeModels?: readonly Model<Api>[],
 ): RouteCatalog {
   const { provider } = request
   const sourceProvider = request.catalogProvider ?? provider
@@ -841,11 +845,14 @@ export function resolveRouteModels(
   if (request.catalogProvider !== undefined && sourceCatalog === undefined) {
     invalid(provider, `names catalogProvider "${sourceProvider}", which the installed catalog does not provide`)
   }
-  const defaults = catalogModels(sourceProvider)
+  const defaults = runtimeModels === undefined
+    ? catalogModels(sourceProvider)
+    : new Map(runtimeModels.map(model => [model.id, model]))
+  const catalogName = runtimeModels === undefined ? 'installed catalog' : 'runtime catalog'
   const providerBaseUrl = sourceCatalog?.baseUrl
   // An absent `models` key and an empty one are the same request: the config
-  // schema materializes `[]` for the absent case, and an empty catalog could
-  // serve no request anyway, so both mean "serve the installed catalog".
+  // schema materializes `[]` for the absent case, so both mean "serve the
+  // selected catalog". An empty runtime catalog never restores installed ids.
   const configured = request.models ?? []
   const overrides = request.modelOverrides ?? {}
   const modelErrors = new Map<string, string>()
@@ -854,7 +861,7 @@ export function resolveRouteModels(
   for (const [id, override] of Object.entries(overrides)) {
     if (id.length === 0) invalid(provider, 'has a modelOverrides entry with an empty model id')
     if (defaults.size === 0) {
-      invalid(provider, `sets modelOverrides for "${id}", but the installed catalog does not describe this route;`
+      invalid(provider, `sets modelOverrides for "${id}", but the ${catalogName} does not describe this route;`
         + ' a declared route spells every model out in its models list')
     }
     if (configured.length > 0) {
@@ -862,7 +869,7 @@ export function resolveRouteModels(
         + ' catalog, so declare the fields on its entries')
     }
     if (!defaults.has(id)) {
-      const message = `modelOverrides names "${id}", which the installed catalog does not describe`
+      const message = `modelOverrides names "${id}", which the ${catalogName} does not describe`
       if (validation === 'strict') invalid(provider, message)
       modelErrors.set(id, `llm-pi-ai: provider "${provider}" ${message}`)
     }
@@ -876,11 +883,27 @@ export function resolveRouteModels(
   // An override becomes the catalog entry's configuration, so everything a
   // models entry may declare — capacities, efforts, compat — resolves through
   // the same path with the same diagnostics and request-default semantics.
-  const entries: readonly PiAiModelProfile[] = configured.length > 0
+  const liveRows = new Map<string, PiAiModelProfile>()
+  if (request.modelCatalogMode === 'live') {
+    for (const entry of configured) {
+      if (entry.id.length === 0) invalid(provider, 'has a model with an empty id')
+      if (liveRows.has(entry.id)) {
+        const message = `lists model "${entry.id}" more than once`
+        if (validation === 'strict') invalid(provider, message)
+        modelErrors.set(entry.id, `llm-pi-ai: provider "${provider}" ${message}`)
+      }
+      liveRows.set(entry.id, entry)
+      if (!defaults.has(entry.id)) {
+        modelErrors.set(entry.id, `llm-pi-ai: provider "${provider}" configured model "${entry.id}"`
+          + ` is absent from the ${catalogName}`)
+      }
+    }
+  }
+  const entries: readonly PiAiModelProfile[] = configured.length > 0 && request.modelCatalogMode !== 'live'
     ? configured
-    : [...defaults.values()].map(model => ({ id: model.id, ...overrides[model.id] }))
+    : [...defaults.values()].map(model => ({ id: model.id, ...overrides[model.id], ...liveRows.get(model.id) }))
   if (entries.length === 0) {
-    invalid(provider, 'resolves no models; the installed catalog does not describe this route, so its models'
+    invalid(provider, `resolves no models; the ${catalogName} does not describe this route, so its models`
       + ' must be listed in configuration')
   }
   const routeApi = sharedCatalogApi(defaults)
@@ -898,12 +921,12 @@ export function resolveRouteModels(
     const base = defaults.get(entry.id)
     const api = request.api ?? base?.api ?? routeApi
     if (api === undefined) {
-      invalid(provider, `model "${entry.id}" needs an api; the installed catalog does not describe it, so set the`
+      invalid(provider, `model "${entry.id}" needs an api; the ${catalogName} does not describe it, so set the`
         + ' route\'s api to the wire protocol its endpoint speaks')
     }
     const baseUrl = request.baseURL ?? base?.baseUrl ?? providerBaseUrl
     if (baseUrl === undefined) {
-      invalid(provider, `model "${entry.id}" needs a baseURL; the installed catalog does not describe this route`)
+      invalid(provider, `model "${entry.id}" needs a baseURL; the ${catalogName} does not describe this route`)
     }
     // Capacities fall back to the route's own defaults, so a model listing that
     // discloses nothing but ids still yields a serviceable route. The fallback
@@ -921,7 +944,7 @@ export function resolveRouteModels(
     // the model's capability and stays out of request defaults.
     if (entry.maxTokens !== undefined) configuredMaxTokens.set(entry.id, entry.maxTokens)
     return {
-      // The installed entry lays the floor, and the fields below override it.
+      // The catalog entry lays the floor, and the fields below override it.
       // Enumerating instead would silently drop every `Model` field this
       // package does not model — reasoning-level spellings, compatibility
       // quirks, model headers, and whatever a pi-ai upgrade adds next. Spread,

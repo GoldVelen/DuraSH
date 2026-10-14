@@ -86,17 +86,19 @@ describe('Host xAI discovery authentication', () => {
   })
 
   it('uses explicit credential references ahead of OAuth and draft keys ahead of missing references', async () => {
+    const { calls } = listing()
     const ctx = await harness({ xai: { apiKeyEnv: 'XAI_DISCOVERY_FIXTURE_KEY' } })
     await grant(ctx, 'oauth-access')
     await ctx.credentials.set(credentialRef('XAI_DISCOVERY_FIXTURE_KEY'), 'reference-key')
-    const { calls } = listing()
     await ctx.llm.discoverModels('llm-pi-ai', { provider: 'xai', refresh: true })
-    expect(calls.map(call => call.headers.get('authorization'))).toEqual(['Bearer reference-key', 'Bearer reference-key'])
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    expect(calls.every(call => call.headers.get('authorization') === 'Bearer reference-key')).toBe(true)
+    const beforeMissing = calls.length
     await ctx.credentials.unset(credentialRef('XAI_DISCOVERY_FIXTURE_KEY'))
     await expect(ctx.llm.discoverModels('llm-pi-ai', { provider: 'xai', refresh: true })).rejects.toThrow(/no credential/)
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(beforeMissing)
     await ctx.llm.discoverModels('llm-pi-ai', { provider: 'xai', refresh: true, apiKey: 'draft-key' })
-    expect(calls.slice(2).map(call => call.headers.get('authorization'))).toEqual(['Bearer draft-key', 'Bearer draft-key'])
+    expect(calls.slice(beforeMissing).map(call => call.headers.get('authorization'))).toEqual(['Bearer draft-key', 'Bearer draft-key'])
   })
 
   it('reports absent authentication before sending directory requests', async () => {

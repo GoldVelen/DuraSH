@@ -1248,6 +1248,10 @@ Requires: `llm`
 ```ts config-catalog
 /** Plugin configuration: the provider routes this instance owns. */
 export interface Config {
+  /** Native-provider model catalog refresh interval in milliseconds; positive and at most the Node timer limit. */
+  modelCatalogRefreshMs?: number
+  /** Native-provider model catalog request deadline in milliseconds; positive and at most the Node timer limit. */
+  modelCatalogTimeoutMs?: number
   /**
    * pi-ai provider routes, keyed by provider. An empty (or omitted) dict is
    * the dormant settings-driven posture: the adapter mounts with no routes
@@ -1277,13 +1281,15 @@ export interface PiAiProviderProfile {
   /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
   baseURL?: string
   /**
-   * This route's model catalog. Omission serves the installed catalog for the
-   * route unchanged; an explicit list replaces it, each entry defaulting its
-   * unset fields from the installed model of the same id.
+   * This route's model catalog. Omission serves the runtime or installed catalog
+   * unchanged. An explicit list replaces its ids unless modelCatalogMode is live,
+   * when the list customizes matching ids; unset fields inherit the catalog model.
    */
   models?: PiAiModelProfile[]
+  /** Live mode follows account catalog ids while retaining matching configured model fields as customizations. */
+  modelCatalogMode?: 'live' | 'configured'
   /**
-   * Installed-catalog customizations by model id: each entry reshapes that
+   * Runtime or installed catalog customizations by model id: each entry reshapes that
    * one model with the same fields a {@link models} entry takes, while the
    * rest of the catalog keeps serving untouched. Only meaningful on a catalog
    * route with no `models` list — `models` already replaces the catalog, so
@@ -1520,7 +1526,7 @@ export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['
 
 Depends on: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`)
 
-Source: [`packages/llm/llm-pi-ai/src/config.ts:230`](../packages/llm/llm-pi-ai/src/config.ts)
+Source: [`packages/llm/llm-pi-ai/src/config.ts:238`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 

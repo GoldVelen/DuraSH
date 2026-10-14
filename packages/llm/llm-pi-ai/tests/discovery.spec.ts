@@ -74,6 +74,43 @@ async function harness(): Promise<Context> {
 }
 
 describe('catalog-route model discovery', () => {
+  it('projects account-bound reasoning metadata on passive reads without resolving credentials or contacting an endpoint', async () => {
+    const base = getBuiltinModels('deepseek')[0]
+    if (base === undefined) throw new Error('the installed catalog ships no DeepSeek model')
+    const { thinkingLevelMap: _thinkingLevelMap, ...withoutThinkingMap } = base
+    const runtimeModels = [
+      { ...withoutThinkingMap, id: 'account-plain', reasoning: false },
+      { ...withoutThinkingMap, id: 'account-implicit-levels', reasoning: true },
+      { ...base, id: 'account-mapped-levels', reasoning: true,
+        thinkingLevelMap: { off: 'none', minimal: null, low: 'wire-low', medium: null, high: null, xhigh: 'wire-ultra', max: null } },
+    ]
+    const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.reject(new Error('passive metadata must stay offline')))
+    vi.stubGlobal('fetch', fetch)
+    const resolveApiKey = vi.fn(() => Promise.resolve('unused-key'))
+    const resolveNativeAuth = vi.fn(() => Promise.resolve({ apiKey: 'unused-grant' }))
+    const result = await discoverModels({ provider: 'account-route' }, () => ({
+      headers: undefined, catalogProvider: 'opencode-go', runtimeModels, resolveApiKey, resolveNativeAuth,
+    }))
+    const common = { name: base.name, contextWindow: base.contextWindow, maxTokens: base.maxTokens, inputModalities: base.input }
+    expect(result).toEqual([
+      { ...common, id: 'account-plain' },
+      { ...common, id: 'account-implicit-levels', reasoningEfforts: { off: null, minimal: 'minimal', low: 'low', medium: 'medium', high: 'high' } },
+      { ...common, id: 'account-mapped-levels', reasoningEfforts: { off: 'none', low: 'wire-low', xhigh: 'wire-ultra' } },
+    ])
+    expect(fetch).not.toHaveBeenCalled()
+    expect(resolveApiKey).not.toHaveBeenCalled()
+    expect(resolveNativeAuth).not.toHaveBeenCalled()
+  })
+
+  it('refuses Go refresh without account authorization before reading either directory', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.reject(new Error('an unauthenticated refresh must not fetch')))
+    vi.stubGlobal('fetch', fetch)
+    await expect(discoverModels({ provider: 'opencode-go', refresh: true }, () => ({
+      headers: undefined, resolveApiKey: () => Promise.resolve(undefined),
+    }))).rejects.toMatchObject({ code: 'MISSING_CREDENTIAL' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('includes the installed model input types for vision models', async () => {
     const ctx = await harness()
     const models = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'openai' })

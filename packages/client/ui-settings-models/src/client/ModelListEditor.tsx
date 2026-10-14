@@ -2,9 +2,9 @@
  * The model list of one pi-ai provider profile, plus the action that asks the
  * provider what it serves.
  *
- * The list is the profile's `models` array as the card holds it: an empty list
- * means "serve this route's built-in catalog", and any entry replaces that
- * catalog, so a row is only ever added deliberately. Fetching asks the endpoint
+ * The rows are the profile's `models` array. In configured mode, a non-empty
+ * array replaces the catalog. In live mode, rows customize matching account
+ * model IDs while unlisted account models remain available. Fetching asks the endpoint
  * **the form currently shows** — including a key typed but not yet saved — so
  * adding a provider is one pass instead of save-then-return; the reply is
  * candidates the user picks from, never configuration written behind them.
@@ -64,12 +64,14 @@ export interface ProbeTarget {
 export interface ModelListEditorProps {
   /** The rows as currently drafted. */
   models: readonly ModelDraft[]
-  /** Installed provider whose catalog supplies defaults without endpoint I/O. */
+  /** Provider whose Host catalog supplies defaults without endpoint I/O. */
   catalogProvider?: string | undefined
   /** Route input types for models absent from the installed catalog. */
   defaultInput?: readonly string[] | undefined
   /** Whether the user layer currently owns the whole array; absent on a create. */
   overridden?: boolean
+  /** Rows customize matching account models; unlisted account models remain available. */
+  liveCatalog?: boolean
   /** Replace the drafted rows. */
   onChange: (models: ModelDraft[]) => void
   /** Remove the user-owned array and return to inheritance; absent on a create. */
@@ -152,13 +154,13 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     if (catalogProvider === undefined) return
     let current = true
     const generation = refreshGeneration.current
-    void operations.discoverModels(probe.settingsNs, { provider: catalogProvider }).then((answer) => {
+    void operations.discoverModels(probe.settingsNs, { provider: probe.provider ?? catalogProvider }).then((answer) => {
       if (!current || generation !== refreshGeneration.current) return
       setInheritedCatalog({ provider: catalogProvider, models: answer.kind === 'found' ? answer.models : [] })
       setFailure(answer.kind === 'refused' ? answer.message : undefined)
     })
     return () => { current = false }
-  }, [catalogProvider, operations, probe.settingsNs])
+  }, [catalogProvider, operations, probe.settingsNs, probe.provider])
   const catalog = inheritedCatalog?.provider === catalogProvider ? inheritedCatalog?.models : undefined
   const inputDefaults = useMemo(() => new Map(catalog?.map(model => [model.id, model.inputModalities])), [catalog])
   const [candidates, setCandidates] = useState<readonly LlmDiscoveredModel[] | undefined>(undefined)
@@ -320,7 +322,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
             ? null
             : (
               <span className={styles['modelCatalogMeta']}>
-                {props.overridden ? t('modelsCustomized') : t('modelsInherited')}
+                {props.liveCatalog === true ? t('modelsLive') : props.overridden ? t('modelsCustomized') : t('modelsInherited')}
               </span>
             )}
         </div>
@@ -348,7 +350,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
           {busy ? t('fetching') : t('fetchModels')}
         </button>
       </div>
-      {models.length === 0 ? <p className={styles['modelEmpty']}>{t('modelsEmpty')}</p> : null}
+      {models.length === 0 ? <p className={styles['modelEmpty']}>{t(props.liveCatalog === true ? 'modelsLiveEmpty' : 'modelsEmpty')}</p> : null}
       <div className={styles['modelList']}>
         {models.map((model, index) => (
           <ModelRow

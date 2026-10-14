@@ -26,8 +26,7 @@ import styles from './ModelsSection.module.css'
 /** Per-adapter-family curated field sets (unknown namespaces get the hint alone). */
 type EditorLayout = 'deepseek' | 'pi-ai' | 'unknown'
 
-
-
+const ONLINE_CATALOG_PROVIDERS = new Set(['openai-codex', 'opencode-go', 'xai'])
 /** Props of {@link ProviderEditor}. */
 export interface ProviderEditorProps {
   /** Provider route id. */
@@ -222,6 +221,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   // an edited-but-unsaved endpoint, and a key typed but not yet stored.
   const probeApi = stringAt(draft, 'api') ?? stringAt(fallback, 'api')
   const probeBaseURL = stringAt(draft, 'baseURL') ?? stringAt(fallback, 'baseURL')
+  const nativeCatalogProvider = stringAt(draft, 'catalogProvider') ?? stringAt(fallback, 'catalogProvider') ?? props.provider
+  const accountModelList = layout === 'pi-ai' && ONLINE_CATALOG_PROVIDERS.has(nativeCatalogProvider)
+  const catalogMode = stringAt(draft, 'modelCatalogMode') ?? stringAt(fallback, 'modelCatalogMode')
   const probe = {
     settingsNs: namespace.ns,
     // Naming the route lets an adapter that already describes it answer from
@@ -362,6 +364,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     const customModels = schema.getPath(draft, ['models'])
     const modelsOverridden = schema.hasPath(draft, ['models'])
     const models = modelDrafts(modelsOverridden ? customModels : inheritedModels())
+    const liveCatalog = accountModelList && (catalogMode === 'live' || (catalogMode === undefined && models.length === 0))
     const defaultContextWindow = schema.getPath(fallback, ['defaultContextWindow'])
     const defaultMaxTokens = schema.getPath(fallback, ['maxTokens'])
     const defaultInput = schema.getPath(fallback, ['defaultInput'])
@@ -377,7 +380,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       t,
       disabled,
       onChange: (next: Record<string, unknown>[]) => {
-        setDraft(current => schema.setPath(current, ['models'], next))
+        setDraft((current) => {
+          const customized = schema.setPath(current, ['models'], next)
+          return liveCatalog && catalogMode === undefined
+            ? schema.setPath(customized, ['modelCatalogMode'], 'live')
+            : customized
+        })
       },
       onReset: () => { setDraft(current => schema.deletePath(current, ['models'])) },
     }
@@ -508,14 +516,25 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                 />
               )
               : (
-                <ModelListEditor
-                  {...catalogProps}
-                  catalogProvider={props.declared === true ? undefined : props.provider}
-                  defaultInput={Array.isArray(defaultInput) ? defaultInput : undefined}
-                  probe={probe}
-                  probeBlocked={keyFailure}
-                  operations={operations}
-                />
+                <>
+                  {accountModelList ? <div className={styles['field']}>
+                    <label>
+                      <input type="checkbox" checked={liveCatalog} disabled={disabled}
+                        onChange={(event) => { setField('modelCatalogMode', event.target.checked ? 'live' : 'configured') }} />
+                      {t('followAccountModels')}
+                    </label>
+                    {liveCatalog ? <span className={styles['advancedHint']}>{t('followAccountModelsHint')}</span> : null}
+                  </div> : null}
+                  <ModelListEditor
+                    {...catalogProps}
+                    liveCatalog={liveCatalog}
+                    catalogProvider={props.declared === true && !accountModelList ? undefined : props.provider}
+                    defaultInput={Array.isArray(defaultInput) ? defaultInput : undefined}
+                    probe={probe}
+                    probeBlocked={keyFailure}
+                    operations={operations}
+                  />
+                </>
               )}
           </div>
         </details>}

@@ -94,6 +94,28 @@ describe('Codex online model discovery', () => {
     ])
   })
 
+  it('keeps undisclosed reasoning levels absent for a listed subscription model', async () => {
+    listing({ models: [{ slug: 'subscription-without-levels', visibility: 'list' }] })
+    expect(await discoverModels({ provider: 'openai-codex', refresh: true, apiKey: token })).toEqual([
+      { id: 'subscription-without-levels', name: 'subscription-without-levels' },
+    ])
+  })
+
+  it.each([null, {}, { chatgpt_account_id: '' }, { chatgpt_account_id: 123 }])(
+    'rejects an unusable account claim before contacting its directory: %j', async (claim) => {
+      const fetch = listing()
+      const apiKey = `e30.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': claim })).toString('base64url')}.signature`
+      await expect(discoverModels({ provider: 'openai-codex', refresh: true, apiKey }))
+        .rejects.toMatchObject({ code: 'INVALID_CREDENTIAL' })
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
+
+  it('keeps an empty account directory empty when refreshing native metadata', async () => {
+    listing({ models: [] })
+    expect(await discoverModels({ provider: 'openai-codex', refresh: true, apiKey: token })).toEqual([])
+  })
+
   it.each([{}, { models: {} }, null])('rejects malformed directories instead of returning installed models: %j', async (body) => {
     listing(body)
     await expect(discoverModels({ provider: 'openai-codex', refresh: true, apiKey: token }))

@@ -1,0 +1,12 @@
+- menu "模型与推理等级":
+  - group "DeepSeek":
+    - text: DeepSeek
+    - menuitemradio "DeepSeek-V4-Flash"
+    - menuitemradio "DeepSeek-V4-Flash-Vision-Exp"
+  - group "opencode-go":
+    - text: opencode-go
+    - menuitemradio "DeepSeek V4.1 Flash" [checked]:
+      - text: DeepSeek V4.1 Flash
+      - img
+    - menuitemradio "DeepSeek V4.1 Pro"
+    - menuitemradio "Claude Go Fixture"

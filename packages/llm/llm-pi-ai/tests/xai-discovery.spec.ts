@@ -49,6 +49,21 @@ describe('xAI online model discovery', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('retains explicit language-model labels and output capacity when materializing new account ids', async () => {
+    listing({ models: [{ ...latest, id: 'grok-account-new', name: 'Account Grok', max_output_tokens: 98304 }] })
+    expect(await discoverModels({ provider: 'xai', refresh: true, apiKey: 'key' })).toEqual([
+      { id: 'grok-account-new', name: 'Account Grok', contextWindow: 500000, maxTokens: 98304,
+        inputModalities: ['text', 'image'],
+        reasoningEfforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' } },
+    ])
+  })
+
+  it.each([null, {}, { models: {} }])('refuses malformed language-model directories instead of installed metadata: %j', async (body) => {
+    listing(body)
+    await expect(discoverModels({ provider: 'xai', refresh: true, apiKey: 'key' }))
+      .rejects.toMatchObject({ code: 'DISCOVERY_FAILED' })
+  })
+
   it('uses the draft endpoint and key ahead of stored credentials', async () => {
     const fetch = listing()
     const resolveApiKey = vi.fn(async () => 'stored-key')

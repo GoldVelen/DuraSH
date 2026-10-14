@@ -1,15 +1,14 @@
 /**
- * Answering "which models can this provider serve?" for the configuration
- * surface's "fetch available models" action.
+ * Read native account directories and model metadata for editor requests.
  *
- * Explicit xAI and Codex refreshes read their authenticated model
- * directories. Passive metadata reads and other installed providers use the
- * bundled catalog. Hand-declared routes use their model-listing endpoint.
+ * xAI, Codex, and OpenCode Go refreshes read authenticated directories.
+ * Passive reads use the Host's account-bound catalog when available, then the
+ * installed catalog. Hand-declared routes use their model-listing endpoint.
  *
- * Neither path is a catalog refresh. Nothing here is stored: the request
- * carries a draft the user is still editing, and the reply is candidate
- * metadata the surface offers for adoption. `settings.yaml` remains the only
- * thing that decides what a route serves.
+ * A stored-source native refresh can publish complete model descriptors through
+ * a Host callback without writing settings. The Host keeps draft endpoint,
+ * protocol, and credential requests separate from its account directory;
+ * those replies remain candidates for an editor to adopt.
  *
  * OpenAI-compatible and Anthropic Messages protocols are interrogated through
  * their native model-listing endpoints. The parser accepts the standard
@@ -24,14 +23,21 @@ import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai
 import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { catalogModels, catalogProvider, THINKING_LEVELS } from './catalog.ts'
+import { readModelDirectory as readEndpoint } from './model-directory-http.ts'
+import { resolveRouteModels } from './catalog.ts'
+import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, DEFAULT_INPUT } from './config.ts'
+import { getSupportedThinkingLevels } from './models.ts'
+import { fetchOpenCodeGoCatalog } from './opencode-go-catalog.ts'
+import type { Api, Model } from '@earendil-works/pi-ai'
 
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
  * bearer auth at `GET {baseURL}/models`; Anthropic Messages uses `x-api-key`
  * and `anthropic-version` at its native `GET /v1/models`. Azure is absent
  * despite its OpenAI lineage — it authenticates with an `api-key` header and
- * requires an `api-version` query. Codex's subscription directory is handled
- * separately. The remaining protocols have no supported listing here.
+ * requires an `api-version` query. Codex's subscription directory and Go's
+ * Console workspace directory are handled separately. The remaining protocols
+ * have no supported listing here.
  */
 const LISTABLE_PROTOCOLS: ReadonlySet<string> = new Set([
   'anthropic-messages',
@@ -47,15 +53,6 @@ const ANTHROPIC_MODEL_LIMIT = 1000
 
 /** Codex client compatibility version for the model-directory response fields consumed here. */
 const CODEX_DIRECTORY_CLIENT_VERSION = '0.155.0'
-
-/**
- * Endpoint replies larger than this are refused. The endpoint is whatever URL
- * the user typed, so the ceiling holds on the bytes actually read rather than
- * on the length the server claims — the same two-stage shape `dsh-web-fetch`
- * uses for its own caller-supplied URLs, except that a truncated model listing
- * is not parseable, so overflow rejects instead of truncating.
- */
-const MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 /** Capacity fields nested by enriched model-directory replies. */
 interface ListingLimit {
@@ -121,49 +118,6 @@ function listingUrl(baseURL: string, api: string): string {
   if (api !== 'anthropic-messages') return `${base}/models`
   const root = base.endsWith('/v1') ? base.slice(0, -3) : base
   return `${root}/v1/models?limit=${String(ANTHROPIC_MODEL_LIMIT)}`
-}
-
-/**
- * Read a reply body, refusing one that outgrows the ceiling. A declared length
- * is checked first so an honest server is turned away without transferring
- * anything; the accumulated total is what actually enforces the bound, because
- * a server that under-declares (or streams) tells us nothing up front.
- */
-async function readBounded(response: Response, url: string): Promise<string> {
-  const oversized = (): LlmError =>
-    new LlmError(`${url} answered with more than ${MAX_RESPONSE_BYTES} bytes`, 'DISCOVERY_FAILED')
-  const declared = Number(response.headers.get('content-length') ?? Number.NaN)
-  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
-    await response.body?.cancel()
-    throw oversized()
-  }
-  /* v8 ignore next -- fetch always exposes a body stream on a 2xx Response; the null guard is defensive. */
-  if (response.body === null) return ''
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      total += value.byteLength
-      if (total > MAX_RESPONSE_BYTES) throw oversized()
-      chunks.push(value)
-    }
-  } finally {
-    /* v8 ignore next 4 -- cancel() after a completed or abandoned read settles without rejecting; unobserved best-effort cleanup. */
-    await reader.cancel().catch(() => {
-      // Cancel after a drained read, or after this function walked away from
-      // an oversized one, is cleanup; the reply is already decided either way.
-    })
-  }
-  const body = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    body.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return new TextDecoder().decode(body)
 }
 
 /**
@@ -308,6 +262,8 @@ function usableProbeKey(raw: string): string {
 
 /** Host-owned profile inputs that a configuration draft deliberately omits. */
 export interface StoredModelDiscoveryProfile {
+  /** Host-owned directory reader; public metadata caching stays within this adapter instance. */
+  readonly readDirectory?: typeof readEndpoint
   /** Deployment headers configured on the named route. */
   readonly headers: Readonly<Record<string, string>> | undefined
   /** Resolve the named route's credential only when the draft carries none. */
@@ -321,15 +277,42 @@ export interface StoredModelDiscoveryProfile {
     apiKey?: string
     headers?: Record<string, string | null>
   } | undefined>
+  /** Current account-bound model metadata, owned by this Host route. */
+  readonly runtimeModels?: readonly Model<Api>[]
+  /** Publish a fresh directory only while the captured route and authorization remain current. */
+  readonly publishCatalog?: (models: readonly Model<Api>[]) => void
+}
+
+/** Project account metadata for the editor without turning catalog output limits into request defaults. */
+function projectModels(models: readonly Model<Api>[]): LlmDiscoveredModel[] {
+  return models.map(model => ({
+    id: model.id, name: model.name, contextWindow: model.contextWindow, maxTokens: model.maxTokens,
+    inputModalities: [...model.input],
+    ...!model.reasoning ? {} : { reasoningEfforts: Object.fromEntries(getSupportedThinkingLevels(model)
+      .map(level => [level, model.thinkingLevelMap?.[level] ?? (level === 'off' ? null : level)])) },
+  }))
+}
+
+/** Materialize directory metadata using a native single-protocol provider's implementation defaults. */
+function nativeModels(provider: string, models: readonly LlmDiscoveredModel[], baseURL: string): readonly Model<Api>[] {
+  if (models.length === 0) return []
+  return resolveRouteModels({ provider, baseURL, models: models.map(model => ({
+    // Codex and xAI directory parsers assign a name to every emitted entry.
+    id: model.id, name: model.name as string,
+    ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
+    ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+    ...model.inputModalities === undefined ? {} : { input: [...model.inputModalities] },
+    ...model.reasoningEfforts === undefined ? {} : { reasoningEfforts: model.reasoningEfforts },
+  })), defaultContextWindow: DEFAULT_CONTEXT_WINDOW, defaultMaxTokens: DEFAULT_MAX_TOKENS, defaultInput: [...DEFAULT_INPUT] }).models
 }
 
 /**
- * Interrogate one draft provider endpoint for the models it advertises.
+ * Read model metadata for a named route or an unsaved provider draft.
  * @param request - the endpoint, protocol, and one-shot credential to use.
- * @param storedProfile - Host-owned headers and lazy credential resolution for
- *   the named route. It is read only on the path that reaches the network; the
- *   credential is resolved only when the draft carries none.
- * @returns the advertised models in endpoint order.
+ * @param storedProfile - Host-owned account metadata, publication callback,
+ *   headers, and lazy credential resolution; credentials resolve only on the
+ *   network path when the request carries no one-shot key.
+ * @returns directory candidates, or current Host or installed metadata on passive reads.
  * @throws LlmError when the protocol has no readable listing, the endpoint
  *   refuses or fails the request, or the reply is not a model listing.
  */
@@ -337,12 +320,14 @@ export async function discoverModels(
   request: LlmModelDiscoveryOperation,
   storedProfile?: () => StoredModelDiscoveryProfile | undefined,
 ): Promise<readonly LlmDiscoveredModel[]> {
-  const refreshedProfile = request.refresh === true ? storedProfile?.() : undefined
+  const refreshedProfile = storedProfile?.()
   const sourceProvider = refreshedProfile?.catalogProvider ?? request.provider
   const onlineXai = request.refresh === true && sourceProvider === 'xai'
   const onlineCodex = request.refresh === true && sourceProvider === 'openai-codex'
-  const onlineNative = onlineXai || onlineCodex
+  const onlineGo = request.refresh === true && sourceProvider === 'opencode-go'
+  const onlineNative = onlineXai || onlineCodex || onlineGo
   if (!onlineNative && request.provider !== undefined) {
+    if (refreshedProfile?.runtimeModels !== undefined) return projectModels(refreshedProfile.runtimeModels)
     const installed = catalogModels(request.provider)
     if (installed.size > 0) {
       return [...installed.values()].map(model => ({
@@ -357,7 +342,7 @@ export async function discoverModels(
   const baseURL = request.baseURL || (onlineNative
     ? refreshedProfile?.baseURL ?? catalogProvider(sourceProvider)?.baseUrl
     : undefined)
-  if (baseURL === undefined || baseURL.length === 0) {
+  if (!onlineGo && (baseURL === undefined || baseURL.length === 0)) {
     throw new LlmError(
       `pi-ai ships no catalog for provider "${request.provider ?? ''}", so its models can only come from its`
       + " endpoint; set a baseURL, or enter this provider's models by hand",
@@ -371,19 +356,24 @@ export async function discoverModels(
   // when the endpoint speaks something else (an Anthropic gateway answers 401,
   // which reads as a credential problem), and hand-entry remains the way out.
   const api = request.api ?? 'openai-completions'
-  if (!onlineCodex && !LISTABLE_PROTOCOLS.has(api)) {
+  if (!onlineGo && !onlineCodex && !LISTABLE_PROTOCOLS.has(api)) {
     throw new LlmError(
       `pi-ai protocol "${api}" has no model listing this build can read; enter this provider's models by hand`,
       'DISCOVERY_UNSUPPORTED',
     )
   }
-  const url = listingUrl(baseURL, api)
   // A key typed into the form wins: it may replace the stored key that is
   // failing. The stored profile is asked past the catalog and protocol checks,
   // and its credential resolver remains lazy so a typed key cannot fail over a
   // stored credential it supersedes. A route may still authenticate through a
   // deployment-owned Authorization header when neither key exists.
   const stored = refreshedProfile ?? storedProfile?.()
+  const publish = (models: readonly Model<Api>[]): void => {
+    // Unsaved endpoint, protocol and key drafts cannot replace the account directory serving conversations.
+    if (request.apiKey !== undefined || request.api !== undefined
+      || request.baseURL !== undefined && request.baseURL !== stored?.baseURL) return
+    stored?.publishCatalog?.(models)
+  }
   const supplied = request.apiKey ?? await stored?.resolveApiKey()
   const native = onlineNative && supplied === undefined
     ? await stored?.resolveNativeAuth?.(request.signal)
@@ -400,6 +390,15 @@ export async function discoverModels(
     headers.set('authorization', `Bearer ${apiKey}`)
   }
   for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+  if (onlineGo) {
+    if (apiKey !== undefined) headers.set('authorization', `Bearer ${apiKey}`)
+    if (!headers.has('authorization')) throw new LlmError('OpenCode Go model discovery requires account sign-in or an API key', 'MISSING_CREDENTIAL')
+    const models = await fetchOpenCodeGoCatalog(headers, request.signal, stored?.readDirectory)
+    publish(models)
+    return projectModels(models)
+  }
+  // Every non-Go path requires an endpoint before resolving credentials.
+  const endpoint = baseURL as string
   if (onlineCodex) {
     if (apiKey === undefined) {
       throw new LlmError('Codex model discovery requires subscription sign-in', 'MISSING_CREDENTIAL')
@@ -407,69 +406,31 @@ export async function discoverModels(
     headers.set('authorization', `Bearer ${apiKey}`)
     headers.set('chatgpt-account-id', codexAccountId(apiKey))
     headers.set('originator', 'pi')
-    const base = baseURL.replace(/\/+$/, '')
+    const base = endpoint.replace(/\/+$/, '')
     const root = base.endsWith('/codex') ? base : `${base}/codex`
-    return readCodexListing(await readEndpoint(
+    const found = readCodexListing(await readEndpoint(
       `${root}/models?client_version=${CODEX_DIRECTORY_CLIENT_VERSION}`, headers, request.signal,
     ))
+    publish(nativeModels(sourceProvider, found, endpoint))
+    return found
   }
   if (onlineXai) {
     if (!headers.has('authorization')) {
       throw new LlmError('xAI model discovery requires an API key or subscription sign-in', 'MISSING_CREDENTIAL')
     }
-    const directory = readListing(await readEndpoint(`${baseURL.replace(/\/+$/, '')}/models`, headers, request.signal))
-    const body = await readEndpoint(`${baseURL.replace(/\/+$/, '')}/language-models`, headers, request.signal)
+    const directory = readListing(await readEndpoint(`${endpoint.replace(/\/+$/, '')}/models`, headers, request.signal))
+    const body = await readEndpoint(`${endpoint.replace(/\/+$/, '')}/language-models`, headers, request.signal)
     if (typeof body !== 'object' || body === null || !('models' in body) || !Array.isArray(body.models)) {
       throw new LlmError('xAI language-model directory did not contain a models array', 'DISCOVERY_FAILED')
     }
     const metadata = new Map(directory.map(model => [model.id, model]))
-    return readListing({ data: body.models }, false).map(model => ({
+    const found = readListing({ data: body.models }, false).map(model => ({
       ...metadata.get(model.id),
       ...model,
       name: model.name ?? metadata.get(model.id)?.name ?? model.id,
     }))
+    publish(nativeModels(sourceProvider, found, endpoint))
+    return found
   }
-  return readListing(await readEndpoint(url, headers, request.signal))
-}
-
-/** Read one bounded JSON listing without exposing provider error bodies or credentials. */
-async function readEndpoint(url: string, headers: Headers, signal?: AbortSignal): Promise<unknown> {
-  let response: Response
-  try {
-    response = await fetch(url, {
-      method: 'GET',
-      headers,
-      ...signal === undefined ? {} : { signal },
-    })
-  } catch (error: unknown) {
-    if (signal?.aborted) {
-      throw new LlmError('model discovery aborted by caller', 'ABORTED', { cause: error })
-    }
-    throw new LlmError(`could not reach ${url}`, 'DISCOVERY_FAILED', { cause: error })
-  }
-  if (!response.ok) {
-    throw new LlmError(
-      `${url} answered ${response.status}${response.status === 401 || response.status === 403 ? '; check the API key or account sign-in' : ''}`,
-      'DISCOVERY_FAILED',
-    )
-  }
-  let text: string
-  try {
-    text = await readBounded(response, url)
-  } catch (error: unknown) {
-    // Cancellation during the body read rejects with the abort reason, which
-    // may be any value; the caller gets the same coded failure it would have
-    // for a cancellation before the request went out.
-    if (signal?.aborted) {
-      throw new LlmError('model discovery aborted by caller', 'ABORTED', { cause: error })
-    }
-    throw error
-  }
-  let body: unknown
-  try {
-    body = JSON.parse(text)
-  } catch (error: unknown) {
-    throw new LlmError(`${url} did not answer with JSON`, 'DISCOVERY_FAILED', { cause: error })
-  }
-  return body
+  return readListing(await readEndpoint(listingUrl(endpoint, api), headers, request.signal))
 }

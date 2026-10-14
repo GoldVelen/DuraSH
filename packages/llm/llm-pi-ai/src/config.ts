@@ -13,7 +13,7 @@
  * @module dsh-llm-pi-ai/config
  */
 
-import type { CacheRetention, ChatTemplateKwargValue, ModelThinkingLevel, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
+import type { Api, CacheRetention, ChatTemplateKwargValue, Model, ModelThinkingLevel, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
@@ -45,6 +45,12 @@ import { DEFAULT_GO_REFRESH_TIMEOUT_MS, MAX_GO_REFRESH_TIMEOUT_MS } from './open
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
+
+/** Default interval between native-provider model catalog refreshes. */
+export const DEFAULT_MODEL_CATALOG_REFRESH_MS = 60_000
+
+/** Default deadline for one native-provider model catalog request. */
+export const DEFAULT_MODEL_CATALOG_TIMEOUT_MS = 15_000
 
 /**
  * Default request-level bound on base64-encoded image payload. Every image in
@@ -109,13 +115,15 @@ export interface PiAiProviderProfile {
   /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
   baseURL?: string
   /**
-   * This route's model catalog. Omission serves the installed catalog for the
-   * route unchanged; an explicit list replaces it, each entry defaulting its
-   * unset fields from the installed model of the same id.
+   * This route's model catalog. Omission serves the runtime or installed catalog
+   * unchanged. An explicit list replaces its ids unless modelCatalogMode is live,
+   * when the list customizes matching ids; unset fields inherit the catalog model.
    */
   models?: PiAiModelProfile[]
+  /** Live mode follows account catalog ids while retaining matching configured model fields as customizations. */
+  modelCatalogMode?: 'live' | 'configured'
   /**
-   * Installed-catalog customizations by model id: each entry reshapes that
+   * Runtime or installed catalog customizations by model id: each entry reshapes that
    * one model with the same fields a {@link models} entry takes, while the
    * rest of the catalog keeps serving untouched. Only meaningful on a catalog
    * route with no `models` list — `models` already replaces the catalog, so
@@ -228,6 +236,10 @@ export interface ResolvedPiAiProviderProfile
 
 /** Plugin configuration: the provider routes this instance owns. */
 export interface Config {
+  /** Native-provider model catalog refresh interval in milliseconds; positive and at most the Node timer limit. */
+  modelCatalogRefreshMs?: number
+  /** Native-provider model catalog request deadline in milliseconds; positive and at most the Node timer limit. */
+  modelCatalogTimeoutMs?: number
   /**
    * pi-ai provider routes, keyed by provider. An empty (or omitted) dict is
    * the dormant settings-driven posture: the adapter mounts with no routes
@@ -335,6 +347,7 @@ const profile = z.object({
   api: z.union(supportedProtocols()),
   baseURL: z.string(),
   models: z.array(modelProfile),
+  modelCatalogMode: z.union(['live', 'configured']),
   modelOverrides: z.dict(modelOverride),
   compat: compatProfile,
   defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW),
@@ -355,10 +368,41 @@ const profile = z.object({
   retryPolicy: RetryPolicySchema,
 })
 
+const modelCatalogTimer = z.transform(z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS), (value) => {
+  if (!Number.isFinite(value)) throw new Error('llm-pi-ai: model catalog timing must be finite')
+  return value
+})
+
 /** Runtime schema for {@link Config}. */
 export const Config: z<Config> = z.object({
   providers: z.dict(profile).default({}),
+  modelCatalogRefreshMs: modelCatalogTimer.default(DEFAULT_MODEL_CATALOG_REFRESH_MS),
+  modelCatalogTimeoutMs: modelCatalogTimer.default(DEFAULT_MODEL_CATALOG_TIMEOUT_MS),
 })
+
+/** Validated timing budgets for Host-owned native model catalogs. */
+export interface ModelCatalogTiming {
+  /** Interval between catalog refreshes. */
+  readonly refreshMs: number
+  /** Deadline for each catalog request. */
+  readonly timeoutMs: number
+}
+
+/**
+ * Resolve model catalog timing for schema-free plugin mounts and settings writes.
+ * @param config - plugin configuration containing optional timing budgets.
+ * @returns positive finite timer-safe refresh and request budgets.
+ */
+export function resolveModelCatalogTiming(config: Config): ModelCatalogTiming {
+  const modelCatalogRefreshMs = config.modelCatalogRefreshMs ?? DEFAULT_MODEL_CATALOG_REFRESH_MS
+  const modelCatalogTimeoutMs = config.modelCatalogTimeoutMs ?? DEFAULT_MODEL_CATALOG_TIMEOUT_MS
+  for (const [field, value] of Object.entries({ modelCatalogRefreshMs, modelCatalogTimeoutMs })) {
+    if (!Number.isFinite(value) || value <= 0 || value > MAX_TIMER_DELAY_MS) {
+      throw new Error(`llm-pi-ai: ${field} must be a positive finite number no greater than ${MAX_TIMER_DELAY_MS}`)
+    }
+  }
+  return { refreshMs: modelCatalogRefreshMs, timeoutMs: modelCatalogTimeoutMs }
+}
 
 /**
  * Reject new or changed provider profiles that cannot be served. Unchanged
@@ -366,12 +410,18 @@ export const Config: z<Config> = z.object({
  * edits to another provider. Removed profiles require no catalog validation.
  * @param config - the resolved section to check.
  * @param previous - current resolved section; omission checks every provider.
+ * @param runtimeCatalogs - authoritative Host models keyed by configured route, not native provider or account family.
  * @throws Error naming the route and configuration entry that cannot be served.
  */
-export function assertServiceable(config: Config, previous?: Config): void {
+export function assertServiceable(
+  config: Config,
+  previous?: Config,
+  runtimeCatalogs?: ReadonlyMap<string, readonly Model<Api>[]>,
+): void {
+  resolveModelCatalogTiming(config)
   const changed = Object.fromEntries(Object.entries(config.providers ?? {}).filter(([provider, profile]) =>
     !deepEqualJson(profile, previous?.providers?.[provider])))
-  resolveProfiles(changed)
+  resolveProfiles(changed, 'strict', runtimeCatalogs)
 }
 
 /** Reject removed pre-release profile fields and name their replacements. */
@@ -411,12 +461,14 @@ function assertValidHeaders(provider: string, headers: Readonly<Record<string, s
  * Deferred catalog validation retains diagnostics without deleting configured
  * routes. An omitted dict resolves to the empty, dormant route set.
  * @param providers - configured provider profiles keyed by route.
- * @param validation - writes require a complete catalog; stored reads retain catalog diagnostics.
+ * @param validation - strict writes reject unserviceable selected models; stored reads retain catalog diagnostics.
+ * @param runtimeCatalogs - authoritative Host models keyed by configured route; omitted entries use installed models.
  * @returns validated profiles in configuration order.
  */
 export function resolveProfiles(
   providers: Readonly<Record<string, PiAiProviderProfile>> | undefined,
   validation: 'strict' | 'deferred' = 'strict',
+  runtimeCatalogs?: ReadonlyMap<string, readonly Model<Api>[]>,
 ): Map<string, ResolvedPiAiProviderProfile> {
   if (Array.isArray(providers)) {
     throw new Error('llm-pi-ai: providers is now a dict keyed by provider route, not an array of profiles')
@@ -481,12 +533,13 @@ export function resolveProfiles(
         ...source.api === undefined ? {} : { api: source.api },
         ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
         ...source.models === undefined ? {} : { models: source.models },
+        ...source.modelCatalogMode === undefined ? {} : { modelCatalogMode: source.modelCatalogMode },
         ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
         ...source.compat === undefined ? {} : { compat: source.compat },
         defaultInput,
         defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
         defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
-      }, validation)
+      }, validation, runtimeCatalogs?.get(provider))
       catalogError = catalog.modelErrors.values().next().value
       piProvider = buildProvider({
         provider,
