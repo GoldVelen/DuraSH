@@ -299,6 +299,7 @@ export function apply(ctx: Context, config: Config): void {
       headers: profile?.headers,
       ...profile?.baseURL === undefined ? {} : { baseURL: profile.baseURL },
       catalogProvider: profile?.catalogProvider ?? provider,
+      ...profile === undefined ? {} : { codexDirectoryClientVersion: profile.codexDirectoryClientVersion },
       resolveApiKey: () => profile === undefined ? Promise.resolve(undefined) : resolveApiKey(provider, profile),
       ...runtimeModels === undefined ? {} : { runtimeModels },
       ...native === undefined ? {} : {
@@ -361,7 +362,8 @@ export function apply(ctx: Context, config: Config): void {
   function catalogSource(provider: string): unknown {
     const profile = current().providers?.[provider]
     return { provider: profile?.catalogProvider ?? provider, baseURL: profile?.baseURL,
-      api: profile?.api, apiKeyEnv: profile?.apiKeyEnv, headers: profile?.headers }
+      api: profile?.api, apiKeyEnv: profile?.apiKeyEnv, headers: profile?.headers,
+      codexDirectoryClientVersion: profile?.codexDirectoryClientVersion }
   }
 
   /** Publish complete Host metadata and invalidate the consumers of this route's models. */

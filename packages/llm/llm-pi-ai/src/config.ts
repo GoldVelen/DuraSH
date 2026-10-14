@@ -52,6 +52,31 @@ export const DEFAULT_MODEL_CATALOG_REFRESH_MS = 60_000
 /** Default deadline for one native-provider model catalog request. */
 export const DEFAULT_MODEL_CATALOG_TIMEOUT_MS = 15_000
 
+/** Supported Codex model-directory compatibility version, independent of the SDK or local CLI. */
+export const DEFAULT_CODEX_DIRECTORY_CLIENT_VERSION = '0.162.1'
+
+const versionNumber = '(?:0|[1-9]\\d*)'
+const prereleaseIdentifier = '(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)'
+const CODEX_DIRECTORY_VERSION_PATTERN = new RegExp(
+  `^${versionNumber}\\.${versionNumber}\\.${versionNumber}`
+  + `(?:-${prereleaseIdentifier}(?:\\.${prereleaseIdentifier})*)?`
+  + '(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$(?![\\s\\S])',
+)
+
+/**
+ * Resolve the compatibility version advertised to the Codex model directory.
+ * @param value - configured SemVer release or prerelease; omission uses this build's supported version.
+ * @returns the validated version, independently of the SDK and any locally installed Codex CLI.
+ * @throws Error when the configured value is not a semantic version.
+ */
+export function resolveCodexDirectoryClientVersion(value?: string): string {
+  const version = value ?? DEFAULT_CODEX_DIRECTORY_CLIENT_VERSION
+  if (!CODEX_DIRECTORY_VERSION_PATTERN.test(version)) {
+    throw new Error('llm-pi-ai: codexDirectoryClientVersion must be a semantic release or prerelease version')
+  }
+  return version
+}
+
 /**
  * Default request-level bound on base64-encoded image payload. Every image in
  * history is re-encoded into every request body, so an unbounded conversation
@@ -122,6 +147,8 @@ export interface PiAiProviderProfile {
   models?: PiAiModelProfile[]
   /** Live mode follows account catalog ids while retaining matching configured model fields as customizations. */
   modelCatalogMode?: 'live' | 'configured'
+  /** Codex model-directory compatibility version; older values can hide account models, independently of the SDK or local CLI. */
+  codexDirectoryClientVersion?: string
   /**
    * Runtime or installed catalog customizations by model id: each entry reshapes that
    * one model with the same fields a {@link models} entry takes, while the
@@ -205,6 +232,8 @@ export interface ResolvedPiAiProviderProfile
   provider: string
   /** Resolved display name for selectors and configuration surfaces. */
   displayName: string
+  /** Validated Codex model-directory compatibility version after defaulting. */
+  codexDirectoryClientVersion: string
   /** Validated credential reference, when one is configured. */
   apiKeyEnv?: CredentialRef
   /** Positive finite provider-idle interval after defaulting. */
@@ -348,6 +377,7 @@ const profile = z.object({
   baseURL: z.string(),
   models: z.array(modelProfile),
   modelCatalogMode: z.union(['live', 'configured']),
+  codexDirectoryClientVersion: z.string().pattern(CODEX_DIRECTORY_VERSION_PATTERN),
   modelOverrides: z.dict(modelOverride),
   compat: compatProfile,
   defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW),
@@ -485,6 +515,7 @@ export function resolveProfiles(
       throw new Error(`llm-pi-ai: provider "${provider}" has an empty displayName`)
     }
     assertValidHeaders(provider, source.headers)
+    const codexDirectoryClientVersion = resolveCodexDirectoryClientVersion(source.codexDirectoryClientVersion)
     const oauthRefreshTimeoutMs = source.oauthRefreshTimeoutMs ?? DEFAULT_GO_REFRESH_TIMEOUT_MS
     if (!Number.isFinite(oauthRefreshTimeoutMs) || oauthRefreshTimeoutMs <= 0 || oauthRefreshTimeoutMs > MAX_GO_REFRESH_TIMEOUT_MS) {
       throw new Error(`llm-pi-ai: provider "${provider}" oauthRefreshTimeoutMs must be positive`
@@ -560,6 +591,7 @@ export function resolveProfiles(
       ...rest,
       provider,
       displayName,
+      codexDirectoryClientVersion,
       ...apiKeyEnv === undefined ? {} : { apiKeyEnv: credentialRef(apiKeyEnv) },
       streamIdleTimeoutMs,
       oauthRefreshTimeoutMs,

@@ -3,7 +3,7 @@ import { discoverModels } from '../src/discovery.ts'
 
 const token = `e30.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'fixture-account' } })).toString('base64url')}.signature`
 const latest = {
-  slug: 'gpt-6-sol', display_name: 'GPT-6-Sol', visibility: 'list', context_window: 272_000,
+  slug: 'gpt-6.1-sol', display_name: 'GPT-6.1-Sol', visibility: 'list', context_window: 500_000,
   input_modalities: ['text', 'image'],
   supported_reasoning_levels: [{ effort: 'low' }, { effort: 'xhigh' }, { effort: 'max' }],
 }
@@ -27,12 +27,12 @@ describe('Codex online model discovery', () => {
     expect(fetch).toHaveBeenCalledOnce()
     const url = new URL(fetch.mock.calls[0]![0] as string)
     expect(url.origin + url.pathname).toBe('https://chatgpt.com/backend-api/codex/models')
-    expect(url.searchParams.get('client_version')).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(url.searchParams.get('client_version')).toBe('0.162.1')
     const headers = new Headers(fetch.mock.calls[0]![1]?.headers)
     expect(headers.get('authorization')).toBe(`Bearer ${token}`)
     expect(headers.get('chatgpt-account-id')).toBe('fixture-account')
     expect(result).toEqual([{
-      id: 'gpt-6-sol', name: 'GPT-6-Sol', contextWindow: 272_000, inputModalities: ['text', 'image'],
+      id: 'gpt-6.1-sol', name: 'GPT-6.1-Sol', contextWindow: 500_000, inputModalities: ['text', 'image'],
       reasoningEfforts: { low: 'low', xhigh: 'xhigh', max: 'max' },
     }])
   })
@@ -42,6 +42,20 @@ describe('Codex online model discovery', () => {
     expect((await discoverModels({ provider: 'openai-codex' })).length).toBeGreaterThan(0)
     expect(fetch).not.toHaveBeenCalled()
   })
+
+  it.each(['0.155.0', '0.162.1+fixture.1', '0.162.1-rc.1+fixture.1'])(
+    'uses the stored client version as one encoded query value: %s', async (version) => {
+      const fetch = listing()
+      await discoverModels({ provider: 'work-codex', refresh: true, apiKey: token }, () => ({
+        headers: undefined, catalogProvider: 'openai-codex', codexDirectoryClientVersion: version,
+        resolveApiKey: () => Promise.resolve(undefined),
+      }))
+      const url = new URL(fetch.mock.calls[0]![0] as string)
+      expect(url.pathname).toBe('/backend-api/codex/models')
+      expect([...url.searchParams]).toEqual([['client_version', version]])
+      expect(url.search).toBe(`?client_version=${encodeURIComponent(version)}`)
+    },
+  )
 
   it('reads a new directory on each refresh and accepts an already suffixed draft endpoint', async () => {
     const fetch = listing()

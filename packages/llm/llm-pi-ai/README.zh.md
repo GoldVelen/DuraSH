@@ -79,6 +79,7 @@ kind: "package-reference"
 | `baseURL` | 目录中各模型的端点 | 覆盖每个模型的端点 |
 | `models` | 当前有效目录 | 选择模型 id；`modelCatalogMode` 为 live 时只定制同 id 的模型 |
 | `modelCatalogMode` | 未设置 | `live` 跟随目录 id；`configured` 或省略时保留显式模型名单 |
+| `codexDirectoryClientVersion` | `0.162.1` | Codex 目录兼容版本；影响账号模型可见性，与 SDK 或本机 CLI 版本独立 |
 | `modelOverrides` | 无 | 未设置 `models` 列表时，定制当前有效目录中的个别模型 |
 | `compat` | 目录检测 | 无法识别端点的协议兼容开关 |
 | `defaultContextWindow` | `262,144` | 未描述模型的容量回退 |
@@ -134,7 +135,7 @@ Host 在内存中保存完整模型描述，按路由及当前账号或端点隔
 
 被动发现优先读取 Host 当前的账号元数据，否则读取已安装目录，不自行发起网络请求。显式刷新已存储的原生来源还会更新运行时目录，无需写入设置。未保存的端点、协议或密钥探测只返回编辑器候选，不能替换该目录。xAI 按 id 合并经过认证的 `GET /models` 与 `GET /language-models`，由语言目录选择聊天模型，两份响应共同提供能力信息。草稿密钥或已配置的凭据引用优先于订阅认证。刷新失败会直接报错，不会把旧名单当作成功结果返回。
 
-Codex 使用当前订阅凭据与账号 id 请求 `GET {baseURL}/codex/models?client_version=0.155.0`；根地址已以 `/codex` 结尾时直接使用。仅提供 `visibility: list` 的条目，包括公共 API 不提供的模型。模型 id、名称、上下文窗口、输入类型与受支持的推理档位进入原生运行时元数据，包含已安装 SDK 尚未收录的 id。编辑器候选中缺失的输出上限保持未指定。刷新目录不会改写已保存的模型定制。
+Codex 默认使用当前订阅凭据与账号 id 请求 `GET {baseURL}/codex/models?client_version=0.162.1`；根地址已以 `/codex` 结尾时直接使用。profile 的 `codexDirectoryClientVersion` 选择受支持的目录兼容版本，与 SDK 或本机 Codex CLI 版本独立。服务端按该版本控制模型可见性与元数据，因此同一账号使用较旧的固定值也可能返回旧名单。运行时修改此字段会刷新目录，无需升级 SDK。仅提供 `visibility: list` 的条目，包括公共 API 不提供的模型。模型 id、名称、上下文窗口、输入类型与受支持的推理档位进入原生运行时元数据，包含已安装 SDK 尚未收录的 id。编辑器候选中缺失的输出上限保持未指定。刷新不会改写已保存的模型定制。
 
 其他内置提供方保留本地发现；手工声明路由查询其端点。`openai-completions` 与 `openai-responses` 使用带 bearer 认证的 `GET {baseURL}/models`；`anthropic-messages` 使用带 `x-api-key` 与 `anthropic-version` 的 `GET /v1/models?limit=1000`。Anthropic 列表查询归一化末尾 `/v1`，模型请求仍保留配置的 `baseURL`。已存储凭据与部署标头保留在 Host；一次性草稿密钥优先。解析器接受标准 `data` 数组或富信息 `models` 对象，保留对象键作为请求 id，并归一化名称、容量与模态。这些草稿结果保持为候选，直到编辑器采纳并保存。
 

@@ -7,8 +7,8 @@
   - button "取消全选"
   - list:
     - listitem:
-      - checkbox "gpt-6-sol" [checked]
-      - text: gpt-6-sol
+      - checkbox "gpt-6.1-sol" [checked]
+      - text: gpt-6.1-sol
     - listitem:
       - checkbox "gpt-6-luna" [checked]
       - text: gpt-6-luna

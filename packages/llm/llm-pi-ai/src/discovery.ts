@@ -25,7 +25,7 @@ import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { catalogModels, catalogProvider, THINKING_LEVELS } from './catalog.ts'
 import { readModelDirectory as readEndpoint } from './model-directory-http.ts'
 import { resolveRouteModels } from './catalog.ts'
-import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, DEFAULT_INPUT } from './config.ts'
+import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, DEFAULT_INPUT, resolveCodexDirectoryClientVersion } from './config.ts'
 import { getSupportedThinkingLevels } from './models.ts'
 import { fetchOpenCodeGoCatalog } from './opencode-go-catalog.ts'
 import type { Api, Model } from '@earendil-works/pi-ai'
@@ -50,9 +50,6 @@ const ANTHROPIC_VERSION = '2023-06-01'
 
 /** Largest model-list page accepted by Anthropic's public endpoint; discovery reads one page and does not follow `has_more`. */
 const ANTHROPIC_MODEL_LIMIT = 1000
-
-/** Codex client compatibility version for the model-directory response fields consumed here. */
-const CODEX_DIRECTORY_CLIENT_VERSION = '0.155.0'
 
 /** Capacity fields nested by enriched model-directory replies. */
 interface ListingLimit {
@@ -272,6 +269,8 @@ export interface StoredModelDiscoveryProfile {
   readonly baseURL?: string
   /** Installed provider whose protocol and authentication this route uses. */
   readonly catalogProvider?: string
+  /** Supported Codex directory version selected by this route. */
+  readonly codexDirectoryClientVersion?: string
   /** Resolve provider-native authentication, including subscription refresh, only when no explicit key exists. */
   readonly resolveNativeAuth?: (signal?: AbortSignal) => Promise<{
     apiKey?: string
@@ -408,8 +407,9 @@ export async function discoverModels(
     headers.set('originator', 'pi')
     const base = endpoint.replace(/\/+$/, '')
     const root = base.endsWith('/codex') ? base : `${base}/codex`
+    const clientVersion = resolveCodexDirectoryClientVersion(stored?.codexDirectoryClientVersion)
     const found = readCodexListing(await readEndpoint(
-      `${root}/models?client_version=${CODEX_DIRECTORY_CLIENT_VERSION}`, headers, request.signal,
+      `${root}/models?client_version=${encodeURIComponent(clientVersion)}`, headers, request.signal,
     ))
     publish(nativeModels(sourceProvider, found, endpoint))
     return found

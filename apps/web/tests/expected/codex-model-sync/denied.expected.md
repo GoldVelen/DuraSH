@@ -57,6 +57,7 @@
       - text: openai-codex
       - button "编辑 openai-codex": 编辑
       - button "删除 openai-codex": 删除
+      - alert: <CODEX_ENDPOINT>/codex/models?client_version=0.162.1 answered 403; check the API key or account sign-in
       - text: openai-codex
       - paragraph: 模型请求和模型同步使用账号登录；如尚未登录，请使用上方登录入口。
       - button "改用 API 密钥"
@@ -65,8 +66,10 @@
         - textbox "API 地址":
           - /placeholder: <CODEX_ENDPOINT>
           - text: <CODEX_ENDPOINT>
+        - checkbox "跟随账号模型列表" [checked]
+        - text: 跟随账号模型列表 账号新增模型会自动出现，下方模型行按 ID 定制各项设置。
         - region "模型目录":
-          - text: 模型目录 已自定义模型目录
+          - text: 模型目录 账号模型清单与自定义设置
           - button "恢复默认模型"
           - button "获取可用模型"
           - textbox "模型 ID 1":
@@ -81,10 +84,10 @@
             - img
           - textbox "模型 ID 2":
             - /placeholder: 模型 ID
-            - text: gpt-6-sol
+            - text: gpt-6.1-sol
           - textbox "显示名称 2":
             - /placeholder: 显示名称
-            - text: GPT-6-Sol
+            - text: GPT-6.1-Sol
           - button "模型选项 2":
             - img
           - button "删除模型 2":
@@ -102,7 +105,7 @@
           - button "添加模型":
             - img
             - text: 添加模型
-          - paragraph: <CODEX_ENDPOINT>/codex/models?client_version=0.155.0 answered 403; check the API key or account sign-in
+          - paragraph: <CODEX_ENDPOINT>/codex/models?client_version=0.162.1 answered 403; check the API key or account sign-in
       - button "取消"
       - button "保存"
   - button "添加提供方":

@@ -111,7 +111,7 @@ async function loadComposition(existingRoot?: string): Promise<{ ctx: Context; s
 
 
 /** One route-matched loopback fixture for provider directories and Responses inference. */
-async function directoryFixture(provider: 'xai' | 'openai-codex' = 'xai') {
+async function directoryFixture(provider: 'xai' | 'openai-codex' = 'xai', versionGated = false) {
   const calls: {
     path: string
     method: string | undefined
@@ -141,10 +141,13 @@ async function directoryFixture(provider: 'xai' | 'openai-codex' = 'xai') {
       } else if (request.method === 'GET' && path === '/v1/models') {
         response.writeHead(200, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ data: [{ id: 'grok-4.7', context_length: 500000 }] }))
-      } else if (request.method === 'GET' && path === '/backend-api/codex/models?client_version=0.155.0') {
+      } else if (request.method === 'GET' && ['/backend-api/codex/models?client_version=0.162.1',
+        ...versionGated ? ['/backend-api/codex/models?client_version=0.155.0'] : [],
+      ].includes(path)) {
         response.writeHead(200, { 'content-type': 'application/json' })
-        response.end(JSON.stringify({ models: ['gpt-6-sol', 'gpt-6-luna'].map(slug => ({
-          slug, display_name: slug, visibility: 'list', context_window: 272000,
+        const latest = versionGated && path.endsWith('0.162.1')
+        response.end(JSON.stringify({ models: (latest ? ['gpt-6.1-sol'] : ['gpt-6-sol', 'gpt-6-luna']).map(slug => ({
+          slug, display_name: slug, visibility: 'list', context_window: latest ? 500000 : 272000,
           input_modalities: ['text', 'image'],
           supported_reasoning_levels: ['low', 'medium', 'high', 'xhigh', 'max'].map(effort => ({ effort })),
         })) }))
@@ -326,6 +329,41 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(server.calls).toHaveLength(4)
   })
 
+  it('updates a live Codex account directory when its client version changes without restarting the Loader', async () => {
+    const server = await directoryFixture('openai-codex', true)
+    const { ctx } = await loadComposition()
+    const access = ['fixture-header', Buffer.from(JSON.stringify({
+      'https://api.openai.com/auth': { chatgpt_account_id: 'version-fixture-account' },
+    })).toString('base64url'), 'fixture-signature'].join('.')
+    await ctx.credentials.modifyRecord(recordKeyFor('openai-codex'), async () => ({
+      kind: 'grant', payload: { type: 'oauth', access, refresh: 'version-fixture-refresh', expires: Date.now() + 3_600_000 },
+    }))
+    await ctx.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', 'openai-codex'], value: {
+      baseURL: server.url, modelCatalogMode: 'live', transport: 'sse',
+    } }])
+    const expectModels = async (ids: readonly string[]) => {
+      await vi.waitFor(async () => {
+        expect((await ctx.llm.listModels('openai-codex')).map(model => model.id)).toEqual(ids)
+      })
+    }
+    await expectModels(['gpt-6.1-sol'])
+    expect((await ctx.llm.resolveModelInfo('openai-codex', 'gpt-6.1-sol')).context).toEqual({ contextWindow: 500000 })
+    await ctx.settings.mutate('llm-pi-ai', [{ op: 'set',
+      path: ['providers', 'openai-codex', 'codexDirectoryClientVersion'], value: '0.155.0',
+    }])
+    await expectModels(['gpt-6-sol', 'gpt-6-luna'])
+    await ctx.settings.mutate('llm-pi-ai', [{ op: 'set',
+      path: ['providers', 'openai-codex', 'codexDirectoryClientVersion'], value: '0.162.1',
+    }])
+    await expectModels(['gpt-6.1-sol'])
+    expect(context).toBe(ctx)
+    expect(server.calls.filter(call => call.method === 'GET').map(call => call.path)).toEqual([
+      '/backend-api/codex/models?client_version=0.162.1',
+      '/backend-api/codex/models?client_version=0.155.0',
+      '/backend-api/codex/models?client_version=0.162.1',
+    ])
+  })
+
   it('refreshes Codex with subscription auth and runs newly adopted models before and after reload', async () => {
     const server = await directoryFixture('openai-codex')
     const { ctx, settingsPath } = await loadComposition()
@@ -348,7 +386,7 @@ describe('llm-pi-ai real dormant composition', () => {
     })
     expect(discovered.map(model => model.id)).toEqual(['gpt-6-sol', 'gpt-6-luna'])
     expect(server.calls).toEqual([expect.objectContaining({
-      method: 'GET', path: '/backend-api/codex/models?client_version=0.155.0',
+      method: 'GET', path: '/backend-api/codex/models?client_version=0.162.1',
       authorization: `Bearer ${access}`, accountId: 'fixture-account',
     })])
     await ctx.settings.mutate('llm-pi-ai', [{

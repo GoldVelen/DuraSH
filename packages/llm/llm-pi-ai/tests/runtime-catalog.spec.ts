@@ -248,3 +248,24 @@ describe('model catalog timing', () => {
     },
   )
 })
+
+describe('resolved Codex directory compatibility', () => {
+  it('materializes the supported default independently of installed model metadata', () => {
+    const model = advertised('gpt-6.1-sol', 'openai-codex-responses', { provider: 'openai-codex' })
+    const profile = resolveProfiles({ 'openai-codex': {} }, 'strict',
+      new Map([['openai-codex', [model]]])).get('openai-codex')
+    expect(profile?.codexDirectoryClientVersion).toBe('0.162.1')
+    expect(profile?.piProvider?.getModels()).toEqual([model])
+  })
+
+  it('keeps each route’s explicit version and exposes it even beside a deferred catalog diagnostic', () => {
+    const profiles = resolveProfiles({
+      'codex-account': { catalogProvider: 'openai-codex', codexDirectoryClientVersion: '0.163.0-rc.1+fixture' },
+      'unserviceable-route': { catalogProvider: 'missing-provider', codexDirectoryClientVersion: '0.162.1' },
+    }, 'deferred')
+    expect(profiles.get('codex-account')?.codexDirectoryClientVersion).toBe('0.163.0-rc.1+fixture')
+    expect(profiles.get('unserviceable-route')?.codexDirectoryClientVersion).toBe('0.162.1')
+    expect(profiles.get('unserviceable-route')?.piProvider).toBeUndefined()
+    expect(profiles.get('unserviceable-route')?.catalogError).toMatch(/missing-provider/)
+  })
+})

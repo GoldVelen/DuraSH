@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertServiceable, Config, resolveProfiles } from '../src/config.ts'
+import { assertServiceable, Config, resolveCodexDirectoryClientVersion, resolveProfiles } from '../src/config.ts'
 
 /** Validate one hand-declared route, with the caller's fields layered onto it. */
 const routeWith = (profile: Record<string, unknown>): (() => unknown) =>
@@ -114,4 +114,32 @@ describe('request image policy bounds', () => {
       assertServiceable(programmatic)
     }).toThrow(message)
   })
+})
+
+describe('Codex directory client version', () => {
+  it('uses the supported directory version without materializing a schema default into settings', () => {
+    expect(resolveCodexDirectoryClientVersion()).toBe('0.162.1')
+    expect(Config({ providers: { 'openai-codex': {} } }).providers?.['openai-codex']?.codexDirectoryClientVersion)
+      .toBeUndefined()
+  })
+
+  it.each(['0.162.1', '1.0.0-rc.1', '0.162.1+fixture.1', '0.162.1-rc.1+fixture.01'])(
+    'preserves a valid compatibility version %s', (version) => {
+      expect(resolveCodexDirectoryClientVersion(version)).toBe(version)
+      expect(Config({ providers: { 'openai-codex': { codexDirectoryClientVersion: version } } })
+        .providers?.['openai-codex']?.codexDirectoryClientVersion).toBe(version)
+    },
+  )
+
+  it.each(['', '0.162', 'v0.162.1', '01.162.1', '0.162.1-01', '0.162.1-alpha..1', '0.162.1+',
+    ' 0.162.1', '0.162.1\n', '0.162.1/extra'])(
+    'rejects an invalid directory compatibility version %j', (version) => {
+      expect(() => resolveCodexDirectoryClientVersion(version)).toThrow(/codexDirectoryClientVersion/)
+      expect(() => Config({ providers: { 'openai-codex': { codexDirectoryClientVersion: version } } })).toThrow()
+      for (const validation of ['strict', 'deferred'] as const) {
+        expect(() => resolveProfiles({ 'openai-codex': { codexDirectoryClientVersion: version } }, validation))
+          .toThrow(/codexDirectoryClientVersion/)
+      }
+    },
+  )
 })
