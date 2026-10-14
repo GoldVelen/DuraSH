@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { createServer, type Server } from 'node:http'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { zstdDecompressSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -36,7 +37,7 @@ const truncatedToolCallEvents = [
 
 let root: string | undefined
 let context: Context | undefined
-let xaiServer: Server | undefined
+let directoryServer: Server | undefined
 
 afterEach(async () => {
   await context?.fiber.dispose()
@@ -44,13 +45,13 @@ afterEach(async () => {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
   root = undefined
   await closeMockServers()
-  if (xaiServer !== undefined) await new Promise<void>((resolve, reject) => {
-    xaiServer!.close((error) => {
+  if (directoryServer !== undefined) await new Promise<void>((resolve, reject) => {
+    directoryServer!.close((error) => {
       if (error === undefined) resolve()
       else reject(error)
     })
   })
-  xaiServer = undefined
+  directoryServer = undefined
   vi.unstubAllEnvs()
 })
 
@@ -109,20 +110,28 @@ async function loadComposition(existingRoot?: string): Promise<{ ctx: Context; s
 }
 
 
-/** One route-matched loopback fixture for both xAI directories and Responses inference. */
-async function xaiDirectoryFixture() {
-  const calls: { path: string; method: string | undefined; authorization: string | undefined; body: unknown }[] = []
+/** One route-matched loopback fixture for provider directories and Responses inference. */
+async function directoryFixture(provider: 'xai' | 'openai-codex' = 'xai') {
+  const calls: {
+    path: string
+    method: string | undefined
+    authorization: string | undefined
+    accountId: string | string[] | undefined
+    body: unknown
+  }[] = []
   const completedMessage = {
     type: 'message', id: 'message-1', role: 'assistant', status: 'completed',
     content: [{ type: 'output_text', text: 'hello', annotations: [] }],
   }
   const server = createServer((request, response) => {
-    let body = ''
-    request.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
+    const chunks: Buffer[] = []
+    request.on('data', (chunk: Buffer) => { chunks.push(chunk) })
     request.on('end', () => {
+      const raw = Buffer.concat(chunks)
+      const body = (request.headers['content-encoding'] === 'zstd' ? zstdDecompressSync(raw) : raw).toString('utf8')
       const path = request.url ?? ''
       calls.push({ path, method: request.method, authorization: request.headers.authorization,
-        body: body.length === 0 ? undefined : JSON.parse(body) })
+        accountId: request.headers['chatgpt-account-id'], body: body.length === 0 ? undefined : JSON.parse(body) })
       if (request.method === 'GET' && path === '/v1/language-models') {
         response.writeHead(200, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ models: [{
@@ -132,7 +141,14 @@ async function xaiDirectoryFixture() {
       } else if (request.method === 'GET' && path === '/v1/models') {
         response.writeHead(200, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ data: [{ id: 'grok-4.7', context_length: 500000 }] }))
-      } else if (request.method === 'POST' && path === '/v1/responses') {
+      } else if (request.method === 'GET' && path === '/backend-api/codex/models?client_version=0.155.0') {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ models: ['gpt-6-sol', 'gpt-6-luna'].map(slug => ({
+          slug, display_name: slug, visibility: 'list', context_window: 272000,
+          input_modalities: ['text', 'image'],
+          supported_reasoning_levels: ['low', 'medium', 'high', 'xhigh', 'max'].map(effort => ({ effort })),
+        })) }))
+      } else if (request.method === 'POST' && path === (provider === 'xai' ? '/v1/responses' : '/backend-api/codex/responses')) {
         response.writeHead(200, { 'content-type': 'text/event-stream' })
         const events = [
           { type: 'response.created', response: { id: 'response-1' } },
@@ -152,14 +168,14 @@ async function xaiDirectoryFixture() {
       }
     })
   })
-  xaiServer = server
+  directoryServer = server
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
   const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('xAI fixture did not bind a TCP port')
-  return { url: `http://127.0.0.1:${address.port}/v1`, calls }
+  if (address === null || typeof address === 'string') throw new Error('model directory fixture did not bind a TCP port')
+  return { url: `http://127.0.0.1:${address.port}${provider === 'xai' ? '/v1' : '/backend-api'}`, calls }
 }
 
 describe('llm-pi-ai real dormant composition', () => {
@@ -228,7 +244,7 @@ describe('llm-pi-ai real dormant composition', () => {
   it.each(['api-key', 'subscription'] as const)('refreshes xAI using %s auth, persists metadata, and sends xhigh before and after reload', async (authMode) => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
     vi.stubEnv('XAI_API_KEY', undefined)
-    const server = await xaiDirectoryFixture()
+    const server = await directoryFixture()
     const { ctx, settingsPath } = await loadComposition()
     const access = authMode === 'subscription' ? 'subscription-fixture-access' : 'key-from-store'
     if (authMode === 'subscription') {
@@ -308,6 +324,71 @@ describe('llm-pi-ai real dormant composition', () => {
       body: { model: 'grok-4.7', reasoning: { effort: 'xhigh' } },
     })
     expect(server.calls).toHaveLength(4)
+  })
+
+  it('refreshes Codex with subscription auth and runs newly adopted models before and after reload', async () => {
+    const server = await directoryFixture('openai-codex')
+    const { ctx, settingsPath } = await loadComposition()
+    const access = ['fixture-header', Buffer.from(JSON.stringify({
+      'https://api.openai.com/auth': { chatgpt_account_id: 'fixture-account' },
+    })).toString('base64url'), 'fixture-signature'].join('.')
+    await ctx.credentials.modifyRecord(recordKeyFor('openai-codex'), async () => ({
+      kind: 'grant', payload: { type: 'oauth', access, refresh: 'fixture-refresh', expires: Date.now() + 3_600_000 },
+    }))
+    await ctx.settings.mutate('llm-pi-ai', [{
+      op: 'set', path: ['providers', 'openai-codex'], value: {
+        baseURL: server.url, transport: 'sse', models: [{ id: 'gpt-6-astra' }],
+      },
+    }])
+    const installed = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'openai-codex', baseURL: server.url })
+    expect(installed.some(model => model.id === 'gpt-6-sol')).toBe(false)
+    expect(server.calls).toEqual([])
+    const discovered = await ctx.llm.discoverModels('llm-pi-ai', {
+      provider: 'openai-codex', baseURL: server.url, refresh: true,
+    })
+    expect(discovered.map(model => model.id)).toEqual(['gpt-6-sol', 'gpt-6-luna'])
+    expect(server.calls).toEqual([expect.objectContaining({
+      method: 'GET', path: '/backend-api/codex/models?client_version=0.155.0',
+      authorization: `Bearer ${access}`, accountId: 'fixture-account',
+    })])
+    await ctx.settings.mutate('llm-pi-ai', [{
+      op: 'set', path: ['providers', 'openai-codex', 'models'], value: discovered.map(model => ({
+        id: model.id, name: model.name, contextWindow: model.contextWindow,
+        input: model.inputModalities, reasoningEfforts: model.reasoningEfforts,
+      })),
+    }])
+    const persisted = await readFile(settingsPath, 'utf8')
+    expect(persisted).toContain('gpt-6-sol')
+    expect(persisted).toContain('gpt-6-luna')
+    expect(persisted).toContain('272000')
+    expect(persisted).toContain('xhigh')
+    expect(persisted).not.toContain(access)
+    expect(persisted).not.toContain('apiKeyEnv')
+    for (const reload of [false, true]) {
+      if (reload) {
+        await context!.fiber.dispose()
+        context = undefined
+        await loadComposition(root)
+      }
+      const active = context!
+      expect((await active.llm.listModels('openai-codex')).map(model => model.id)).toEqual(['gpt-6-sol', 'gpt-6-luna'])
+      for (const model of ['gpt-6-sol', 'gpt-6-luna']) {
+        const resolved = await active.llm.resolveModelInfo('openai-codex', model)
+        expect(resolved.context).toEqual({ contextWindow: 272000 })
+        expect(resolved.reasoning?.efforts).toContainEqual({ id: ReasoningEffortId('xhigh'), name: 'Xhigh' })
+        const result = await assemble(active, {
+          provider: 'openai-codex', model, reasoningEffort: ReasoningEffortId('xhigh'),
+          messages: [createUserMessage({ content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } })],
+        })
+        expect(result.finish).toEqual({ kind: 'stop' })
+        expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
+        expect(server.calls.at(-1)).toMatchObject({
+          path: '/backend-api/codex/responses', method: 'POST', authorization: `Bearer ${access}`,
+          accountId: 'fixture-account', body: { model, reasoning: { effort: 'xhigh' } },
+        })
+      }
+    }
+    expect(server.calls).toHaveLength(5)
   })
 
   it('continues natively after max-token assembly drops a tool call, with pruned replay metadata', async () => {

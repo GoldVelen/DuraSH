@@ -111,7 +111,11 @@ profile 通过可选 settings seam 每次操作重新读取：base 与用户的 
 
 ### 从端点发现模型
 
-插件会回答「该提供方可以提供哪些模型？」，供配置界面正在编辑或起草的路由使用。被动查询从已安装目录读取，不发网络请求，并将其 `input` 数组保留为发现结果的 `inputModalities`。显式刷新 xAI 时，Host 会按 id 合并经过认证的 `GET /models` 与 `GET /language-models`：语言模型目录确定聊天候选，两个响应共同提供上下文长度、输入类型与受支持的推理档位；未返回的输出上限保持未指定。现有订阅登录经 pi-ai 正常刷新，草稿密钥或已配置的凭据引用优先。目录读取失败会使刷新报错，不会返回旧的内置列表。其他内置提供方仍使用本地目录，手工声明的路由查询其端点。`openai-completions` 与 `openai-responses` 使用带 bearer 鉴权的 `GET {baseURL}/models`，`anthropic-messages` 则以 `x-api-key` 和 `anthropic-version` 使用原生 `GET /v1/models?limit=1000` 语义；其列表 URL 接受带或不带末尾 `/v1` 的 API 根地址，因为网关文档两种写法都会发布，且只有该列表 URL 会归一化这一段，模型请求收到的仍是配置原样的 `baseURL`。已配置且具名的路由会在 Host 内部提供已存凭据与 profile `headers`，因此通过 `settings.yaml` 或 Cordis 配置设置的部署标头可以到达模型发现请求，但不会成为发现请求或 Models 页面的字段；表单中新键入的密钥仍优先于已存凭据。解析器接受标准 `data` 数组或富信息 `models` 对象，并归一化每个候选的 id、显示名、上下文窗口与最大输出 token 数；Anthropic 的 `max_input_tokens` 与 `max_tokens` 会进入相同容量字段，即使对象条目点名了另一个规范 id，对象键仍是请求 id，原始类型的对象属性会被忽略，缺失的显示名则回退到该请求 id。回答是界面可以提供给用户采纳的候选元数据——不存储任何内容，`settings.yaml` 仍然是决定路由服务内容的唯一事实。
+插件会回答「该提供方可以提供哪些模型？」，供配置界面正在编辑或起草的路由使用。被动查询从已安装目录读取，不发网络请求，并将其 `input` 数组保留为发现结果的 `inputModalities`。显式刷新 xAI 时，Host 会按 id 合并经过认证的 `GET /models` 与 `GET /language-models`：语言模型目录确定聊天候选，两个响应共同提供上下文长度、输入类型与受支持的推理档位；未返回的输出上限保持未指定。现有订阅登录经 pi-ai 正常刷新，草稿密钥或已配置的凭据引用优先。目录读取失败会使刷新报错，不会返回旧的内置列表。
+
+显式刷新 Codex 时，Host 使用当前订阅凭据与账号 id 请求 `GET {baseURL}/codex/models?client_version=0.155.0`；若根地址已以 `/codex` 结尾，则直接使用。客户端版本标识受支持的目录响应，与已安装模型名单无关。仅提供 `visibility: list` 的条目，包括公共 API 不提供的订阅模型。候选信息保留模型 id、名称、上下文窗口、输入类型及已安装适配器支持的推理档位；缺失的输出上限保持未指定。刷新失败会报错，不回退到内置列表。获取目录不改变已保存模型；采纳并保存候选后，后续请求使用持久化的模型元数据。
+
+其他内置提供方仍使用本地目录，手工声明的路由查询其端点。`openai-completions` 与 `openai-responses` 使用带 bearer 鉴权的 `GET {baseURL}/models`，`anthropic-messages` 则以 `x-api-key` 和 `anthropic-version` 使用原生 `GET /v1/models?limit=1000` 语义；其列表 URL 接受带或不带末尾 `/v1` 的 API 根地址，因为网关文档两种写法都会发布，且只有该列表 URL 会归一化这一段，模型请求收到的仍是配置原样的 `baseURL`。已配置且具名的路由会在 Host 内部提供已存凭据与 profile `headers`，因此通过 `settings.yaml` 或 Cordis 配置设置的部署标头可以到达模型发现请求，但不会成为发现请求或 Models 页面的字段；表单中新键入的密钥仍优先于已存凭据。解析器接受标准 `data` 数组或富信息 `models` 对象，并归一化每个候选的 id、显示名、上下文窗口与最大输出 token 数；Anthropic 的 `max_input_tokens` 与 `max_tokens` 会进入相同容量字段，即使对象条目点名了另一个规范 id，对象键仍是请求 id，原始类型的对象属性会被忽略，缺失的显示名则回退到该请求 id。回答是界面可以提供给用户采纳的候选元数据——不存储任何内容，`settings.yaml` 仍然是决定路由服务内容的唯一事实。
 
 ### 失败与恢复
 
