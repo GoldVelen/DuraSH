@@ -63,8 +63,10 @@ describe('local DuraSH desktop packaging', () => {
       const files = inventoryDesktopRuntime(destination).map(file => file.path)
       expect(files).toContain(`node_modules/${cordisName}/index.js`)
       expect(files.some(path => path.includes('.env') || path.includes('checkout-only') || path.includes('development-only'))).toBe(false)
-      expect(JSON.parse(readFileSync(join(destination, 'node_modules', overlayName, 'package.json'), 'utf8')).dependencies)
-        .toEqual({ [cordisName]: '^1.0.0' })
+      const deployed = JSON.parse(readFileSync(join(destination, 'node_modules', overlayName, 'package.json'), 'utf8')) as {
+        dependencies: Record<string, string>
+      }
+      expect(deployed.dependencies).toEqual({ [cordisName]: '^1.0.0' })
       rmSync(source, { recursive: true })
       rmSync(cordis, { recursive: true })
       expect(inventoryDesktopRuntime(destination).map(file => file.path)).toEqual(files)
