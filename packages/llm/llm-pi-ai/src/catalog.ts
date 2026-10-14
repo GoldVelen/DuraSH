@@ -12,8 +12,8 @@
  * @module dsh-llm-pi-ai/catalog
  */
 
-import { builtinProviders, getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
-import type { BuiltinProvider } from '@earendil-works/pi-ai/providers/all'
+import { builtinProviders, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
+import { openCodeGoProvider } from './opencode-go.ts'
 import type {
   AnthropicMessagesCompat,
   Api,
@@ -171,7 +171,8 @@ let providerIndex: Map<string, Provider> | undefined
  * @returns the catalog provider index.
  */
 function catalogProviders(): Map<string, Provider> {
-  providerIndex ??= new Map(builtinProviders().map(provider => [provider.id, provider]))
+  providerIndex ??= new Map(builtinProviders().map(provider => [provider.id,
+    provider.id === 'opencode-go' ? openCodeGoProvider(provider) : provider]))
   return providerIndex
 }
 
@@ -198,8 +199,7 @@ export function catalogProviderIds(): readonly string[] {
  * @returns catalog models by id; empty for a route pi-ai does not ship.
  */
 export function catalogModels(provider: string): Map<string, Model<Api>> {
-  if (!catalogProviders().has(provider)) return new Map()
-  const models = getBuiltinModels(provider as BuiltinProvider) as Model<Api>[]
+  const models = catalogProviders().get(provider)?.getModels() ?? []
   return new Map(models.map(model => [model.id, model]))
 }
 

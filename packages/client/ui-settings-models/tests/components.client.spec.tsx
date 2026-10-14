@@ -1559,6 +1559,32 @@ describe('ModelsSection', () => {
     })
   })
 
+  it('enables the Go route after authorization without creating a Zen route or key reference', async () => {
+    const scripted = scriptedFace()
+    const directory = await scripted.face.llm.listConfigurableProviders()
+    scripted.face.llm.listConfigurableProviders.mockResolvedValue(remoteOk([
+      ...directory.value,
+      { provider: 'opencode-go', displayName: 'OpenCode Go', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'opencode-go'] },
+    ]))
+    const signIn = new SignInStore({
+      describe: () => Promise.resolve(remoteOk({
+        flows: [{ key: 'llm-pi-ai/opencode-go', label: 'OpenCode Go', inFlight: false,
+          methods: [{ id: 'oauth', label: 'Browser sign-in' }, { id: 'api-key', label: 'OpenCode API key' }] }],
+        attempts: [{ key: 'llm-pi-ai/opencode-go', status: 'authorized' as const, notices: [] }],
+      })),
+      begin: () => Promise.resolve(remoteOk({ started: true })),
+      respond: () => Promise.resolve(remoteOk(undefined)),
+      cancel: () => Promise.resolve(remoteOk(undefined)),
+    })
+    const { mutate, set } = await mountFace(scripted, { signIn })
+    await waitFor(() => {
+      expect(mutate).toHaveBeenCalledExactlyOnceWith(
+        'llm-pi-ai', [{ op: 'set', path: ['providers', 'opencode-go'], value: {} }], undefined,
+      )
+    })
+    expect(set).not.toHaveBeenCalled()
+  })
+
   it('enables a signed-in provider by writing the blank native-auth profile', async () => {
     const { face, mutate, controller } = await mountSection()
     await enableNativeProviderProfile(

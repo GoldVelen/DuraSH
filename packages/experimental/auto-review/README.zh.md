@@ -92,7 +92,7 @@ Reviewer 使用最新 `request/header.config` 的 provider 与模型，并沿用
 
 #### KV Cache 影响
 
-固定 reviewer policy 可以共享前缀；保留历史与待审动作随调用变化。Auto 不向主 agent 增加专门 runtime context 或模式切换提示词。
+固定 reviewer policy 可以共享前缀；保留历史与待审动作随调用变化。Review 请求携带当前 Session id，供提供方路由与缓存亲和使用。Auto 不向主 agent 增加专门 runtime context 或模式切换提示词。
 
 ### 工具拒绝
 

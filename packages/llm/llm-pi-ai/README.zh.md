@@ -93,6 +93,10 @@ kind: "package-reference"
 
 pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程提供 OAuth 或交互式密钥提示（密钥键入 pi-ai 自己的登录提示，而非设置表单），得到的凭据存储在 harness 凭据存储的 `llm-pi-ai/<provider id>` 记录中。存储的登录在其路由的 `apiKeyEnv` 覆盖之下完成认证，并在存储的跨进程锁下自行刷新；退出登录即删除存储记录。落在记录文法之外——小写连字符标识符——的手工声明路由键无法登录，因为对它的记录写入会以 `LlmError('UNSTORABLE_PROVIDER_ID')` 拒绝；这类路由改用 `apiKeyEnv` 或提供方 ambient 设置认证。
 
+OpenCode Go 提供 [Console 浏览器登录](https://opencode.ai/v2/docs/console/api/#device-flow)和原生 API key 方式。设备授权流程使用本客户端标识 `durash`，绑定用户在浏览器选定的工作区，并采用服务端返回的轮询间隔和过期时间。轮换后的令牌保存在 `llm-pi-ai/opencode-go`；pi-ai 在凭据存储锁内刷新，再生成 bearer 请求头。取消请求时调用方立即返回，已开始的刷新仍完成并保存替换令牌；提供方 profile 的 `oauthRefreshTimeoutMs` 限制这次交换的时长（默认值与上限均为 15,000 毫秒）。启用不含 `apiKeyEnv` 覆盖的 `opencode-go` 提供方 profile，即可使用已存储的登录。
+
+Go 保留内置目录中各模型的协议：Messages 使用 `https://opencode.ai/inference/go`，Chat Completions 和 Responses 使用 `https://opencode.ai/inference/go/v1`。所有 OpenCode 请求保留 Harness User-Agent，并从持久化会话 id 生成 `x-opencode-session`；没有 id 的请求不会凭空生成一个。客户端遭到拒绝后不会切换到按量计费端点。OpenCode 的 [Use balance 设置](https://opencode.ai/v2/docs/console/go/#usage-beyond-limits)仍可能在 Go 额度耗尽后扣除 Console 余额；本适配器不改变该账户设置。Go 模型清单继续使用已安装目录，不进行在线目录刷新。
+
 ### 解析模型目录
 
 除非 `catalogProvider` 显式点名另一个已安装提供方，否则 profile 的目录来源就是路由键。私有网关以部署专用路由名服务官方提供方模型时可使用前一种方式：路由保留自己的端点、凭据与选择身份，同时继承上下文、模态和推理档位等模型能力。DSH 不会根据模型 id 猜测来源，因为不同网关可能用相同 id 实现不同能力；空值或不存在的来源会被拒绝。
@@ -220,7 +224,7 @@ pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish 
 这些限制说明适配器在哪里停止、由未来工作接续。它们是当前包约束，不是通用 pi-ai 对比或任务积压。
 
 - **`maxRequestImageBytes` 只计算 base64 图片载荷**，文本、工具、描述符与 JSON 结构在该上限之外，因此它必须留有余量地低于网关请求体上限。
-- **登录只存在于发起它的进程中**——授权尝试不持久，因此登录中途刷新页面会放弃它，用户需要重新开始。退出登录是对已存储记录执行 `deleteRecord`，只在本地忘记它，不会告知签发方。
+- **登录只存在于发起它的进程中**——授权尝试不持久，因此登录中途重启 Host 会放弃它，用户需要重新开始。退出登录是对已存储记录执行 `deleteRecord`，只在本地忘记它，不会告知签发方。
 - **提供方原生发现经本插件的 ambient context 回答**——不点名凭据的路由交由目录提供方自身解析，它会询问环境值（`AZURE_OPENAI_API_KEY`、`AWS_PROFILE` 及各提供方自有集合）与本地凭据文件。两个问题都在这里得到回答：凭据 seam 先于进程环境被查询，文件存在性则针对宿主进程的文件系统以 `~` 展开后检查。它做不到的是*读取*凭据文件内容——自行解析 `~/.aws/credentials` 的提供方会直接读取，不经该 seam。
 - **设置可以新增或覆盖路由，不能移除组合路由**——用户层覆盖组合 base，因此删除 `cordis.yml` 提供的提供方属于组合变更。
 - **分层合并对字典键没有删除**——base 声明的 `reasoningEfforts` 等级、`modelOverrides` 条目或 `compat` 字段可以被用户层覆盖，但不能被移除。

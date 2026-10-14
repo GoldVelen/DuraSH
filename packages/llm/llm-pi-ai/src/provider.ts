@@ -25,6 +25,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
 import { catalogProvider, PiAiCatalogError } from './catalog.ts'
 import { createProvider } from './models.ts'
+import { openCodeGoOAuth } from './opencode-go.ts'
 
 /**
  * Wire protocols a configured route may name, mapped to pi-ai's lazily loaded
@@ -106,6 +107,8 @@ export interface ProviderSpec {
    * request, never at construction.
    */
   namesCredential: boolean
+  /** Independent OpenCode Go refresh deadline supplied by profile resolution. */
+  oauthRefreshTimeoutMs?: number
 }
 
 /**
@@ -132,6 +135,9 @@ export interface ProviderSpec {
  */
 function routeAuth(spec: ProviderSpec, catalog: Provider | undefined): Provider['auth'] {
   if (catalog === undefined) return { apiKey: harnessApiKeyAuth(spec.displayName) }
+  if (catalog.id === 'opencode-go' && spec.oauthRefreshTimeoutMs !== undefined) {
+    return { ...catalog.auth, oauth: openCodeGoOAuth(undefined, spec.oauthRefreshTimeoutMs) }
+  }
   if (catalog.auth.apiKey !== undefined || !spec.namesCredential) return catalog.auth
   return { ...catalog.auth, apiKey: harnessApiKeyAuth(spec.displayName) }
 }

@@ -625,6 +625,7 @@ async function classifyRisk(
       source: { kind: 'plugin', plugin: 'dsh-experimental-auto-review' },
     })],
     temperature: 0,
+    sessionId: agent.session.id,
     signal,
   })
   return readDecision(ctx.llm.stream(options))

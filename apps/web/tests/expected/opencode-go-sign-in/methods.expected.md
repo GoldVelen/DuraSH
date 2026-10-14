@@ -1,0 +1,8 @@
+- listitem "OpenCode Go":
+  - text: OpenCode Go
+  - button "浏览器登录"
+  - button "改用 API 密钥"
+  - paragraph:
+    - text: Go 使用订阅额度。Console 中开启“Use balance”后，超出额度的使用可能消耗余额。
+    - link "OpenCode Console":
+      - /url: https://opencode.ai/console/

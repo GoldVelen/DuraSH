@@ -92,7 +92,7 @@ One additional model request per supported call, without caching, retries, trunc
 
 #### KV Cache effect
 
-The fixed reviewer policy can share a prefix; retained history and the pending action vary per call. Auto adds no dedicated runtime context or mode-switch prompt to the main agent.
+The fixed reviewer policy can share a prefix; retained history and the pending action vary per call. Review requests carry the current Session id for provider routing and cache affinity. Auto adds no dedicated runtime context or mode-switch prompt to the main agent.
 
 ### Tool denial
 

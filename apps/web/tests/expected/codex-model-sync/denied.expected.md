@@ -7,9 +7,6 @@
     - button "模型":
       - img
       - text: 模型
-    - button "全局规则":
-      - img
-      - text: 全局规则
     - button "内置插件":
       - img
       - text: 内置插件
@@ -28,23 +25,31 @@
   - heading "账号登录" [level=3]
   - paragraph: 使用订阅账号登录，或在下方用 API 密钥添加提供方。
   - list:
-    - listitem:
+    - listitem "Anthropic":
       - text: Anthropic
       - button "登录"
-    - listitem:
+    - listitem "GitHub Copilot":
       - text: GitHub Copilot
       - button "登录"
-    - listitem:
+    - listitem "Kimi For Coding":
       - text: Kimi For Coding
       - button "登录"
-    - listitem:
+    - listitem "OpenAI Codex":
       - text: OpenAI Codex
       - button "登录"
       - status: 已登录，该提供方已启用。可在对话中选择模型，或在下方编辑模型目录。
-    - listitem:
+    - listitem "OpenCode Go":
+      - text: OpenCode Go
+      - button "浏览器登录"
+      - button "改用 API 密钥"
+      - paragraph:
+        - text: Go 使用订阅额度。Console 中开启“Use balance”后，超出额度的使用可能消耗余额。
+        - link "OpenCode Console":
+          - /url: https://opencode.ai/console/
+    - listitem "OpenRouter":
       - text: OpenRouter
       - button "登录"
-    - listitem:
+    - listitem "xAI":
       - text: xAI
       - button "登录"
   - list:

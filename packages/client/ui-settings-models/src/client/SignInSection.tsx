@@ -19,6 +19,8 @@ import type { SignInStore } from './sign-in-store.ts'
 import styles from './ModelsSection.module.css'
 import signInStyles from './SignInSection.module.css'
 
+const OPEN_CODE_GO_KEY = 'llm-pi-ai/opencode-go'
+
 /** Injected dependencies of {@link SignInSection} (slot `inject`). */
 export interface SignInInjected {
   controller: SignInStore
@@ -67,15 +69,9 @@ function SignInLoaded({
 }): ReactNode {
   const state = useSignIn(snapshot => snapshot)
   const [failure, setFailure] = useState<string | undefined>(undefined)
-  const [answer, setAnswer] = useState('')
   const [working, setWorking] = useState(false)
 
   useEffect(() => controller.startPolling(), [controller])
-
-  // One pending prompt exists at a time by the seam's contract, so the answer
-  // input is one piece of local state, cleared whenever the prompt changes.
-  const pending = state.attempts.find(view => view.pendingPrompt !== undefined)?.pendingPrompt
-  useEffect(() => { setAnswer('') }, [pending?.id])
 
   const flows = oauthSignInFlows(state.flows)
   if (state.status === 'error' || flows.length === 0) return null
@@ -100,10 +96,8 @@ function SignInLoaded({
             flow={flow}
             attempt={attemptByKey.get(flow.key)}
             working={working}
-            answer={attemptByKey.get(flow.key)?.pendingPrompt?.id === pending?.id ? answer : ''}
-            onAnswer={setAnswer}
             t={t}
-            onBegin={() => { run(() => controller.begin(flow.key, 'oauth')) }}
+            onBegin={(method) => { run(() => controller.begin(flow.key, method)) }}
             onCancel={() => { run(() => controller.cancel(flow.key)) }}
             onRespond={(promptId, value) => { run(() => controller.respond(flow.key, promptId, { value })) }}
             onDecline={(promptId) => { run(() => controller.respond(flow.key, promptId, { declined: true })) }}
@@ -118,8 +112,6 @@ function FlowRow({
   flow,
   attempt,
   working,
-  answer,
-  onAnswer,
   t,
   onBegin,
   onCancel,
@@ -129,18 +121,21 @@ function FlowRow({
   flow: AuthorizationFlowView
   attempt: AuthorizationAttemptView | undefined
   working: boolean
-  answer: string
-  onAnswer: (value: string) => void
   t: (key: keyof typeof en) => string
-  onBegin: () => void
+  onBegin: (method: 'oauth' | 'api-key') => void
   onCancel: () => void
   onRespond: (promptId: string, value: string) => void
   onDecline: (promptId: string) => void
 }): ReactNode {
   const running = attempt?.status === 'running'
   const pending = attempt?.pendingPrompt
+  const [draft, setDraft] = useState({ promptId: pending?.id, value: '' })
+  const answer = draft.promptId === pending?.id ? draft.value : ''
+  useEffect(() => { setDraft({ promptId: pending?.id, value: '' }) }, [pending?.id])
+  const isGo = flow.key === OPEN_CODE_GO_KEY
+  const goApiKey = isGo && flow.methods.some(method => method.id === 'api-key')
   return (
-    <li className={signInStyles['flowRow']}>
+    <li className={signInStyles['flowRow']} aria-label={flow.label}>
       <div className={signInStyles['flowHead']}>
         <span className={signInStyles['flowName']}>{flow.label}</span>
         <span className={signInStyles['flowActions']}>
@@ -156,17 +151,35 @@ function FlowRow({
               </button>
             )
             : (
-              <button
-                type="button"
-                className={styles['secondaryButton']}
-                disabled={working || flow.inFlight}
-                onClick={onBegin}
-              >
-                {t('signInAction')}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={styles[isGo ? 'primaryButton' : 'secondaryButton']}
+                  disabled={working || flow.inFlight}
+                  onClick={() => { onBegin('oauth') }}
+                >
+                  {t(isGo ? 'signInBrowserAction' : 'signInAction')}
+                </button>
+                {goApiKey && (
+                  <button
+                    type="button"
+                    className={styles['secondaryButton']}
+                    disabled={working || flow.inFlight}
+                    onClick={() => { onBegin('api-key') }}
+                  >
+                    {t('useApiKeyAuth')}
+                  </button>
+                )}
+              </>
             )}
         </span>
       </div>
+      {isGo && (
+        <p className={signInStyles['noticeLine']}>
+          {t('openCodeGoUsageHint')}{' '}
+          <a href="https://opencode.ai/console/" target="_blank" rel="noreferrer">{t('openCodeGoConsole')}</a>
+        </p>
+      )}
       {attempt !== undefined && (
         <div className={signInStyles['attempt']}>
           {running
@@ -209,10 +222,11 @@ function FlowRow({
                 <div className={signInStyles['promptAnswer']}>
                   <input
                     type={pending.kind === 'secret' ? 'password' : 'text'}
+                    aria-label={pending.message}
                     className={signInStyles['promptInput']}
                     value={answer}
                     placeholder={pending.placeholder ?? ''}
-                    onChange={(event) => { onAnswer(event.target.value) }}
+                    onChange={(event) => { setDraft({ promptId: pending.id, value: event.target.value }) }}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' && answer.length > 0 && !working) onRespond(pending.id, answer)
                     }}

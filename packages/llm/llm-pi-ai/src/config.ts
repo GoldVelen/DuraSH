@@ -41,6 +41,7 @@ import type {
   RouteCatalog,
 } from './catalog.ts'
 import { buildProvider, supportedProtocols } from './provider.ts'
+import { DEFAULT_GO_REFRESH_TIMEOUT_MS, MAX_GO_REFRESH_TIMEOUT_MS } from './opencode-go.ts'
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
@@ -165,6 +166,8 @@ export interface PiAiProviderProfile {
   transport?: Transport
   /** HTTP/provider SDK timeout in milliseconds. */
   timeoutMs?: number
+  /** OpenCode Go refresh deadline, at most 15,000 ms; cancellation still lets a rotated grant be stored. */
+  oauthRefreshTimeoutMs?: number
   /** WebSocket connection timeout in milliseconds. */
   websocketConnectTimeoutMs?: number
   /** Maximum provider idle time while one stream read is outstanding. */
@@ -343,6 +346,7 @@ const profile = z.object({
   cacheRetention: z.union(['none', 'short', 'long']),
   transport: z.union(['sse', 'websocket', 'websocket-cached', 'auto']),
   timeoutMs: z.natural(),
+  oauthRefreshTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_GO_REFRESH_TIMEOUT_MS).default(DEFAULT_GO_REFRESH_TIMEOUT_MS),
   websocketConnectTimeoutMs: z.natural(),
   streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS),
   maxRequestImageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_REQUEST_IMAGE_BYTES),
@@ -429,6 +433,11 @@ export function resolveProfiles(
       throw new Error(`llm-pi-ai: provider "${provider}" has an empty displayName`)
     }
     assertValidHeaders(provider, source.headers)
+    const oauthRefreshTimeoutMs = source.oauthRefreshTimeoutMs ?? DEFAULT_GO_REFRESH_TIMEOUT_MS
+    if (!Number.isFinite(oauthRefreshTimeoutMs) || oauthRefreshTimeoutMs <= 0 || oauthRefreshTimeoutMs > MAX_GO_REFRESH_TIMEOUT_MS) {
+      throw new Error(`llm-pi-ai: provider "${provider}" oauthRefreshTimeoutMs must be positive`
+        + ` and no greater than ${MAX_GO_REFRESH_TIMEOUT_MS}`)
+    }
     const streamIdleTimeoutMs = source.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS
     if (!Number.isFinite(streamIdleTimeoutMs)
       || streamIdleTimeoutMs <= 0
@@ -487,6 +496,7 @@ export function resolveProfiles(
         ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
         models: catalog.models,
         namesCredential: source.apiKeyEnv !== undefined,
+        oauthRefreshTimeoutMs,
       })
     } catch (error) {
       if (validation === 'strict' || !(error instanceof PiAiCatalogError)) throw error
@@ -499,6 +509,7 @@ export function resolveProfiles(
       displayName,
       ...apiKeyEnv === undefined ? {} : { apiKeyEnv: credentialRef(apiKeyEnv) },
       streamIdleTimeoutMs,
+      oauthRefreshTimeoutMs,
       maxRequestImageBytes,
       requestImagePixelBudget,
       requestImageMaxBytes,

@@ -56,6 +56,7 @@
     "tests/global-rules-settings.e2e.ts",
     "tests/xai-model-sync.e2e.ts",
     "tests/codex-model-sync.e2e.ts",
+    "tests/opencode-go-sign-in.e2e.ts",
     "tests/desktop-updates.e2e.ts",
     "tests/models-settings.e2e.ts",
     "tests/deepseek-messages-settings.e2e.ts",
