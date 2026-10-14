@@ -78,6 +78,62 @@ function setup(session = state(), container?: HTMLElement) {
 }
 
 describe('WorkflowPolicyDock', () => {
+  it.each([false, true])('saves the current model choices when toggling from enabled=%s', async (enabled) => {
+    const original = state({
+      enabled,
+      implementationModel: 'deepseek-official/deepseek-v4-flash',
+      implementationThinking: 'high',
+      reviewModel: 'deepseek-official/deepseek-v4-flash',
+      reviewThinking: 'high',
+    })
+    const { configure, store } = setup(original)
+    configure.mockImplementation(async (...args: unknown[]) => {
+      const request = args[0] as ReliabilitySessionState['policy']
+      store.set({ sessions: new Map([[SID, state({ ...original.policy, ...request, revision: 2 })]]) })
+      return { ok: true }
+    })
+    fireEvent.click(screen.getByRole('button', { name: '工作流设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '审查模型' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cursor' }))
+    fireEvent.click(screen.getByRole('button', { name: /DeepSeek V4 Pro/ }))
+    expect(screen.getByRole('button', { name: '审查模型' }).textContent).toContain('DeepSeek V4 Pro')
+
+    fireEvent.click(screen.getByRole('button', { name: enabled ? '关闭工作流' : '开启工作流' }))
+    await waitFor(() => {
+      expect(configure).toHaveBeenCalledWith({
+        sessionId: SID, enabled: !enabled,
+        implementationModel: 'deepseek-official/deepseek-v4-flash', implementationThinking: 'high',
+        reviewModel: 'cursor/deepseek-v4-pro', reviewThinking: 'xhigh',
+      })
+    })
+    expect(screen.getByRole('button', { name: '审查模型' }).textContent).toContain('DeepSeek V4 Pro')
+    expect(screen.getByRole('button', { name: !enabled ? '关闭工作流' : '开启工作流' })).toBeTruthy()
+  })
+
+  it('uses ensured defaults when enabling before a policy snapshot is available', async () => {
+    const { store, ensurePolicy, configure } = setup()
+    store.set({ sessions: new Map() })
+    const pending = Promise.withResolvers<{ ok: true }>()
+    ensurePolicy.mockReturnValue(pending.promise)
+    fireEvent.click(screen.getByRole('button', { name: '工作流设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '开启工作流' }))
+    const ensured = state({
+      implementationModel: 'deepseek-official/deepseek-v4-flash', implementationThinking: 'high',
+      reviewModel: 'cursor/deepseek-v4-pro', reviewThinking: 'xhigh',
+    })
+    store.set({ sessions: new Map([[SID, ensured]]) })
+    pending.resolve({ ok: true })
+    await waitFor(() => {
+      expect(configure).toHaveBeenCalledWith({
+        sessionId: SID, enabled: true,
+        implementationModel: ensured.policy.implementationModel,
+        implementationThinking: ensured.policy.implementationThinking,
+        reviewModel: ensured.policy.reviewModel,
+        reviewThinking: ensured.policy.reviewThinking,
+      })
+    })
+  })
+
   it('shows unresolved checks and test risks even when the workflow is off', () => {
     setup({ ...state(), acceptance: {
       taskId: 'task-direct', status: 'pending', checksPassed: false,

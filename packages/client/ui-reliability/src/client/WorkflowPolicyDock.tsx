@@ -486,8 +486,7 @@ export function WorkflowPolicyDock({
     const needsEnsure = models.length === 0
     const baseline = needsEnsure ? await ensurePolicy() : OK_RESULT
     if (!baseline.ok) return
-    const next = needsEnsure ? readPolicy() : (workflow ?? state)
-    const current = next.policy
+    const current = needsEnsure ? normalizeDraft(readPolicy()) : draft
     void configure({
       sessionId,
       enabled,

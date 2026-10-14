@@ -17,6 +17,7 @@ const OVERLAY = fileURLToPath(new URL('../../../packages/bundle/durash-web-profi
 const INSTALL_ANCHOR = fileURLToPath(new URL('../../../packages/bundle/durash-web-profile/package.json', import.meta.url))
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/durash-workflow-settings', import.meta.url))
 const LAYOUT_EXPECTED = fileURLToPath(new URL('./expected/durash-workflow-settings/layout.expected.md', import.meta.url))
+const POLICY_EXPECTED = fileURLToPath(new URL('./expected/durash-workflow-settings/policy.expected.md', import.meta.url))
 const VIEWPORT = { width: 520, height: 720 } as const
 const MARGIN = 12
 
@@ -224,7 +225,40 @@ describe.skipIf(MODE === 'record')('web e2e: DuraSH workflow settings stay porta
     expect(tripwire.warnings).toEqual([])
   }, 90_000)
 
+  it('saves first model choices when enabling and retains them after reloading', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-durash-workflow-policy'))
+    await page.keyboard.press('Escape')
+    await openWorkflowSettings(page)
+    const selector = 'deepseek-official/deepseek-v4-flash-vision-exp'
+    for (const name of ['实施模型', '审查模型']) {
+      await page.getByRole('button', { name }).click()
+      await page.locator(`[data-model-id="${selector}"]`).click()
+    }
+    const [response] = await Promise.all([
+      page.waitForResponse(candidate => new URL(candidate.url()).pathname === '/api/reliabilityPolicy/configure'),
+      page.getByRole('button', { name: '开启工作流', exact: true }).click(),
+    ])
+    expect(await response.json()).toMatchObject({ result: { ok: true, value: {
+      enabled: true, implementationModel: selector, reviewModel: selector,
+    } } })
+    await page.reload({ waitUntil: 'load' })
+    await openWorkflowSettings(page)
+    await page.getByRole('button', { name: '关闭工作流', exact: true }).waitFor()
+    const implementation = await page.getByRole('button', { name: '实施模型' }).innerText()
+    const review = await page.getByRole('button', { name: '审查模型' }).innerText()
+    expect(implementation).toContain('DeepSeek-V4-Flash-Vision-Exp')
+    expect(review).toContain('DeepSeek-V4-Flash-Vision-Exp')
+    await compareOrRefreshGolden(POLICY_EXPECTED, [
+      '# DuraSH workflow settings persistence', '',
+      '- Workflow after reload: enabled',
+      `- Implementation model after reload: ${implementation.replace(/\s+/gu, ' ')}`,
+      `- Review model after reload: ${review.replace(/\s+/gu, ' ')}`,
+    ].join('\n'), MODE)
+    expect(tripwire.pageErrors).toEqual([])
+    expect(tripwire.warnings).toEqual([])
+  })
+
   it('keeps its owner-local expected inventory closed', async () => {
-    await assertFixtureInventory(SNAPSHOT_DIR, ['layout.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['layout.expected.md', 'policy.expected.md'])
   })
 })
