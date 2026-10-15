@@ -35,6 +35,12 @@ function registerUi(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-reliability: dictionaries')
   const controller = new ReliabilityPolicyController(ctx.remote.reliabilityPolicy)
   ctx.effect(() => () => { controller.dispose() }, 'ui-reliability: controller')
+  ctx.effect(
+    () => ctx.remote.$on('llm/adapters-updated', () => {
+      for (const sessionId of controller.readySessions()) void controller.refreshCatalog(sessionId)
+    }),
+    'ui-reliability: catalog refresh',
+  )
 
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
     name: 'conversation.input.left',

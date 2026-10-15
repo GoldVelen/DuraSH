@@ -141,9 +141,31 @@ export class ReliabilityPolicyService extends TypertRemoteService {
       return undefined
     }
     return {
-      implementation: parseLaneSelector(row.implementationModel),
-      review: parseLaneSelector(row.reviewModel),
+      implementation: laneRoute(row.implementationModel, row.implementationThinking),
+      review: laneRoute(row.reviewModel, row.reviewThinking),
     }
+  }
+
+  /**
+   * Configured planning, frontend, backend, and testing routes.
+   * @param sessionId - exact Session identity.
+   * @returns the roles that have a selector, or undefined when none are set.
+   */
+  roleRoutes(sessionId: SessionId): {
+    readonly planning?: ReliabilityLaneRoute
+    readonly frontend?: ReliabilityLaneRoute
+    readonly backend?: ReliabilityLaneRoute
+    readonly testing?: ReliabilityLaneRoute
+  } | undefined {
+    const row = this.table?.get(sessionId)
+    if (row === undefined) return undefined
+    const roles = {
+      ...optionalLane('planning', row.planningModel, row.planningThinking),
+      ...optionalLane('frontend', row.frontendModel, row.frontendThinking),
+      ...optionalLane('backend', row.backendModel, row.backendThinking),
+      ...optionalLane('testing', row.testingModel, row.testingThinking),
+    }
+    return Object.keys(roles).length === 0 ? undefined : roles
   }
 
   /**
@@ -201,8 +223,11 @@ export class ReliabilityPolicyService extends TypertRemoteService {
         if (!known.has(request.reviewModel)) {
           throw new Error(`review model '${request.reviewModel}' is not in the current catalog`)
         }
+        assertThinking(models, request.implementationModel, request.implementationThinking, 'implementation')
+        assertThinking(models, request.reviewModel, request.reviewThinking, 'review')
       }
       const current = this.requireTable().get(request.sessionId) ?? emptyRow(request.sessionId, Date.now())
+      const roles = roleFields(request, current, models)
       const next: ReliabilityPolicyRow = {
         sessionId: request.sessionId,
         revision: current.revision + 1,
@@ -211,6 +236,7 @@ export class ReliabilityPolicyService extends TypertRemoteService {
         implementationThinking: request.implementationThinking,
         reviewModel: request.reviewModel,
         reviewThinking: request.reviewThinking,
+        ...roles,
         updatedAt: Date.now(),
       }
       await this.requireTable().put(request.sessionId, next)
@@ -254,12 +280,14 @@ export class ReliabilityPolicyService extends TypertRemoteService {
   private withDefaults(row: ReliabilityPolicyRow, models: readonly ReliabilityModelOption[]): ReliabilityPolicyRow {
     const first = models[0]
     if (first === undefined) return row
+    const implementationModel = row.implementationModel ?? first.selector
+    const reviewModel = row.reviewModel ?? first.selector
     return {
       ...row,
-      implementationModel: row.implementationModel ?? first.selector,
-      implementationThinking: row.implementationThinking ?? 'high',
-      reviewModel: row.reviewModel ?? first.selector,
-      reviewThinking: row.reviewThinking ?? 'xhigh',
+      implementationModel,
+      implementationThinking: row.implementationThinking ?? advertisedEffort(models, implementationModel, 'high'),
+      reviewModel,
+      reviewThinking: row.reviewThinking ?? advertisedEffort(models, reviewModel, 'xhigh'),
     }
   }
 
@@ -285,7 +313,7 @@ export class ReliabilityPolicyService extends TypertRemoteService {
             { kind: 'channel', label: channel },
             { kind: 'provider', label: providerLabel(provider.id) },
           ],
-          thinkingLevels: RELIABILITY_THINKING_LEVELS,
+          thinkingLevels: await thinkingFor(this.ctx, provider.id, model.id),
         })
       }
     }
@@ -301,6 +329,14 @@ export class ReliabilityPolicyService extends TypertRemoteService {
       implementationThinking: row.implementationThinking,
       reviewModel: row.reviewModel,
       reviewThinking: row.reviewThinking,
+      planningModel: row.planningModel ?? null,
+      planningThinking: row.planningThinking ?? null,
+      frontendModel: row.frontendModel ?? null,
+      frontendThinking: row.frontendThinking ?? null,
+      backendModel: row.backendModel ?? null,
+      backendThinking: row.backendThinking ?? null,
+      testingModel: row.testingModel ?? null,
+      testingThinking: row.testingThinking ?? null,
       updatedAt: row.updatedAt,
       models,
     }
@@ -316,6 +352,89 @@ export class ReliabilityPolicyService extends TypertRemoteService {
   private requireTable(): KvTable<SessionId, ReliabilityPolicyRow> {
     if (this.table === undefined) throw new Error('reliability policy is not started yet')
     return this.table
+  }
+}
+
+const ROLE_KEYS = ['planning', 'frontend', 'backend', 'testing'] as const
+
+function laneRoute(selector: string, thinking: string | null): ReliabilityLaneRoute {
+  const route = parseLaneSelector(selector)
+  return thinking === null ? route : { ...route, thinking }
+}
+
+function optionalLane(
+  key: typeof ROLE_KEYS[number],
+  selector: string | null | undefined,
+  thinking: string | null | undefined,
+): Partial<Record<typeof ROLE_KEYS[number], ReliabilityLaneRoute>> {
+  if (selector === undefined || selector === null) return {}
+  return { [key]: laneRoute(selector, thinking ?? null) }
+}
+
+function advertisedEffort(
+  models: readonly ReliabilityModelOption[],
+  selector: string,
+  preferred: string,
+): string | null {
+  const levels = models.find(model => model.selector === selector)?.thinkingLevels ?? []
+  if (levels.length === 0) return null
+  return levels.includes(preferred) ? preferred : null
+}
+
+function assertThinking(
+  models: readonly ReliabilityModelOption[],
+  selector: string,
+  thinking: string | null,
+  lane: string,
+): void {
+  const levels = models.find(model => model.selector === selector)?.thinkingLevels ?? []
+  if (levels.length === 0 || thinking === null) return
+  if (!levels.includes(thinking)) {
+    throw new Error(`${lane} thinking '${thinking}' is not listed for '${selector}'`)
+  }
+}
+
+function roleFields(
+  request: ReliabilityPolicyConfigureRequest,
+  current: ReliabilityPolicyRow,
+  models: readonly ReliabilityModelOption[],
+): Pick<ReliabilityPolicyRow, 'planningModel' | 'planningThinking' | 'frontendModel' | 'frontendThinking' | 'backendModel' | 'backendThinking' | 'testingModel' | 'testingThinking'> {
+  const known = new Set(models.map(model => model.selector))
+  const pick = (key: typeof ROLE_KEYS[number]): { model: string | null; thinking: string | null } => {
+    const modelKey = `${key}Model` as const
+    const thinkingKey = `${key}Thinking` as const
+    const requestedModel = request[modelKey]
+    const model = requestedModel === undefined ? (current[modelKey] ?? null) : requestedModel
+    const requestedThinking = request[thinkingKey]
+    const thinking = requestedThinking === undefined ? (current[thinkingKey] ?? null) : requestedThinking
+    if (model !== null && !known.has(model)) throw new Error(`${key} model '${model}' is not in the current catalog`)
+    if (model !== null) assertThinking(models, model, thinking, key)
+    return { model, thinking: model === null ? null : thinking }
+  }
+  const planning = pick('planning')
+  const frontend = pick('frontend')
+  const backend = pick('backend')
+  const testing = pick('testing')
+  return {
+    planningModel: planning.model,
+    planningThinking: planning.thinking,
+    frontendModel: frontend.model,
+    frontendThinking: frontend.thinking,
+    backendModel: backend.model,
+    backendThinking: backend.thinking,
+    testingModel: testing.model,
+    testingThinking: testing.thinking,
+  }
+}
+
+async function thinkingFor(ctx: Context, provider: string, model: string): Promise<readonly ReliabilityThinking[]> {
+  try {
+    const info = await ctx.llm.resolveModelInfo(provider, model)
+    return info.reasoning?.efforts.map(effort => effort.id) ?? []
+  } catch (error) {
+    // A model with no capability record stays selectable and keeps thinking unknown.
+    void error
+    return []
   }
 }
 

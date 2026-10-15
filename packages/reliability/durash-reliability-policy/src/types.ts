@@ -7,7 +7,7 @@
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
-/** Thinking effort stored on a lane; the worker-thread engine does not yet apply it to children. */
+/** Thinking effort stored on a lane and forwarded when the selected model lists it. */
 export type ReliabilityThinking = string
 
 /** Channel grouping used by the composer model picker. */
@@ -39,6 +39,8 @@ export interface ReliabilityModelOption {
 export interface ReliabilityLaneRoute {
   readonly provider: string
   readonly model: string
+  /** Effort the selected model lists, when one is stored. */
+  readonly thinking?: string
 }
 
 /** Session-bound policy the composer switch reads and writes. */
@@ -50,6 +52,18 @@ export interface ReliabilityPolicySnapshot {
   readonly implementationThinking: ReliabilityThinking | null
   readonly reviewModel: string | null
   readonly reviewThinking: ReliabilityThinking | null
+  /** Planning role selector. Null means that role is not used. */
+  readonly planningModel?: string | null
+  readonly planningThinking?: ReliabilityThinking | null
+  /** Frontend role selector. Null means that role is not used. */
+  readonly frontendModel?: string | null
+  readonly frontendThinking?: ReliabilityThinking | null
+  /** Backend role selector. Null means that role is not used. */
+  readonly backendModel?: string | null
+  readonly backendThinking?: ReliabilityThinking | null
+  /** Testing role selector. Null means that role is not used. */
+  readonly testingModel?: string | null
+  readonly testingThinking?: ReliabilityThinking | null
   readonly updatedAt: number
   readonly models: readonly ReliabilityModelOption[]
 }
@@ -67,6 +81,14 @@ export interface ReliabilityPolicyConfigureRequest {
   readonly implementationThinking: ReliabilityThinking | null
   readonly reviewModel: string | null
   readonly reviewThinking: ReliabilityThinking | null
+  readonly planningModel?: string | null
+  readonly planningThinking?: ReliabilityThinking | null
+  readonly frontendModel?: string | null
+  readonly frontendThinking?: ReliabilityThinking | null
+  readonly backendModel?: string | null
+  readonly backendThinking?: ReliabilityThinking | null
+  readonly testingModel?: string | null
+  readonly testingThinking?: ReliabilityThinking | null
 }
 
 /** Host-evaluated acceptance facts, independent of workflow enablement. */

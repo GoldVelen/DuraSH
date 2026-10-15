@@ -123,7 +123,7 @@ describe('ui-settings-general apply', () => {
     expect(t('connection.connected')).toBe('连接成功')
     c.ctx.locale.setLocale('en')
     expect(t('close')).toBe('Close')
-    expect(t('connection.reconnect')).toBe('Disconnected, reconnect now')
+    expect(t('connection.reconnect')).toBe('Disconnected. The service host must stay online. Reconnect now')
     expect(t('connection.connecting')).toBe('Reconnecting')
     await vi.waitFor(() => {
       expect(settings.mutate.mock.calls).toEqual([

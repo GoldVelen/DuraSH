@@ -44,6 +44,10 @@ export interface ChildStartRequest {
   provider?: string
   /** The per-child model override, if the call passed one. */
   model?: string
+  /** Display label. A testing child must leave a non-error tool result. */
+  label?: string
+  /** Effort forwarded to the child when the caller names one. */
+  effort?: string
 }
 
 /**

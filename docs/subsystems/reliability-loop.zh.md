@@ -109,6 +109,12 @@ interface ReliabilityLoopRecord {
   readonly reviewProvider?: string | undefined
   /** Review-stage model id, when the caller selected one. */
   readonly reviewModel?: string | undefined
+  /** Implementation-stage effort snapshotted at start. */
+  readonly implementationThinking?: string | undefined
+  /** Review-stage effort snapshotted at start. */
+  readonly reviewThinking?: string | undefined
+  /** Role routes snapshotted at start. Absent keeps the single implementation child. */
+  readonly roles?: ReliabilityLoopRoles | undefined
 }
 ```
 
@@ -125,6 +131,8 @@ interface ReliabilityLoopStartRequest {
   implementation?: ReliabilityLoopLane
   /** Review-stage child route; omitted children inherit the parent. */
   review?: ReliabilityLoopLane
+  /** Role routes copied from the policy at start. Absent keeps the legacy implementation child. */
+  roles?: ReliabilityLoopRoles
 }
 ```
 
@@ -161,10 +169,10 @@ interface ReliabilityLoopHandle {
 
 ## 会话策略类型
 
-[`@durash/dsh-reliability-policy`](../../packages/reliability/durash-reliability-policy) 存储 composer 开关及实施／审查路由选择。思考强度属于持久策略数据；当前 worker-thread 引擎尚未把它应用到阶段子代理。
+[`@durash/dsh-reliability-policy`](../../packages/reliability/durash-reliability-policy) 存储 composer 开关及实施／审查路由选择。思考强度属于持久策略数据，并在后续运行中于所选模型列出该强度时传出。
 
 ```ts type-equiv
-/** Thinking effort stored on a lane; the worker-thread engine does not yet apply it to children. */
+/** Thinking effort stored on a lane and forwarded when the selected model lists it. */
 type ReliabilityThinking = string
 ```
 
@@ -199,6 +207,8 @@ interface ReliabilityModelOption {
 interface ReliabilityLaneRoute {
   readonly provider: string
   readonly model: string
+  /** Effort the selected model lists, when one is stored. */
+  readonly thinking?: string
 }
 ```
 
@@ -212,6 +222,18 @@ interface ReliabilityPolicySnapshot {
   readonly implementationThinking: ReliabilityThinking | null
   readonly reviewModel: string | null
   readonly reviewThinking: ReliabilityThinking | null
+  /** Planning role selector. Null means that role is not used. */
+  readonly planningModel?: string | null
+  readonly planningThinking?: ReliabilityThinking | null
+  /** Frontend role selector. Null means that role is not used. */
+  readonly frontendModel?: string | null
+  readonly frontendThinking?: ReliabilityThinking | null
+  /** Backend role selector. Null means that role is not used. */
+  readonly backendModel?: string | null
+  readonly backendThinking?: ReliabilityThinking | null
+  /** Testing role selector. Null means that role is not used. */
+  readonly testingModel?: string | null
+  readonly testingThinking?: ReliabilityThinking | null
   readonly updatedAt: number
   readonly models: readonly ReliabilityModelOption[]
 }
@@ -233,6 +255,14 @@ interface ReliabilityPolicyConfigureRequest {
   readonly implementationThinking: ReliabilityThinking | null
   readonly reviewModel: string | null
   readonly reviewThinking: ReliabilityThinking | null
+  readonly planningModel?: string | null
+  readonly planningThinking?: ReliabilityThinking | null
+  readonly frontendModel?: string | null
+  readonly frontendThinking?: ReliabilityThinking | null
+  readonly backendModel?: string | null
+  readonly backendThinking?: ReliabilityThinking | null
+  readonly testingModel?: string | null
+  readonly testingThinking?: ReliabilityThinking | null
 }
 ```
 

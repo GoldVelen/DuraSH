@@ -175,6 +175,9 @@ export class ReliabilityLoopRuntime extends Service {
         reviewProvider: request.review.provider,
         reviewModel: request.review.model,
       },
+      ...request.implementation?.thinking === undefined ? {} : { implementationThinking: request.implementation.thinking },
+      ...request.review?.thinking === undefined ? {} : { reviewThinking: request.review.thinking },
+      ...request.roles === undefined ? {} : { roles: request.roles },
     }
     // Durable before any run exists: a crash after this write is recoverable.
     await table.put(loopId, record)

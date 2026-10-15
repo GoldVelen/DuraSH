@@ -139,6 +139,32 @@ describe('web command-line provider', () => {
     expect(observed.exits).toEqual([1])
   })
 
+  it('publishes an all-interfaces HTTPS certificate for --lan and reuses it', async () => {
+    const previous = process.env.DSH_HOME
+    const home = mkdtempSync(join(tmpdir(), 'dsh-web-lan-'))
+    process.env.DSH_HOME = home
+    try {
+      const first = await bootProvider(['--lan', '--no-open'])
+      expect(first.values?.host).toBe('0.0.0.0')
+      expect(first.values?.tls?.cert).toContain('BEGIN CERTIFICATE')
+      expect(first.values?.tls?.key).toContain('PRIVATE KEY')
+      const second = await bootProvider(['--lan'])
+      expect(second.values?.tls?.cert).toBe(first.values?.tls?.cert)
+      expect(first.observed.exits).toEqual([])
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previous
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects --lan combined with another host', async () => {
+    const { values, observed } = await bootProvider(['--lan', '--host', '127.0.0.1'])
+    expect(observed.out).toContain('--lan serves all interfaces')
+    expect(values).toBeUndefined()
+    expect(observed.exits).toEqual([1])
+  })
+
   it('rejects the intentionally unsupported all-interfaces host before the consumer activates', async () => {
     const { values, observed } = await bootProvider(['--host', '0.0.0.0'])
     expect(observed.out).toContain('--host 0.0.0.0 is intentionally not supported yet for safety: it would expose remote code execution to the network; use 127.0.0.1 instead')

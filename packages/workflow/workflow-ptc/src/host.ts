@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { PtcBindingFunction, PtcJsonValue, PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { SubagentRun } from '@deepseek-ai/dsh-subagent'
@@ -19,6 +20,7 @@ import type { ChildStartRequest, WorkerInit } from './types.ts'
 interface ChildRecord {
   readonly callId: number
   readonly run: SubagentRun
+  readonly label?: string
   disposal?: Promise<void>
 }
 
@@ -46,6 +48,8 @@ function childRequest(value: unknown): ChildStartRequest {
   const prompt = text(request.prompt, 'prompt')
   const provider = request.provider === undefined ? undefined : text(request.provider, 'provider')
   const model = request.model === undefined ? undefined : text(request.model, 'model')
+  const effort = request.effort === undefined ? undefined : text(request.effort, 'effort')
+  const label = request.label === undefined ? undefined : text(request.label, 'label')
   let schema: ObjectJsonSchema | undefined
   if (request.schema !== undefined) {
     const candidate = object(request.schema)
@@ -56,6 +60,8 @@ function childRequest(value: unknown): ChildStartRequest {
     prompt,
     ...provider === undefined ? {} : { provider },
     ...model === undefined ? {} : { model },
+    ...effort === undefined ? {} : { effort },
+    ...label === undefined ? {} : { label },
     ...schema === undefined ? {} : { schema },
   }
 }
@@ -120,6 +126,8 @@ export class PtcWorkflowRun implements WorkflowRun {
   private cancelReason: string | undefined
   private disposed: Promise<void> | undefined
   private readonly externalAbort: () => void
+  private readonly toolEvidence = new Set<string>()
+  private readonly stopEvidence: () => void
 
   constructor(
     private readonly ctx: Context,
@@ -134,6 +142,12 @@ export class PtcWorkflowRun implements WorkflowRun {
     private readonly observer: ExecutionObserver,
     private readonly signal?: AbortSignal,
   ) {
+    this.stopEvidence = ctx.on('session/event', (session, event) => {
+      if (event.type !== 'tool/result') return
+      const failed = event.data.message.content.some(block => block.type === 'tool-result' && block.isError)
+      if (failed) return
+      this.toolEvidence.add(session.id)
+    }, { global: true })
     this.externalAbort = () => { this.cancel('workflow signal aborted') }
     if (signal?.aborted) this.externalAbort()
     else signal?.addEventListener('abort', this.externalAbort, { once: true })
@@ -157,6 +171,7 @@ export class PtcWorkflowRun implements WorkflowRun {
    * @returns One shared completion promise for repeated disposal calls.
    */
   dispose(): Promise<void> {
+    this.stopEvidence()
     this.cancel('workflow disposed')
     this.disposed ??= this.result.then(() => {})
     return this.disposed
@@ -202,14 +217,15 @@ export class PtcWorkflowRun implements WorkflowRun {
       parent: this.parent,
       signal: this.controller.signal,
       ...request.schema === undefined ? {} : { outputSchema: request.schema },
-      ...request.provider === undefined && request.model === undefined ? {} : {
+      ...request.provider === undefined && request.model === undefined && request.effort === undefined ? {} : {
         agentOptions: {
           ...request.provider === undefined ? {} : { provider: request.provider },
           ...request.model === undefined ? {} : { model: request.model },
+          ...request.effort === undefined ? {} : { reasoningEffort: ReasoningEffortId(request.effort) },
         },
       },
     })
-    const record: ChildRecord = { callId, run }
+    const record: ChildRecord = { callId, run, ...request.label === undefined ? {} : { label: request.label } }
     this.children.set(callId, record)
     // A provider can publish after the signal fired while startup was pending.
     if (this.controller.signal.aborted) {
@@ -227,6 +243,12 @@ export class PtcWorkflowRun implements WorkflowRun {
     signal.addEventListener('abort', onAbort, { once: true })
     try {
       const result = await Promise.race([record.run.result, aborted.promise])
+      if (record.label === 'testing' && !this.toolEvidence.has(record.run.id)) {
+        return json({
+          output: result.output,
+          stopReason: 'error',
+        })
+      }
       return json({
         output: result.output,
         stopReason: result.stopReason,

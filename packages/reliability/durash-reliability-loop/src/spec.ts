@@ -65,6 +65,14 @@ export const reliabilityLoopRecord = z.object({
   implementationModel: z.string().optional(),
   reviewProvider: z.string().optional(),
   reviewModel: z.string().optional(),
+  implementationThinking: z.string().optional(),
+  reviewThinking: z.string().optional(),
+  roles: z.object({
+    planning: z.object({ provider: z.string(), model: z.string(), thinking: z.string().optional() }).optional(),
+    frontend: z.object({ provider: z.string(), model: z.string(), thinking: z.string().optional() }).optional(),
+    backend: z.object({ provider: z.string(), model: z.string(), thinking: z.string().optional() }).optional(),
+    testing: z.object({ provider: z.string(), model: z.string(), thinking: z.string().optional() }).optional(),
+  }).optional(),
 }) satisfies z.ZodType<ReliabilityLoopRecord>
 
 /**

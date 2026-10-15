@@ -162,6 +162,9 @@ export function apply(ctx: Context, config: Config): void {
   const readDirectory = createModelDirectoryReader()
   const catalogErrors = new Map<string, string>()
   const catalogSources = new Map<string, unknown>()
+  const sourceCleared = new Set<string>()
+  const directoryAt = new Map<string, string>()
+  const retiredModels = new Map<string, readonly string[]>()
   let catalogRevision = 0
   let lastCatalogRevision = -1
   let lastRaw: Config | undefined
@@ -268,7 +271,14 @@ export function apply(ctx: Context, config: Config): void {
   const ensureDirectory = (): void => {
     const entries = directoryEntries(profiles()).map((entry) => {
       const error = catalogErrors.get(entry.provider)
-      return { ...entry, ...error === undefined ? {} : { error } }
+      const observedAt = directoryAt.get(entry.provider)
+      const retired = retiredModels.get(entry.provider)
+      return {
+        ...entry,
+        ...error === undefined ? {} : { error },
+        ...observedAt === undefined ? {} : { directoryAt: observedAt },
+        ...retired === undefined || retired.length === 0 ? {} : { retiredModels: retired },
+      }
     })
     if (deepEqualJson(entries, directoryFacts)) return
     // Atomic replace, never dispose-then-register: a route another adapter
@@ -370,7 +380,16 @@ export function apply(ctx: Context, config: Config): void {
   function publishCatalog(provider: string, models: readonly Model<Api>[]): void {
     const previous = runtimeCatalogs.get(provider)
     const hadError = catalogErrors.delete(provider)
-    if (!hadError && deepEqualJson(previous, models)) return
+    const cleared = sourceCleared.delete(provider)
+    if (!hadError && !cleared && deepEqualJson(previous, models)) return
+    if (cleared) retiredModels.delete(provider)
+    else if (previous !== undefined && previous.length > 0) {
+      const nextIds = new Set(models.map(model => model.id))
+      const retired = previous.map(model => model.id).filter(id => !nextIds.has(id))
+      if (retired.length > 0) retiredModels.set(provider, retired)
+      else retiredModels.delete(provider)
+    }
+    directoryAt.set(provider, new Date().toISOString())
     runtimeCatalogs.set(provider, models)
     catalogRevision += 1
     const previousDirectory = directoryFacts
@@ -409,11 +428,32 @@ export function apply(ctx: Context, config: Config): void {
     publish: publishCatalog,
     failure: (provider, error) => {
       const message = error instanceof LlmError ? error.message : 'Model directory could not be loaded; check account sign-in and refresh'
-      catalogErrors.set(provider, message)
+      const observedAt = new Date().toISOString()
+      catalogErrors.set(provider, `${message} (directory observed at ${observedAt})`)
+      directoryAt.set(provider, observedAt)
+      if (sourceCleared.has(provider)) {
+        runtimeCatalogs.set(provider, [])
+        retiredModels.delete(provider)
+      }
       ensureDirectory()
       ctx.logger.warn('llm-pi-ai: model directory for "%s": %s', provider, message)
     },
   })
+
+  /**
+   * Drop one route's published models until the next successful directory.
+   * The pending diagnostic does not look like an upstream refusal.
+   * @param provider - route whose account, credential, or endpoint changed.
+   */
+  function clearCatalogSource(provider: string): void {
+    runtimeCatalogs.set(provider, [])
+    sourceCleared.add(provider)
+    retiredModels.delete(provider)
+    const observedAt = new Date().toISOString()
+    directoryAt.set(provider, observedAt)
+    catalogErrors.set(provider, `Model directory is refreshing after the account, credential, or endpoint changed (directory observed at ${observedAt})`)
+    catalogRevision += 1
+  }
 
   /** Invalidate directories after their endpoint or credential selection changes. */
   function synchronizeSources(): void {
@@ -422,10 +462,15 @@ export function apply(ctx: Context, config: Config): void {
       const source = catalogSource(provider)
       if (active.has(provider) && deepEqualJson(source, catalogSources.get(provider))) continue
       catalogs.invalidate(provider)
-      if (active.has(provider) && catalogSources.has(provider)) runtimeCatalogs.set(provider, [])
-      else runtimeCatalogs.delete(provider)
-      catalogErrors.delete(provider)
-      catalogRevision += 1
+      if (active.has(provider) && catalogSources.has(provider)) clearCatalogSource(provider)
+      else {
+        runtimeCatalogs.delete(provider)
+        catalogErrors.delete(provider)
+        sourceCleared.delete(provider)
+        retiredModels.delete(provider)
+        directoryAt.delete(provider)
+        catalogRevision += 1
+      }
       if (active.has(provider)) catalogSources.set(provider, source)
       else catalogSources.delete(provider)
     }
@@ -437,9 +482,7 @@ export function apply(ctx: Context, config: Config): void {
     if (provider === undefined) return
     if (ownCredentialWrites.has(provider)) { catalogs.notify(); return }
     catalogs.invalidate(provider)
-    runtimeCatalogs.set(provider, [])
-    catalogErrors.delete(provider)
-    catalogRevision += 1
+    clearCatalogSource(provider)
     ensureRegistrationFacts()
     ensureDirectory()
     catalogs.notify()
@@ -448,9 +491,7 @@ export function apply(ctx: Context, config: Config): void {
     for (const provider of onlineProviders()) {
       if (profiles().get(provider)?.apiKeyEnv !== ref) continue
       catalogs.invalidate(provider)
-      runtimeCatalogs.set(provider, [])
-      catalogErrors.delete(provider)
-      catalogRevision += 1
+      clearCatalogSource(provider)
     }
     ensureRegistrationFacts()
     ensureDirectory()
@@ -462,9 +503,7 @@ export function apply(ctx: Context, config: Config): void {
       const provider = onlineProviders().find(route => `llm-pi-ai/${route}` === key)
       if (provider === undefined) return
       catalogs.invalidate(provider)
-      runtimeCatalogs.set(provider, [])
-      catalogErrors.delete(provider)
-      catalogRevision += 1
+      clearCatalogSource(provider)
       ensureRegistrationFacts()
       ensureDirectory()
       catalogs.notify()
@@ -479,9 +518,7 @@ export function apply(ctx: Context, config: Config): void {
     function synchronizeCredentials(): void {
       for (const provider of onlineProviders()) {
         catalogs.invalidate(provider)
-        runtimeCatalogs.set(provider, [])
-        catalogErrors.delete(provider)
-        catalogRevision += 1
+        clearCatalogSource(provider)
       }
       ensureRegistrationFacts()
       ensureDirectory()

@@ -7,6 +7,8 @@
  * @module @durash/dsh-reliability-loop/src/driver
  */
 
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type { WorkflowEngine, WorkflowResult, WorkflowRun } from '@deepseek-ai/dsh-workflow'
@@ -14,6 +16,7 @@ import { assertReliabilityLoopRecord } from './checks.ts'
 import {
   IMPLEMENT_META_NAME,
   IMPLEMENT_SCRIPT,
+  ROLE_SCRIPT,
   REVIEW_META_NAME,
   REVIEW_SCRIPT,
   implementPrompt,
@@ -26,8 +29,17 @@ import {
 import type { ImplementReport, ReviewReport } from './scripts.ts'
 import { isTerminalStage } from './types.ts'
 import type {
-  ImplementAttempt, LoopRound, ReliabilityLoopId, ReliabilityLoopRecord, ReviewAttempt, RuntimeAcceptanceGate, RuntimeAcceptanceStatus,
+  ImplementAttempt,
+  LoopRound,
+  ReliabilityLoopId,
+  ReliabilityLoopRecord,
+  ReliabilityLoopRoles,
+  ReviewAttempt,
+  RuntimeAcceptanceGate,
+  RuntimeAcceptanceStatus,
 } from './types.ts'
+
+const execFileAsync = promisify(execFile)
 
 /** Render a thrown value without trusting it. */
 function renderThrown(error: unknown): string {
@@ -173,6 +185,14 @@ export class LoopDriver {
           throw new Error(`complete ${kind} prompt exceeds the ${this.maxHandoffChars} handoff bound; use a smaller evidence index`)
         }
       }
+      if (kind === 'review') {
+        const room = this.maxHandoffChars - request.prompt.length
+        if (room > 80) {
+          const cwd = this.parent.session?.header.cwd
+          const diff = await boundedDiff(cwd)
+          request.prompt += `\n\nFinal diff:\n${diff.slice(0, room - 20)}`
+        }
+      }
       if (this.cancelRequested) return
       run = this.engine.start({
         script: request.script,
@@ -182,6 +202,8 @@ export class LoopDriver {
           label: kind,
           ...request.provider === undefined ? {} : { provider: request.provider },
           ...request.model === undefined ? {} : { model: request.model },
+          ...request.effort === undefined ? {} : { effort: request.effort },
+          ...request.roles === undefined ? {} : { roles: request.roles },
         },
         parent: this.parent,
       })
@@ -324,25 +346,37 @@ export class LoopDriver {
     kind: 'implement' | 'review',
     round: LoopRound,
     record: ReliabilityLoopRecord,
-  ): { script: string; metaName: string; prompt: string; provider?: string; model?: string } {
+  ): {
+    script: string
+    metaName: string
+    prompt: string
+    provider?: string
+    model?: string
+    effort?: string
+    roles?: ReliabilityLoopRoles
+  } {
     const lane = kind === 'implement'
-      ? { provider: record.implementationProvider, model: record.implementationModel }
-      : { provider: record.reviewProvider, model: record.reviewModel }
+      ? { provider: record.implementationProvider, model: record.implementationModel, effort: record.implementationThinking }
+      : { provider: record.reviewProvider, model: record.reviewModel, effort: record.reviewThinking }
     const route = {
       ...lane.provider === undefined ? {} : { provider: lane.provider },
       ...lane.model === undefined ? {} : { model: lane.model },
+      ...lane.effort === undefined ? {} : { effort: lane.effort },
     }
     if (kind === 'implement') {
+      const script = record.roles === undefined ? IMPLEMENT_SCRIPT : ROLE_SCRIPT
+      const roles = record.roles === undefined ? {} : { roles: record.roles }
       if (round === 1) {
-        return { script: IMPLEMENT_SCRIPT, metaName: IMPLEMENT_META_NAME, prompt: implementPrompt(record.objective), ...route }
+        return { script, metaName: IMPLEMENT_META_NAME, prompt: implementPrompt(record.objective), ...route, ...roles }
       }
       /* v8 ignore next -- the record invariant guarantees a round-1 changes-requested review for a rework stage */
       const feedback = record.review?.feedback ?? ''
       return {
-        script: IMPLEMENT_SCRIPT,
+        script,
         metaName: IMPLEMENT_META_NAME,
         prompt: implementReworkPrompt(record.objective, feedback),
         ...route,
+        ...roles,
       }
     }
     /* v8 ignore next -- the record invariant guarantees a settled implementation for a review stage */
@@ -372,5 +406,26 @@ export class LoopDriver {
   private async writeRecord(record: ReliabilityLoopRecord): Promise<void> {
     assertReliabilityLoopRecord(record)
     await this.table.put(record.loopId, record)
+  }
+}
+
+/**
+ * Read the working tree diff the reviewer must see. A git failure stays in the prompt.
+ * @param cwd - session working directory.
+ * @returns the diff text or an explicit unavailable message.
+ */
+async function boundedDiff(cwd: string | undefined): Promise<string> {
+  if (cwd === undefined || cwd.length === 0) return 'Git diff unavailable: the session has no working directory.'
+  try {
+    const { stdout } = await execFileAsync('git', ['diff', '--no-ext-diff', '--'], {
+      cwd,
+      timeout: 5000,
+      maxBuffer: 200_000,
+    })
+    const text = stdout.trim()
+    return text.length === 0 ? 'Git diff is empty.' : text
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return `Git diff unavailable: ${message}`
   }
 }

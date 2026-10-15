@@ -42,9 +42,44 @@ interface DraftState {
   implementationThinking: ReliabilityThinking | null
   reviewModel: string | null
   reviewThinking: ReliabilityThinking | null
+  planningModel: string | null
+  planningThinking: ReliabilityThinking | null
+  frontendModel: string | null
+  frontendThinking: ReliabilityThinking | null
+  backendModel: string | null
+  backendThinking: ReliabilityThinking | null
+  testingModel: string | null
+  testingThinking: ReliabilityThinking | null
 }
 
-type PickerLane = 'implementation' | 'review'
+type PickerLane = 'implementation' | 'review' | 'planning' | 'frontend' | 'backend' | 'testing'
+
+const LANE_MODEL = {
+  implementation: 'implementationModel',
+  review: 'reviewModel',
+  planning: 'planningModel',
+  frontend: 'frontendModel',
+  backend: 'backendModel',
+  testing: 'testingModel',
+} as const satisfies Record<PickerLane, keyof DraftState>
+
+const LANE_THINKING = {
+  implementation: 'implementationThinking',
+  review: 'reviewThinking',
+  planning: 'planningThinking',
+  frontend: 'frontendThinking',
+  backend: 'backendThinking',
+  testing: 'testingThinking',
+} as const satisfies Record<PickerLane, keyof DraftState>
+
+const LANE_PREFERRED: Record<PickerLane, ReliabilityThinking> = {
+  implementation: 'high',
+  review: 'xhigh',
+  planning: 'high',
+  frontend: 'low',
+  backend: 'low',
+  testing: 'low',
+}
 type PickerChannel = 'default' | 'cursor'
 
 interface WorkflowModelGroup {
@@ -99,6 +134,14 @@ function normalizeDraft(state: ReliabilitySessionState): DraftState {
     implementationThinking: state.policy.implementationThinking,
     reviewModel: state.policy.reviewModel,
     reviewThinking: state.policy.reviewThinking,
+    planningModel: state.policy.planningModel ?? null,
+    planningThinking: state.policy.planningThinking ?? null,
+    frontendModel: state.policy.frontendModel ?? null,
+    frontendThinking: state.policy.frontendThinking ?? null,
+    backendModel: state.policy.backendModel ?? null,
+    backendThinking: state.policy.backendThinking ?? null,
+    testingModel: state.policy.testingModel ?? null,
+    testingThinking: state.policy.testingThinking ?? null,
   }
 }
 
@@ -128,6 +171,14 @@ function equalDraft(left: DraftState, right: DraftState): boolean {
     && left.implementationThinking === right.implementationThinking
     && left.reviewModel === right.reviewModel
     && left.reviewThinking === right.reviewThinking
+    && left.planningModel === right.planningModel
+    && left.planningThinking === right.planningThinking
+    && left.frontendModel === right.frontendModel
+    && left.frontendThinking === right.frontendThinking
+    && left.backendModel === right.backendModel
+    && left.backendThinking === right.backendThinking
+    && left.testingModel === right.testingModel
+    && left.testingThinking === right.testingThinking
 }
 
 function badgeLabel(badges: readonly ReliabilityModelBadge[], kind: ReliabilityModelBadge['kind']): string {
@@ -470,6 +521,14 @@ export function WorkflowPolicyDock({
     state.policy.implementationThinking,
     state.policy.reviewModel,
     state.policy.reviewThinking,
+    state.policy.planningModel,
+    state.policy.planningThinking,
+    state.policy.frontendModel,
+    state.policy.frontendThinking,
+    state.policy.backendModel,
+    state.policy.backendThinking,
+    state.policy.testingModel,
+    state.policy.testingThinking,
   ])
 
   const implementationLevels = useMemo(
@@ -514,6 +573,14 @@ export function WorkflowPolicyDock({
       implementationThinking: draft.implementationThinking,
       reviewModel: draft.reviewModel,
       reviewThinking: draft.reviewThinking,
+      planningModel: draft.planningModel,
+      planningThinking: draft.planningThinking,
+      frontendModel: draft.frontendModel,
+      frontendThinking: draft.frontendThinking,
+      backendModel: draft.backendModel,
+      backendThinking: draft.backendThinking,
+      testingModel: draft.testingModel,
+      testingThinking: draft.testingThinking,
     }).then((result) => {
       if (result.ok) {
         setOpen(false)
@@ -524,23 +591,16 @@ export function WorkflowPolicyDock({
 
   const selectLane = (lane: PickerLane, selector: string | null): void => {
     const levels = thinkingLevels(models, selector)
-    if (lane === 'implementation') {
-      setDraft(current => ({
+    const modelKey = LANE_MODEL[lane]
+    const thinkingKey = LANE_THINKING[lane]
+    setDraft((current) => {
+      const stored = current[thinkingKey]
+      return {
         ...current,
-        implementationModel: selector,
-        implementationThinking: levels.includes(current.implementationThinking ?? '')
-          ? current.implementationThinking
-          : preferredEffort(levels, 'high'),
-      }))
-    } else {
-      setDraft(current => ({
-        ...current,
-        reviewModel: selector,
-        reviewThinking: levels.includes(current.reviewThinking ?? '')
-          ? current.reviewThinking
-          : preferredEffort(levels, 'xhigh'),
-      }))
-    }
+        [modelKey]: selector,
+        [thinkingKey]: levels.includes(stored ?? '') ? stored : preferredEffort(levels, LANE_PREFERRED[lane]),
+      }
+    })
     setOpenPicker(null)
   }
 
@@ -632,6 +692,37 @@ export function WorkflowPolicyDock({
               setDraft(current => ({ ...current, reviewThinking }))
             }}
           />
+
+          {(['planning', 'frontend', 'backend', 'testing'] as const).map((lane) => {
+            const modelKey = LANE_MODEL[lane]
+            const thinkingKey = LANE_THINKING[lane]
+            const levels = thinkingLevels(models, draft[modelKey])
+            return (
+              <div key={lane}>
+                <ModelField
+                  lane={lane}
+                  label={t(`policy.${lane}Model`)}
+                  value={draft[modelKey]}
+                  options={models}
+                  disabled={saving || models.length === 0}
+                  open={openPicker === lane}
+                  t={t}
+                  onToggle={() => { setOpenPicker(current => current === lane ? null : lane) }}
+                  onSelect={(selector) => { selectLane(lane, selector) }}
+                />
+                <EffortField
+                  label={t(`policy.${lane}Thinking`)}
+                  value={draft[thinkingKey]}
+                  levels={levels}
+                  disabled={saving || levels.length === 0}
+                  t={t}
+                  onChange={(value) => {
+                    setDraft(current => ({ ...current, [thinkingKey]: value }))
+                  }}
+                />
+              </div>
+            )
+          })}
         </div>
 
         {state.error === null ? null : <div className={css.error} role="alert">{state.error}</div>}

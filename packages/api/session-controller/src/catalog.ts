@@ -57,11 +57,24 @@ export async function buildModelCatalog(
       }
     }
   }))
+  const failures = catalog.flatMap(item => item.kind === 'failure' ? [item.failure] : [])
+  const configurable = typeof ctx.llm.listConfigurableProviders === 'function'
+    ? ctx.llm.listConfigurableProviders()
+    : []
+  for (const entry of configurable) {
+    if (entry.error === undefined || entry.error.length === 0) continue
+    if (failures.some(failure => failure.id === entry.provider)) continue
+    failures.push({
+      id: entry.provider,
+      name: entry.displayName,
+      message: entry.error,
+    })
+  }
   return {
     default: { ...defaultSelection },
     routableProviders: providers.map(provider => provider.id),
     groups: catalog.flatMap(item => item.kind === 'group' ? [item.group] : [])
       .filter(group => group.models.length > 0),
-    failures: catalog.flatMap(item => item.kind === 'failure' ? [item.failure] : []),
+    failures,
   }
 }

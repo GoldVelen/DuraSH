@@ -36,7 +36,14 @@ function fakeLlm(providers: LlmProviderInfo[], models: Record<string, LlmModelIn
   }
 }
 
-async function harness(llm = fakeLlm(
+/** Catalog stub. `resolveModelInfo` is optional so a test can supply real effort lists. */
+type CatalogLlm = ReturnType<typeof fakeLlm> & {
+  resolveModelInfo?: (provider: string, model: string, signal?: AbortSignal) => Promise<{
+    reasoning?: { efforts: readonly { id: string; name: string }[] }
+  }>
+}
+
+async function harness(llm: CatalogLlm = fakeLlm(
   [{ id: 'deepseek-official', name: 'DeepSeek' }],
   {
     'deepseek-official': [
@@ -159,8 +166,8 @@ describe('durash-reliability-policy', () => {
     expect(snapshot.enabled).toBe(true)
     expect(policy.workflowEnabled(SESSION)).toBe(true)
     expect(policy.enabledRoutes(SESSION)).toEqual({
-      implementation: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
-      review: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      implementation: { provider: 'deepseek-official', model: 'deepseek-v4-pro', thinking: 'high' },
+      review: { provider: 'deepseek-official', model: 'deepseek-v4-flash', thinking: 'xhigh' },
     })
   })
 
@@ -211,7 +218,7 @@ describe('durash-reliability-policy', () => {
     expect(await policy.policy({ sessionId: SESSION })).toMatchObject({ revision: 0, updatedAt: 0 })
   })
 
-  it('fills defaults from the public reliability effort roster even when the catalog has one model', async () => {
+  it('fills defaults from efforts the model actually lists', async () => {
     const { policy } = await harness({
       listProviders: () => [{ id: 'provider', name: 'Provider' }],
       listModels: async () => [{
@@ -219,6 +226,19 @@ describe('durash-reliability-policy', () => {
         id: 'model',
         name: 'Model',
       }],
+      resolveModelInfo: async () => ({
+        reasoning: {
+          efforts: [
+            { id: 'off', name: 'Off' },
+            { id: 'minimal', name: 'Minimal' },
+            { id: 'low', name: 'Low' },
+            { id: 'medium', name: 'Medium' },
+            { id: 'high', name: 'High' },
+            { id: 'xhigh', name: 'Extra high' },
+            { id: 'max', name: 'Max' },
+          ],
+        },
+      }),
     })
     expect(await policy.ensurePolicy({ sessionId: SESSION })).toMatchObject({
       implementationModel: 'provider/model',
@@ -229,6 +249,19 @@ describe('durash-reliability-policy', () => {
         selector: 'provider/model',
         thinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       }],
+    })
+  })
+
+  it('does not invent a thinking level the model does not list', async () => {
+    const { policy } = await harness({
+      listProviders: () => [{ id: 'provider', name: 'Provider' }],
+      listModels: async () => [{ provider: 'provider', id: 'model', name: 'Model' }],
+      resolveModelInfo: async () => ({ reasoning: { efforts: [{ id: 'low', name: 'Low' }] } }),
+    })
+    expect(await policy.ensurePolicy({ sessionId: SESSION })).toMatchObject({
+      implementationThinking: null,
+      reviewThinking: null,
+      models: [{ thinkingLevels: ['low'] }],
     })
   })
 

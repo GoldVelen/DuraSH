@@ -177,7 +177,7 @@ describe('live Go catalog source Loader', () => {
     })
     await expect.poll(() => context?.get('llm')?.listConfigurableProviders()
       .find(provider => provider.provider === 'opencode-go')?.error)
-      .toBe('OpenCode Go model discovery requires account sign-in or an API key')
+      .toMatch(/^OpenCode Go model discovery requires account sign-in or an API key \(directory observed at .+Z\)$/)
     expect(calls.filter(request => request.url === CONFIG_URL)).toHaveLength(0)
     gate.resolve(undefined)
     const { ctx } = await loading
@@ -213,7 +213,7 @@ describe('live Go catalog source Loader', () => {
     expect(removal).toBeDefined()
     await removal
     await expect.poll(() => ctx.llm.listConfigurableProviders().find(provider => provider.provider === 'opencode-go')?.error)
-      .toBe('OpenCode Go model discovery requires account sign-in or an API key')
+      .toMatch(/^OpenCode Go model discovery requires account sign-in or an API key \(directory observed at .+Z\)$/)
     expect(calls.filter(request => request.url === CONFIG_URL)).toHaveLength(0)
 
     await writeFile(credentialsPath, JSON.stringify({ version: 1, refs: {}, records: {
@@ -498,7 +498,7 @@ describe('live Go catalog source Loader', () => {
       kind: 'grant', payload: { type: 'oauth', access: 'expired-secret', refresh: 'expired-secret-refresh', expires: 0 },
     } })
     await expect.poll(() => ctx.llm.listConfigurableProviders().find(provider => provider.provider === 'opencode-go')?.error)
-      .toBe('Model directory could not be loaded; check account sign-in and refresh')
+      .toMatch(/^Model directory could not be loaded; check account sign-in and refresh \(directory observed at .+Z\)$/)
   })
 
   it('allows an endpoint repair probe for an unserviceable hand-declared route', async () => {

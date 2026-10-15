@@ -126,6 +126,28 @@ export class ReliabilityPolicyController implements HostObservable<ReliabilityCo
    * @param sessionId - Session whose policy to load.
    * @returns the action result; concurrent loads for the Session share one promise.
    */
+  /**
+   * Re-read a ready policy so a live catalog change reaches an open panel.
+   * A load or configure already in flight keeps its draft.
+   * @param sessionId - Session whose catalog to refresh.
+   * @returns the action result.
+   */
+  refreshCatalog(sessionId: SessionId): Promise<ReliabilityActionResult> {
+    if (this.disposed) return Promise.resolve(DISPOSED)
+    const state = this.sessionState(sessionId)
+    if (state.status === 'loading' || state.status === 'configuring') return Promise.resolve(OK)
+    if (state.status !== 'ready') return this.loadPolicy(sessionId)
+    return this.readPolicy(sessionId, 'policy')
+  }
+
+  /**
+   * Sessions that already have a ready policy.
+   * @returns those session ids.
+   */
+  readySessions(): readonly SessionId[] {
+    return [...this.view.sessions.entries()].flatMap(([sessionId, state]) => state.status === 'ready' ? [sessionId] : [])
+  }
+
   loadPolicy(sessionId: SessionId): Promise<ReliabilityActionResult> {
     if (this.disposed) return Promise.resolve(DISPOSED)
     const state = this.sessionState(sessionId)

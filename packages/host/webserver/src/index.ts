@@ -6,8 +6,10 @@
  * Route handlers retain direct response ownership.
  */
 
-import { createServer } from 'node:http'
+import { createServer as createHttpServer } from 'node:http'
 import type { IncomingMessage, ServerResponse, Server } from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
+import type { Server as HttpsServer } from 'node:https'
 import type { AddressInfo } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { Context, Service } from '@deepseek-ai/cordis'
@@ -67,6 +69,8 @@ export interface Config {
   compressionLevel?: number
   /** Minimum known response length eligible for gzip; unknown-length streams are eligible. @default 1024 */
   compressionThresholdBytes?: number
+  /** PEM certificate and key. Null and absence keep the plain HTTP listener. */
+  tls?: { cert: string; key: string } | null
 }
 
 const DEFAULT_COMPRESSION = 'none' as const
@@ -128,6 +132,10 @@ export class WebServer extends Service {
     compression: z.union([z.const('none'), z.const('gzip')]).default(DEFAULT_COMPRESSION),
     compressionLevel: z.number().step(1).min(0).max(9).default(DEFAULT_COMPRESSION_LEVEL),
     compressionThresholdBytes: z.natural().default(DEFAULT_COMPRESSION_THRESHOLD_BYTES),
+    tls: z.union([
+      z.object({ cert: z.string(), key: z.string() }),
+      z.const(null),
+    ]),
   })
 
   private readonly exact = new Map<string, WebRoute>()
@@ -136,7 +144,7 @@ export class WebServer extends Service {
   private readonly upgradedSockets = new Set<Duplex>()
   private readonly indexTaps: ((html: string) => string)[] = []
   private fallback: WebRoute['handler'] | undefined
-  private server!: Server
+  private server!: Server | HttpsServer
   private listenedPort!: number
   private readonly gzip: NodeMiddleware | undefined
 
@@ -154,6 +162,11 @@ export class WebServer extends Service {
   /** The configured bind host (the loopback or all-interfaces literal). */
   get host(): Config['host'] {
     return this.config.host
+  }
+
+  /** Whether the listener is TLS. Plain HTTP stays the default. */
+  get secure(): boolean {
+    return this.config.tls !== undefined && this.config.tls !== null
   }
 
   /**
@@ -239,7 +252,7 @@ export class WebServer extends Service {
     // rejection killing the process on one malformed request (bad %-escape,
     // client dropping mid-body). Per-request failures log and answer 400 —
     // never a process exit.
-    this.server = createServer((req, res) => {
+    const listener = (req: IncomingMessage, res: ServerResponse): void => {
       const next = (): void => {
         void handle(req, res).catch((err: unknown) => {
           this.ctx.logger.warn(err instanceof Error ? err : new Error(String(err)))
@@ -253,7 +266,11 @@ export class WebServer extends Service {
       }
       if (this.gzip === undefined) next()
       else this.gzip(req, res, next)
-    })
+    }
+    const tls = this.config.tls
+    this.server = tls !== undefined && tls !== null
+      ? createHttpsServer({ cert: tls.cert, key: tls.key }, listener)
+      : createHttpServer(listener)
     this.server.on('upgrade', (req, socket, head) => {
       const onError = (error: Error): void => {
         this.ctx.logger.warn(error)

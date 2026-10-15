@@ -508,6 +508,16 @@ interface LlmConfigurableProvider {
   declared?: boolean
   /** Configuration diagnostic for repair; unaffected models may remain serviceable. */
   error?: string
+  /**
+   * When this route's directory was last published or last failed.
+   * An identical refresh does not change it.
+   */
+  directoryAt?: string
+  /**
+   * Model ids dropped by the latest successful directory from the same
+   * account. An account, credential, or endpoint change clears this list.
+   */
+  retiredModels?: readonly string[]
 }
 ```
 

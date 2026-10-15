@@ -118,8 +118,12 @@ function cookieValue(headerValue: string, name: string): string | undefined {
 }
 
 /** Serialize the fixed browser-session attributes; generated names and values are cookie-safe base64url. */
-function sessionCookie(name: string, value: string, expiresAt: number, maxAgeSeconds: number): string {
-  return `${name}=${value}; Max-Age=${String(maxAgeSeconds)}; Path=/; Expires=${new Date(expiresAt).toUTCString()}; HttpOnly; SameSite=Strict`
+function sessionCookie(name: string, value: string, expiresAt: number, maxAgeSeconds: number, secure: boolean): string {
+  return `${name}=${value}; Max-Age=${String(maxAgeSeconds)}; Path=/; Expires=${new Date(expiresAt).toUTCString()}; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
+}
+
+function requestEncrypted(req: ConnectionIndexRequest): boolean {
+  return (req as { socket?: { encrypted?: boolean } }).socket?.encrypted === true
 }
 
 function signature(secret: Buffer, body: string): Buffer {
@@ -258,7 +262,7 @@ export class BrowserAuth {
           'location': '/',
           'referrer-policy': 'no-referrer',
           'set-cookie': sessionCookie(
-            cookieName(authority), value, expiresAt, Math.floor(this.maxAgeMilliseconds / 1000),
+            cookieName(authority), value, expiresAt, Math.floor(this.maxAgeMilliseconds / 1000), requestEncrypted(req),
           ),
         })
         res.end()

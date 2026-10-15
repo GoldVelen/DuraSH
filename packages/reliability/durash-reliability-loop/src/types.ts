@@ -124,6 +124,12 @@ export interface ReliabilityLoopRecord {
   readonly reviewProvider?: string | undefined
   /** Review-stage model id, when the caller selected one. */
   readonly reviewModel?: string | undefined
+  /** Implementation-stage effort snapshotted at start. */
+  readonly implementationThinking?: string | undefined
+  /** Review-stage effort snapshotted at start. */
+  readonly reviewThinking?: string | undefined
+  /** Role routes snapshotted at start. Absent keeps the single implementation child. */
+  readonly roles?: ReliabilityLoopRoles | undefined
 }
 
 /**
@@ -161,6 +167,16 @@ export interface ReliabilityLoopLane {
   readonly provider: string
   /** Model id for that lane's child. */
   readonly model: string
+  /** Effort the selected model lists, when the caller stored one. */
+  readonly thinking?: string | undefined
+}
+
+/** Role routes snapshotted when a loop starts. Later policy edits do not change it. */
+export interface ReliabilityLoopRoles {
+  readonly planning?: ReliabilityLoopLane | undefined
+  readonly frontend?: ReliabilityLoopLane | undefined
+  readonly backend?: ReliabilityLoopLane | undefined
+  readonly testing?: ReliabilityLoopLane | undefined
 }
 
 /** What a caller asks for when starting one loop. */
@@ -175,6 +191,8 @@ export interface ReliabilityLoopStartRequest {
   implementation?: ReliabilityLoopLane
   /** Review-stage child route; omitted children inherit the parent. */
   review?: ReliabilityLoopLane
+  /** Role routes copied from the policy at start. Absent keeps the legacy implementation child. */
+  roles?: ReliabilityLoopRoles
 }
 
 /** Runtime observations supplied to the loop before and after independent review. */

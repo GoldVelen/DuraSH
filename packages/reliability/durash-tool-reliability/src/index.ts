@@ -136,12 +136,14 @@ export function apply(ctx: Context): void {
       }
       const acceptanceTaskId = ctx.reliabilityLoopRuntime.acceptance.activeTask(agent.id)
       exec.signal.throwIfAborted()
+      const roles = ctx.reliabilityPolicy.roleRoutes?.(agent.id)
       const handle = await ctx.reliabilityLoopRuntime.start({
         parent: agent,
         objective,
         ...acceptanceTaskId ? { acceptanceTaskId } : {},
         implementation: routes.implementation,
         review: routes.review,
+        ...roles === undefined ? {} : { roles },
       })
       const cancel = () => { handle.cancel('reliability handoff cancelled') }
       exec.signal.addEventListener('abort', cancel, { once: true })

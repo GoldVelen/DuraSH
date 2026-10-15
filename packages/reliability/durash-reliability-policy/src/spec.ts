@@ -19,6 +19,14 @@ export const reliabilityPolicyRow = z.object({
   implementationThinking: z.string().nullable(),
   reviewModel: z.string().nullable(),
   reviewThinking: z.string().nullable(),
+  planningModel: z.string().nullable().optional(),
+  planningThinking: z.string().nullable().optional(),
+  frontendModel: z.string().nullable().optional(),
+  frontendThinking: z.string().nullable().optional(),
+  backendModel: z.string().nullable().optional(),
+  backendThinking: z.string().nullable().optional(),
+  testingModel: z.string().nullable().optional(),
+  testingThinking: z.string().nullable().optional(),
   updatedAt: z.number().int().nonnegative(),
 })
 

@@ -29,7 +29,7 @@ export const zh = {
   'connection.error': '连接异常，刷新重试',
   'connection.connecting': '重新连接中',
   'connection.connected': '连接成功',
-  'connection.reconnect': '连接异常，点击立即重连',
+  'connection.reconnect': '连接异常，服务主机必须保持在线，点击立即重连',
   'connection.restart': '连接中断，正在重试，点击立即重连',
 } satisfies Record<string, string>
 
@@ -65,6 +65,6 @@ export const en = {
   'connection.error': 'Disconnected',
   'connection.connecting': 'Reconnecting',
   'connection.connected': 'Connected',
-  'connection.reconnect': 'Disconnected, reconnect now',
+  'connection.reconnect': 'Disconnected. The service host must stay online. Reconnect now',
   'connection.restart': 'Reconnecting, reconnect now',
 } satisfies Record<SettingsKey, string>

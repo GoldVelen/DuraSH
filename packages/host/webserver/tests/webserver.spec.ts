@@ -105,6 +105,7 @@ describe('real Loader composition', () => {
       compressionLevel: 1,
       compressionThresholdBytes: 1024,
     })
+    expect(HttpServer.Config({ host: '127.0.0.1', port: 0, tls: null })).toMatchObject({ tls: null })
     expect(() => HttpServer.Config({
       host: '127.0.0.1', port: 0, compressionLevel: 10,
     })).toThrow()

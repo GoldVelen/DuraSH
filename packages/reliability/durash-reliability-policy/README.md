@@ -67,8 +67,8 @@ Turning the policy on or off changes whether the handoff guidance section is ass
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Effort is stored, not applied** — the switch records implementation and review thinking levels; the worker-thread engine still defers `effort` on `agent()`, so stage children inherit the parent's reasoning settings.
-- **No live catalog event** — the client re-reads on open; a provider added while the panel is open does not appear until the next ensure.
+- **Unknown effort stays unset** — a model that does not list reasoning efforts keeps a null thinking value; the switch does not invent one from the model name.
+- **Drafts are not overwritten** — a live catalog refresh updates the open panel's options and does not replace a draft the operator is still editing.
 
 <a id="dev-note"></a>
 ### Dev Note

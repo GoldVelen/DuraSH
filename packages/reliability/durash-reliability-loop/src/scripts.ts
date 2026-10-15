@@ -20,6 +20,7 @@ const report = await agent(args.prompt, {
   schema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] },
   ...(typeof args.provider === 'string' ? { provider: args.provider } : {}),
   ...(typeof args.model === 'string' ? { model: args.model } : {}),
+  ...(typeof args.effort === 'string' ? { effort: args.effort } : {}),
 })
 if (report === null) throw new Error('implementation child failed')
 return report
@@ -43,9 +44,85 @@ const report = await agent(args.prompt, {
   },
   ...(typeof args.provider === 'string' ? { provider: args.provider } : {}),
   ...(typeof args.model === 'string' ? { model: args.model } : {}),
+  ...(typeof args.effort === 'string' ? { effort: args.effort } : {}),
 })
 if (report === null) throw new Error('review child failed')
 return report
+`
+
+/**
+ * Role implementation body. It runs only the configured roles, skips a lane
+ * the plan says is unnecessary, and refuses a testing summary that the host
+ * did not observe as a tool result.
+ */
+export const ROLE_SCRIPT = `
+const roles = args.roles && typeof args.roles === 'object' ? args.roles : {}
+const routeOf = (role) => {
+  const route = roles[role]
+  if (route === undefined || route === null) return {}
+  return {
+    label: role,
+    phase: role + ' ' + route.provider + '/' + route.model,
+    ...(typeof route.provider === 'string' ? { provider: route.provider } : {}),
+    ...(typeof route.model === 'string' ? { model: route.model } : {}),
+    ...(typeof route.thinking === 'string' ? { effort: route.thinking } : {}),
+  }
+}
+const planSchema = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    needsFrontend: { type: 'boolean' },
+    needsBackend: { type: 'boolean' },
+    parallel: { type: 'boolean' },
+    frontendPaths: { type: 'array', items: { type: 'string' } },
+    backendPaths: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['summary'],
+}
+let plan = {
+  summary: args.prompt,
+  needsFrontend: roles.frontend !== undefined,
+  needsBackend: roles.backend !== undefined,
+  parallel: false,
+  frontendPaths: [],
+  backendPaths: [],
+}
+if (roles.planning !== undefined) {
+  const planned = await agent(args.prompt, { ...routeOf('planning'), schema: planSchema })
+  if (planned === null) throw new Error('planning child failed')
+  plan = { ...plan, ...planned }
+}
+const overlaps = (left, right) => {
+  for (const one of left ?? []) {
+    for (const other of right ?? []) {
+      const a = String(one)
+      const b = String(other)
+      if (a === b || a.startsWith(b + '/') || b.startsWith(a + '/')) return true
+    }
+  }
+  return false
+}
+const pieces = [plan.summary]
+const runFrontend = plan.needsFrontend !== false && roles.frontend !== undefined
+const runBackend = plan.needsBackend !== false && roles.backend !== undefined
+if (runFrontend && runBackend && plan.parallel === true && !overlaps(plan.frontendPaths, plan.backendPaths)) {
+  const both = await parallel([
+    () => agent(plan.summary, routeOf('frontend')),
+    () => agent(plan.summary, routeOf('backend')),
+  ])
+  pieces.push(...both)
+} else {
+  if (runFrontend) pieces.push(await agent(plan.summary, routeOf('frontend')))
+  if (runBackend) pieces.push(await agent(plan.summary, routeOf('backend')))
+}
+const codeRan = runFrontend || runBackend
+if (roles.testing !== undefined && codeRan) {
+  const tested = await agent('Run the relevant verification and record the commands and results.', routeOf('testing'))
+  if (tested === null) throw new Error('testing child produced no host-observed tool result; a summary claiming tests passed is not verification')
+  pieces.push(tested)
+}
+return { summary: pieces.filter(piece => piece !== null && piece !== undefined).map(piece => typeof piece === 'string' ? piece : JSON.stringify(piece)).join('\\n') }
 `
 
 /** The implement stage's fixed meta name. */

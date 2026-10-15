@@ -18,7 +18,7 @@ import {
 } from '@deepseek-ai/dsh-credentials'
 import type { CredentialKey, CredentialProvider, CredentialRecord } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { LlmError } from '@deepseek-ai/dsh-llm'
+import { currentLlmCredentialOverlay, LlmError } from '@deepseek-ai/dsh-llm'
 
 /**
  * The record scope every credential this adapter family stores is written
@@ -141,6 +141,8 @@ function writableStore(ctx: Context): CredentialProvider {
 export function credentialStoreFrom(ctx: Context): CredentialStore {
   return {
     async read(providerId) {
+      const ownKey = currentLlmCredentialOverlay()?.apiKeys[providerId]
+      if (ownKey !== undefined && ownKey.length > 0) return { type: 'api_key' as const, key: ownKey }
       const credentials = ctx.get('credentials')
       if (credentials === undefined) return undefined
       if (!isCredentialKeySegment(providerId)) return undefined
@@ -203,6 +205,8 @@ export function credentialStoreFrom(ctx: Context): CredentialStore {
 export function authContextFrom(ctx: Context): AuthContext {
   return {
     async env(name) {
+      const own = currentLlmCredentialOverlay()?.env[name]
+      if (own !== undefined) return own
       // pi-ai asks about arbitrary provider-declared names; one that is not a
       // POSIX identifier can never have been stored as a reference, and asking
       // the seam would throw instead of answering "not set".

@@ -284,6 +284,55 @@ describe('durash-reliability-loop', () => {
     expect(review.request.agentOptions).toEqual({ provider: 'openai-codex', model: 'gpt-5' })
   })
 
+  it('snapshots role routes and forwards only advertised thinking', async () => {
+    const { runtime, manual, parent } = await harness()
+    const handle = await runtime.start({
+      parent,
+      objective: 'build the page',
+      implementation: { provider: 'impl', model: 'impl-model', thinking: 'low' },
+      review: { provider: 'review', model: 'review-model', thinking: 'high' },
+      roles: {
+        planning: { provider: 'plan', model: 'plan-model', thinking: 'high' },
+        frontend: { provider: 'front', model: 'front-model', thinking: 'low' },
+        testing: { provider: 'test', model: 'test-model', thinking: 'low' },
+      },
+    })
+    expect(runtime.list()[0]).toMatchObject({
+      implementationThinking: 'low',
+      reviewThinking: 'high',
+      roles: { planning: { provider: 'plan', model: 'plan-model', thinking: 'high' } },
+    })
+    const raced = await Promise.race([
+      awaitChild(manual, 1).then(child => ({ kind: 'child' as const, child })),
+      handle.result.then(record => ({ kind: 'done' as const, record })),
+    ])
+    if (raced.kind === 'done') throw new Error(raced.record.error ?? raced.record.stage)
+    const planning = raced.child
+    expect(planning.request.agentOptions).toEqual({ provider: 'plan', model: 'plan-model', reasoningEffort: 'high' })
+    await planning.settle({
+      output: [],
+      stopReason: 'completed',
+      structured: {
+        summary: 'page only',
+        needsFrontend: true,
+        needsBackend: false,
+        parallel: false,
+        frontendPaths: ['apps/web'],
+        backendPaths: [],
+      },
+    })
+    const frontend = await awaitChild(manual, 2)
+    expect(frontend.request.agentOptions).toEqual({ provider: 'front', model: 'front-model', reasoningEffort: 'low' })
+    expect(childPrompt(frontend.request)).toContain('page only')
+    await frontend.settle({ output: [{ type: 'text', text: 'rendered' }], stopReason: 'completed' })
+    const testing = await awaitChild(manual, 3)
+    expect(testing.request.agentOptions).toEqual({ provider: 'test', model: 'test-model', reasoningEffort: 'low' })
+    await testing.settle({ output: [{ type: 'text', text: 'tests passed' }], stopReason: 'completed' })
+    const failed = await handle.result
+    expect(failed.stage).toBe('failed')
+    expect(failed.error).toContain('no host-observed tool result')
+  })
+
   it('runs exactly one bounded rework when the first review requests changes, then blocks', async () => {
     const { runtime, manual, parent } = await harness()
     const handle = await runtime.start({ parent, objective: 'ship the widget' })
