@@ -113,15 +113,14 @@ describe('Host xAI discovery authentication', () => {
     await grant(ctx, 'expired-access', Date.now() - 1000)
     let observedSignal: AbortSignal | undefined
     const entered = Promise.withResolvers<undefined>()
+    // pi-ai keeps a started refresh alive so a rotated token is never discarded; the caller
+    // is released through the credential-lock wait, and the refresh settles afterwards.
+    const settleRefresh = Promise.withResolvers<Response>()
     const fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe('POST')
-      const signal = init?.signal
-      if (signal === undefined || signal === null) throw new Error('missing OAuth refresh cancellation')
-      observedSignal = signal
+      observedSignal = init?.signal ?? undefined
       entered.resolve(undefined)
-      return new Promise<Response>((_resolve, reject) => {
-        signal.addEventListener('abort', () => { reject(new DOMException('refresh cancelled', 'AbortError')) }, { once: true })
-      })
+      return settleRefresh.promise
     })
     vi.stubGlobal('fetch', fetch)
     const controller = new AbortController()
@@ -130,7 +129,9 @@ describe('Host xAI discovery authentication', () => {
     await entered.promise
     controller.abort()
     await rejected
-    expect(observedSignal?.aborted).toBe(true)
+    expect(observedSignal).toBeDefined()
     expect(fetch).toHaveBeenCalledTimes(1)
+    settleRefresh.resolve(new Response('{}', { status: 400 }))
+    await settleRefresh.promise.then(() => undefined)
   })
 })

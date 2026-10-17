@@ -497,6 +497,8 @@ export function apply(ctx: Context, config: Config): void {
         resolveNativeAuth: async (signal?: AbortSignal) => {
           const models = createModels({ credentials: credentialStore, authContext: auth.authContext })
           models.setProvider({ ...native, id: provider })
+          // pi-ai lets a started refresh outlive the caller's signal so a rotated token is
+          // never discarded; its own lock wait is what releases a cancelled caller.
           return (await models.getAuth(provider, signal === undefined ? undefined : { signal }))?.auth
         },
       },
@@ -556,7 +558,20 @@ export function apply(ctx: Context, config: Config): void {
         registeredFacts = facts
         return
       }
-      registration = ctx.llm.registerAdapter(routes, adapter)
+      // A route another adapter family already owns is refused by name: drop only that
+      // route and keep the rest serving instead of withdrawing the whole set.
+      let remaining = [...routes]
+      while (remaining.length > 0) {
+        try {
+          registration = ctx.llm.registerAdapter(remaining, adapter)
+          break
+        } catch (error) {
+          const refused = /provider "([^"]+)"/u.exec(String(error))?.[1]
+          if (refused === undefined || !remaining.includes(refused)) throw error
+          catalogErrors.set(refused, String(error))
+          remaining = remaining.filter(id => id !== refused)
+        }
+      }
     } else {
       registration.replace(routes)
     }

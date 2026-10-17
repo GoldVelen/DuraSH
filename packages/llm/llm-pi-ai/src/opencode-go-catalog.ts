@@ -100,9 +100,14 @@ function thinking(metadata: Fields, native: Model<Api> | undefined): Pick<Model<
   if (metadata.reasoning !== undefined && typeof metadata.reasoning !== 'boolean') return invalid('reasoning capability')
   const reasoning = metadata.reasoning ?? native?.reasoning ?? false
   if (!reasoning) return { reasoning: false }
-  if (metadata.reasoning_options === undefined) return { reasoning: true, ...native?.thinkingLevelMap === undefined
-    ? { thinkingLevelMap: Object.fromEntries(THINKING_LEVELS.map(level => [level, null])) }
-    : { thinkingLevelMap: { ...native.thinkingLevelMap } } }
+  if (metadata.reasoning_options === undefined) {
+    // Public metadata that omits the model keeps the installed SDK's map; metadata that
+    // names the model but discloses no effort withholds every level.
+    if (metadata.reasoning === undefined && native?.thinkingLevelMap !== undefined) {
+      return { reasoning: true, thinkingLevelMap: { ...native.thinkingLevelMap } }
+    }
+    return { reasoning: true, thinkingLevelMap: Object.fromEntries(THINKING_LEVELS.map(level => [level, null])) }
+  }
   if (!Array.isArray(metadata.reasoning_options)) return invalid('reasoning options')
   const map: ThinkingLevelMap = Object.fromEntries(THINKING_LEVELS.map(level => [level, null]))
   for (const value of metadata.reasoning_options) {
