@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BlockAssembler, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
+import { normalizeContext } from '@earendil-works/pi-ai'
 import type { Model } from '@earendil-works/pi-ai'
 import { PiAiAdapter } from '../src/adapter.ts'
 import { resolveProfiles } from '../src/config.ts'
@@ -64,10 +65,10 @@ describe('OpenCode Go native Google requests', () => {
     const assembler = new BlockAssembler()
     for await (const chunk of adapter.stream({ provider: 'opencode-go', model: MODEL, maxTokens: 128,
       sessionId: 'fixture-session' as never, messages: [createUserMessage({
-        content: [{ type: 'text', text: 'fixture request' }], source: { kind: 'plugin', plugin: 'fixture' },
+        content: [{ type: 'text', text: 'fixture request' }], source: { kind: 'user' },
       })] })) assembler.push(chunk)
     expect(assembler.finish).toEqual({ kind: 'stop' })
-    expect(assembler.message({ kind: 'model', provider: 'opencode-go', model: MODEL }).content)
+    expect(assembler.message({ provider: 'opencode-go', model: MODEL }).content)
       .toEqual([{ type: 'text', text: 'fixture reply' }])
     expect(fetcher).toHaveBeenCalledOnce()
     expect(requests[0]?.headers.get('authorization')).toBe(`Bearer ${key}`)
@@ -85,7 +86,7 @@ describe('OpenCode Go native Google requests', () => {
     const { requests, fetcher } = transport()
     const native = profile.piProvider!.getModels().find(candidate => candidate.id === MODEL) as Model<'google-generative-ai'>
     const model = { ...native, headers: { ...native.headers, 'User-Agent': 'fixture-model-agent' } }
-    const result = await profile.piProvider!.stream(model, { messages: [{ role: 'user', content: 'fixture request', timestamp: 0 }] },
+    const result = await profile.piProvider!.stream(model, normalizeContext({ messages: [{ role: 'user', content: 'fixture request', timestamp: 0 }] }),
       { headers: { Authorization: 'Bearer fixture-full-stream', 'x-model-route': null,
         ...userAgentOverride === 'null' ? { 'uSeR-aGeNt': null } : {},
       } }).result()
@@ -103,7 +104,7 @@ describe('OpenCode Go native Google requests', () => {
     const { requests, fetcher } = transport()
     const model = profile.piProvider!.getModels().find(candidate => candidate.id === MODEL) as Model<'google-generative-ai'>
     const result = await profile.piProvider!.streamSimple(model,
-      { messages: [{ role: 'user', content: 'fixture request', timestamp: 0 }] }, { apiKey: 'fixture-direct-key' }).result()
+      normalizeContext({ messages: [{ role: 'user', content: 'fixture request', timestamp: 0 }] }), { apiKey: 'fixture-direct-key' }).result()
     expect(result.stopReason).toBe('stop')
     expect(fetcher).toHaveBeenCalledOnce()
     expect(requests[0]?.headers.get('authorization')).toBe('Bearer fixture-direct-key')
@@ -116,8 +117,8 @@ describe('OpenCode Go native Google requests', () => {
     const profile = resolveProfiles({ 'opencode-go': {} }, 'strict', new Map([['opencode-go', models]])).get('opencode-go')!
     const { fetcher } = transport()
     const model = profile.piProvider!.getModels().find(candidate => candidate.id === MODEL) as Model<'google-generative-ai'>
-    expect(() => profile.piProvider!.stream(model, { messages: [] })).toThrow('OpenCode Go requires account sign-in or an API key')
-    expect(() => profile.piProvider!.streamSimple(model, { messages: [] })).toThrow('OpenCode Go requires account sign-in or an API key')
+    expect(() => profile.piProvider!.stream(model, normalizeContext({ messages: [] }))).toThrow('OpenCode Go requires account sign-in or an API key')
+    expect(() => profile.piProvider!.streamSimple(model, normalizeContext({ messages: [] }))).toThrow('OpenCode Go requires account sign-in or an API key')
     expect(fetcher).not.toHaveBeenCalled()
   })
 
@@ -132,7 +133,7 @@ describe('OpenCode Go native Google requests', () => {
     })
     vi.stubGlobal('fetch', fetcher)
     const model = profile.piProvider!.getModels().find(candidate => candidate.id === 'deepseek-v4.1-flash')!
-    const result = await profile.piProvider!.stream(model, { messages: [] }, { apiKey: 'fixture-native-key' }).result()
+    const result = await profile.piProvider!.stream(model, normalizeContext({ messages: [] }), { apiKey: 'fixture-native-key' }).result()
     expect(result.stopReason).toBe('stop')
     expect(result.content).toEqual([{ type: 'text', text: 'fixture Flash reply' }])
     expect(fetcher).toHaveBeenCalledOnce()

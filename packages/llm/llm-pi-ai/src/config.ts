@@ -408,7 +408,7 @@ const modelCatalogTimer = z.transform(z.number().min(Number.MIN_VALUE).max(MAX_T
 })
 
 /** Runtime schema for {@link Config}. */
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   providers: z.dict(profile).default({}).volatile(),
   modelCatalogRefreshMs: modelCatalogTimer.default(DEFAULT_MODEL_CATALOG_REFRESH_MS),
   modelCatalogTimeoutMs: modelCatalogTimer.default(DEFAULT_MODEL_CATALOG_TIMEOUT_MS),
@@ -427,7 +427,9 @@ export interface ModelCatalogTiming {
  * @param config - plugin configuration containing optional timing budgets.
  * @returns positive finite timer-safe refresh and request budgets.
  */
-export function resolveModelCatalogTiming(config: Config): ModelCatalogTiming {
+export function resolveModelCatalogTiming(
+  config: Pick<Config, 'modelCatalogRefreshMs' | 'modelCatalogTimeoutMs'>,
+): ModelCatalogTiming {
   const modelCatalogRefreshMs = config.modelCatalogRefreshMs ?? DEFAULT_MODEL_CATALOG_REFRESH_MS
   const modelCatalogTimeoutMs = config.modelCatalogTimeoutMs ?? DEFAULT_MODEL_CATALOG_TIMEOUT_MS
   for (const [field, value] of Object.entries({ modelCatalogRefreshMs, modelCatalogTimeoutMs })) {
@@ -448,11 +450,10 @@ export function resolveModelCatalogTiming(config: Config): ModelCatalogTiming {
  * @throws Error naming the route and configuration entry that cannot be served.
  */
 export function assertServiceable(
-  config: Config,
-  previous?: Config,
+  config: { providers?: Record<string, PiAiProviderProfile> },
+  previous?: { providers?: Record<string, PiAiProviderProfile> },
   runtimeCatalogs?: ReadonlyMap<string, readonly Model<Api>[]>,
 ): void {
-  resolveModelCatalogTiming(config)
   const changed = Object.fromEntries(Object.entries(config.providers ?? {}).filter(([provider, profile]) =>
     !deepEqualJson(profile, previous?.providers?.[provider])))
   resolveProfiles(changed, 'strict', runtimeCatalogs)

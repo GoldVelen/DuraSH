@@ -101,8 +101,6 @@ export interface Config {
   compressionLevel?: number
   /** Minimum known response length eligible for gzip; unknown-length streams are eligible. @default 1024 */
   compressionThresholdBytes?: number
-  /** PEM certificate and key. Null and absence keep the plain HTTP listener. */
-  tls?: { cert: string; key: string } | null
 }
 
 const DEFAULT_COMPRESSION = 'none' as const
@@ -296,10 +294,6 @@ export class WebServer extends Service {
     compression: z.union([z.const('none'), z.const('gzip')]).default(DEFAULT_COMPRESSION),
     compressionLevel: z.number().step(1).min(0).max(9).default(DEFAULT_COMPRESSION_LEVEL),
     compressionThresholdBytes: z.natural().default(DEFAULT_COMPRESSION_THRESHOLD_BYTES),
-    tls: z.union([
-      z.object({ cert: z.string(), key: z.string() }),
-      z.const(null),
-    ]),
   })
 
   private readonly exact = new Map<string, WebRoute>()

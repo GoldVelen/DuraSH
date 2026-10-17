@@ -17,9 +17,6 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import AgentPresets, { serviceForAgent, serviceForScope } from '@deepseek-ai/dsh-agent-presets'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 const OLD = 'GLOBAL_RULE_VERSION_ONE'
@@ -38,7 +35,7 @@ afterEach(async () => {
 
 async function harness(
   script: ConstructorParameters<typeof MockAdapter>[0],
-  options: { maxBytes?: number; homeFromEnv?: boolean; subagent?: boolean; project?: boolean; presets?: boolean } = {},
+  options: { maxBytes?: number; homeFromEnv?: boolean; project?: boolean } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-global-rules-request-'))
   const ctx = new Context()
@@ -67,27 +64,9 @@ async function harness(
     ['@deepseek-ai/dsh-tool-fs', ToolFs],
     ['@deepseek-ai/dsh-agent-instructions', AgentInstructions],
     ['@deepseek-ai/dsh-agent-loop', AgentLoop],
-    ...options.presets ? [['@deepseek-ai/dsh-agent-presets', AgentPresets]] as [string, unknown][] : [],
-    ...options.subagent ? [
-      ['@deepseek-ai/dsh-subagent', SubagentRuntime],
-      ['@deepseek-ai/dsh-subagent-spawn-in-process', Spawn],
-    ] as [string, unknown][] : [],
   ])
   const configPath = join(root, 'cordis.yml')
-  const presetRoot = join(root, 'presets')
-  if (options.presets) {
-    for (const preset of ['standard-test', 'ptc-test']) {
-      const directory = join(presetRoot, preset)
-      await mkdir(directory, { recursive: true })
-      await writeFile(join(directory, 'agent.cordis.yml'), [
-        '- id: instructions', '  name: cordis:group', '  group: true',
-        '  isolate:', '    globalRules: true', '  config:',
-        '    - id: agent-instructions', `      name: ${JSON.stringify(new URL('../src/index.ts', import.meta.url).href)}`,
-        '      config:', '        maxBytes: 65536', `        dshHome: ${JSON.stringify(home)}`, '',
-      ].join('\n'))
-    }
-  }
-  await writeFile(configPath, [...modules.keys()].filter(name => !options.presets || name !== '@deepseek-ai/dsh-agent-instructions').map((name) => {
+  await writeFile(configPath, [...modules.keys()].map((name) => {
     const lines = [`- name: '${name}'`]
     if (name === '@deepseek-ai/dsh-agent-instructions') {
       lines.push('  config:', `    maxBytes: ${options.maxBytes ?? 65536}`)
@@ -95,10 +74,6 @@ async function harness(
     }
     if (name === '@deepseek-ai/dsh-fs-local') lines.push('  config:', `    cwd: ${JSON.stringify(cwd)}`)
     if (name === '@deepseek-ai/dsh-agent-loop') lines.push('  config:', '    agents: []')
-    if (name === '@deepseek-ai/dsh-agent-presets') lines.push(
-      '  config:', '    default: standard-test', '    includeShippedRoot: false', '    includeUserRoot: false',
-      '    roots:', `      - path: ${JSON.stringify(presetRoot)}`, '        trust: system',
-    )
     return lines.join('\n')
   }).join('\n') + '\n')
   ctx.baseUrl = pathToFileURL(root).href + '/'
@@ -119,12 +94,8 @@ async function harness(
     .map(entry => entry.options.name)).toEqual([])
   const adapter = new MockAdapter(script)
   ctx.llm.registerAdapter(['grok'], adapter)
-  const createAgent = async (id: string, preset?: string) => options.presets
-    ? (await ctx.agents.create({
-      sessionId: SessionId(id), agentOptions: { provider: 'grok', model: 'grok-4' }, meta: { cwd },
-      setup: async (agentCtx) => { await ctx.agentPresets.mount(agentCtx, preset) },
-    })).agent
-    : ctx.agentLoop.create(SessionId(id), { provider: 'grok', model: 'grok-4' }, { cwd })
+  const createAgent = async (id: string) =>
+    ctx.agentLoop.create(SessionId(id), { provider: 'grok', model: 'grok-4' }, { cwd })
   const agent = await createAgent('ordinary-session')
   return { ctx, agent, adapter, home, cwd, createAgent }
 }
@@ -344,48 +315,4 @@ describe('global rules through Loader and the real request assembler', () => {
     expect(text).toContain('Workspace instruction budget')
   })
 
-  it('loads the same saved Host file for a real in-process spawned child', async () => {
-    const { ctx, agent, adapter } = await harness([textResponse('parent'), textResponse('child')], { subagent: true })
-    await turn(agent)
-    await save(ctx, NEW)
-    const run = await ctx.subagents.start('spawn', {
-      parent: agent, prompt: [{ type: 'text', text: 'Do the delegated task.' }], signal: new AbortController().signal,
-    })
-    try {
-      expect((await run.result).stopReason).toBe('completed')
-      const child = ctx.agents.get(run.id)
-      expect(child?.session.header.parentSession).toBe(agent.session.header.id)
-      expect(instructionEvents(child!)).toHaveLength(1)
-      expect(requestText(adapter.requests[1])).toContain(NEW)
-      expect(requestText(adapter.requests[1])).toContain(PROJECT)
-      expect(requestText(adapter.requests[1])).not.toContain(OLD)
-    } finally {
-      await run.dispose()
-    }
-  })
-
-  it('refreshes another isolated preset from the default preset editor over the shared Host file', async () => {
-    const { ctx, agent, adapter, createAgent, home } = await harness(
-      Array.from({ length: 4 }, () => textResponse('done')), { presets: true },
-    )
-    const other = await createAgent('ptc-session', 'ptc-test')
-    await turn(agent)
-    await turn(other)
-    expect(ctx.get('globalRules')).toBeUndefined()
-    const defaultRules = serviceForScope(ctx, await ctx.agentPresets.standingKeyFor(), 'globalRules')
-    const otherRules = serviceForAgent(ctx, other, 'globalRules')
-    expect(defaultRules).toBeDefined()
-    expect(otherRules).toBeDefined()
-    expect(defaultRules).not.toBe(otherRules)
-    expect((await defaultRules!.read()).path).toBe(join(home, 'AGENTS.md'))
-    expect((await otherRules!.read()).path).toBe(join(home, 'AGENTS.md'))
-    const document = await defaultRules!.read()
-    await defaultRules!.save(NEW, document.revision)
-    await turn(other)
-    await turn(agent)
-    for (const request of adapter.requests.slice(2)) {
-      expect(requestText(request)).toContain(NEW)
-      expect(requestText(request)).not.toContain(OLD)
-    }
-  })
 })

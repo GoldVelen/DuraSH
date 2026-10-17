@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util'
 import { load } from 'js-yaml'
 import { pnpmInvocation } from '../../../scripts/pnpm-invocation.ts'
 import { durashClientBuildEnvironment, readClientBuildRecord } from '../../../scripts/client-build-environment.ts'
-import { selectOfficeEngine } from '../../../scripts/libreoffice-engine.ts'
+import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import { parseDesktopRelease } from '../src/release.ts'
@@ -172,7 +172,7 @@ export async function packageLocalDesktop(args: readonly string[]): Promise<void
     execFileSync(node, ['--expose-internals', join(APP_ROOT, 'tests/fixtures/runtime-payload-smoke.mjs'), paths.dsh], {
       timeout: 120_000, stdio: 'inherit', env: desktopNodeEnvironment(node, join(paths.runtime, 'bin'), environment),
     })
-    await smokeDesktopRuntime(paths.dsh, node, descriptor)
+    await smokeDesktopRuntime(paths.dsh, node, descriptor, environment, paths.runtime)
     await verifyDesktopRuntime(paths.dsh, version)
     if (!values['prepare-only']) {
       await runPnpm(['exec', 'electron-builder', '--config', 'electron-builder.local.config.mjs', '--mac', '--dir',

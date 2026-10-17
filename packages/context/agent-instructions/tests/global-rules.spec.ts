@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { resolveConfig } from '../src/config.ts'
+import { resolveDiscoveryConfig } from '../src/config.ts'
 import { GlobalRules } from '../src/global-rules.ts'
 
 vi.mock('@deepseek-ai/dsh-atomic-write', async (importOriginal) => {
@@ -19,13 +19,18 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 const roots: string[] = []
 const contexts: Context[] = []
 
+/** Resolved rule config: the discovery homes plus the editor's read caps. */
+function rulesConfig(dshHome: string, maxBytes: number) {
+  return { ...resolveDiscoveryConfig({ dshHome }), maxBytes, maxSourceBytes: 1024 * 1024 }
+}
+
 async function setup(homeSuffix = '') {
   const root = await mkdtemp(join(tmpdir(), 'dsh-global-rules-'))
   roots.push(root)
   const home = join(root, homeSuffix)
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(GlobalRules, resolveConfig({ dshHome: home, maxBytes: 8192 }))
+  await ctx.plugin(GlobalRules, rulesConfig(home, 8192))
   return { root, home, ctx, rules: ctx.globalRules, path: join(home, 'AGENTS.md') }
 }
 
@@ -167,7 +172,7 @@ describe('Host global rules file editing', () => {
     const { rules, home, path } = await setup()
     const ctx = new Context()
     contexts.push(ctx)
-    await ctx.plugin(GlobalRules, resolveConfig({ dshHome: home, maxBytes: 8192 }))
+    await ctx.plugin(GlobalRules, rulesConfig(home, 8192))
     const before = await rules.read()
     const results = await Promise.allSettled([
       rules.save('one', before.revision),
@@ -229,7 +234,7 @@ describe('Host global rules file editing', () => {
     roots.push(root)
     const ctx = new Context()
     contexts.push(ctx)
-    const fiber = ctx.plugin(GlobalRules, resolveConfig({ dshHome: root, maxBytes: 0 }))
+    const fiber = ctx.plugin(GlobalRules, rulesConfig(root, 0))
     await fiber
     expect(ctx.get('globalRules')).toBeDefined()
     await fiber.dispose()

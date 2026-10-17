@@ -704,7 +704,7 @@ describe('endpoint interrogation', () => {
   it('uses the catalog provider for passive metadata before an unsaved probe names a route', async () => {
     const { face, discover } = scriptedFace()
     render(<ModelListEditor models={[]} catalogProvider="openai-codex" probe={{ settingsNs: 'llm-pi-ai' }}
-      onChange={vi.fn()} operations={operationsWith(face)} disabled={false} t={t} />)
+      onChange={vi.fn()} operations={operationsWith(face)} onBusyChange={() => {}} disabled={false} t={t} />)
     await waitFor(() => { expect(discover).toHaveBeenCalledExactlyOnceWith('llm-pi-ai', { provider: 'openai-codex' }) })
   })
 

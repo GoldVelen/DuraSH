@@ -146,7 +146,7 @@ export class PtcWorkflowRun implements WorkflowRun {
   ) {
     this.stopEvidence = ctx.on('session/event', (session, event) => {
       if (event.type !== 'tool/result') return
-      const failed = event.data.message.content.some(block => block.type === 'tool-result' && block.isError)
+      const failed = event.data.message.isError === true
       if (failed) return
       this.toolEvidence.add(session.id)
     }, { global: true })

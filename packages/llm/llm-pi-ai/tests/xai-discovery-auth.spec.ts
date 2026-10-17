@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 
 /** Mount the Host adapter over isolated durable credentials. */
-async function harness(providers: LlmPiAi.Config['providers'] = {}): Promise<Context> {
+async function harness(providers: NonNullable<LlmPiAi.Options['providers']> = {}): Promise<Context> {
   vi.stubEnv('XAI_API_KEY', undefined)
   const dir = await mkdtemp(join(tmpdir(), 'dsh-xai-discovery-auth-'))
   cleanups.push(() => rm(dir, { recursive: true, force: true }))

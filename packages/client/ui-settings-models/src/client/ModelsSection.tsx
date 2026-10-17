@@ -399,8 +399,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
           enabledSignIns.current.delete(attempt.key)
           return
         }
-        setAdding(false)
-        setDeclaring(false)
+        closeAdd()
         setSavedTarget(identity)
         const next = controller.store.getSnapshot().rows.find(item => item.entry.provider === row.entry.provider)
         if (next !== undefined) setEditing(targetOf(next))

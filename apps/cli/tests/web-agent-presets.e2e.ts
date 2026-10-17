@@ -20,7 +20,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bundlePatchPaths, composeEntries } from '@deepseek-ai/dsh-app-boot'
-import { createPluginProfile } from '../../desktop/src/project-manager.ts'
+import { createPluginProfile, desktopProfileBundles } from '../../desktop/src/project-manager.ts'
 /** Profile entry ids whose volatile fields these scenarios edit through Settings. */
 const SETTINGS_NAMESPACE = 'agent-preset-registry'
 const SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE = 'subagent-model-selection-settings'
@@ -168,7 +168,7 @@ async function bootWeb(
   const home = profileHome
   const profileDir = join(home, 'profiles', surface)
   await mkdir(profileDir, { recursive: true })
-  if (surface === 'desktop') createPluginProfile(profileDir)
+  if (surface === 'desktop') createPluginProfile(profileDir, desktopProfileBundles([]))
   else if (profileBundles === undefined) initProfile(profileDir, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
   // Product Bundles are installed into the Profile, not the dsh app. Model
   // pnpm's package link for only the selected products; their own production

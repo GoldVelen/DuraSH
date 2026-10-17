@@ -196,8 +196,8 @@ export function apply(ctx: Context, config: Config): void {
     if (this !== ctx.fiber) return raw
     const candidate = Config(raw as import('./config.ts').Options)
     assertServiceable(
-      { providers: structuredClone(candidate.providers.get()) } as import('./config.ts').Options,
-      { providers: structuredClone(config.providers.get()) } as import('./config.ts').Options,
+      { providers: structuredClone(candidate.providers.get()) as Record<string, import('./config.ts').PiAiProviderProfile> },
+      { providers: structuredClone(config.providers.get()) as Record<string, import('./config.ts').PiAiProviderProfile> },
     )
     return raw
   })

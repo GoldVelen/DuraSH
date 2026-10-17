@@ -68,7 +68,7 @@ it('sends a new gpt-6.1-sol with 500k context and max effort through native Code
     provider: 'openai-codex', model: model.id, messages: [], reasoningEffort: ReasoningEffortId('max'),
   })) assembler.push(chunk)
   expect(assembler.finish).toEqual({ kind: 'stop' })
-  expect(assembler.message({ kind: 'model', provider: 'openai-codex', model: model.id }).content)
+  expect(assembler.message({ provider: 'openai-codex', model: model.id }).content)
     .toEqual([{ type: 'text', text: 'fixture reply' }])
   expect(body).toMatchObject({ model: 'gpt-6.1-sol', reasoning: { effort: 'max' }, store: false, stream: true })
   expect(body).not.toHaveProperty('client_version')

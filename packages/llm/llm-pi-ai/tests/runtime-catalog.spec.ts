@@ -221,9 +221,9 @@ describe('runtime model catalogs', () => {
 
 describe('model catalog timing', () => {
   it('keeps catalog mode absent unless the profile explicitly chooses one', () => {
-    expect(Config({ providers: { 'openai-codex': {} } }).providers?.['openai-codex']?.modelCatalogMode)
+    expect(Config({ providers: { 'openai-codex': {} } }).providers.get()['openai-codex']?.modelCatalogMode)
       .toBeUndefined()
-    expect(() => Config({ providers: { 'openai-codex': { modelCatalogMode: 'other' } } } as unknown as Config))
+    expect(() => Config({ providers: { 'openai-codex': { modelCatalogMode: 'other' } } } as never))
       .toThrow()
   })
   it('uses the same timing defaults for schema and schema-free plugin configurations', () => {

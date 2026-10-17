@@ -59,10 +59,9 @@ class ManualProvider implements SubagentProvider {
   readonly name = 'stub'
   readonly capabilities: SubagentCapabilities = {
     agentOptions: true,
+    agentPreset: false,
     outputSchema: true,
     depthLimit: true,
-    toolFilter: true,
-    persona: false,
   }
   readonly inheritsParentContext = false
   readonly runs: ControlledRun[] = []
@@ -82,7 +81,6 @@ class ManualProvider implements SubagentProvider {
     }, { once: true })
     return {
       id: SessionId(`stub-child-${this.runs.length - 1}`),
-      localAgent: undefined,
       result: terminal.promise,
       dispose: () => {
         controlled.disposed = true
@@ -196,7 +194,7 @@ async function harness(options: HarnessOptions = {}): Promise<{
   await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
   const runtimeConfig = options.maxHandoffChars === undefined ? {} : { maxHandoffChars: options.maxHandoffChars }
   const runtimeFiber = await ctx.plugin(ReliabilityLoopRuntime, runtimeConfig)
-  const parent = workflowParent(ctx)
+  const parent = await workflowParent(ctx)
   return {
     ctx,
     runtime: ctx.reliabilityLoopRuntime,

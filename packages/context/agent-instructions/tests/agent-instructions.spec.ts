@@ -42,7 +42,7 @@ import {
   reconcileInstructionContext,
   type InstructionVersionCache,
 } from '../src/state.ts'
-import { resolveConfig } from '../src/config.ts'
+import { resolveConfig, resolveDiscoveryConfig } from '../src/config.ts'
 import { AGENTS_GLOBAL_DIRECTORY, candidateScopeKey, renderInstructionChanges, renderAgentInstructionSet, USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE } from '../src/render.ts'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import {
@@ -3195,15 +3195,18 @@ describe('workspace context request injection', () => {
       const fs = ctx.fs as RecordingFileSystem
       fs.entries.set(join(root, '.git'), { type: 'directory' })
       fs.entries.set(join(root, 'AGENTS.md'), { type: 'file', content: 'remote project rule' })
-      await mountAgentInstructionsPlugin(ctx, { dshHome: root, maxBytes: 65536 })
+      pinHarnessHome(root)
+      await mountAgentInstructionsPlugin(ctx, { maxBytes: 65536 })
       const agent = await stubAgent(root)
       await composeBaselinePrefix(ctx, agent)
       expect(derivedText(agent)).toContain('Host global rule')
       expect(derivedText(agent)).toContain('remote project rule')
-      const result = await reconcileInstructionContext(await stubAgent(root), resolveConfig({
-        dshHome: root, maxBytes: 65536,
-        instructionFileCandidates: ['AGENTS.md'], localInstructionFileCandidates: [],
-      }), new WeakMap(), fs, {
+      const result = await reconcileInstructionContext(await stubAgent(root), {
+        ...resolveDiscoveryConfig({ dshHome: root, instructionFileCandidates: ['AGENTS.md'], localInstructionFileCandidates: [] }),
+        maxBytes: 65536,
+        maxSourceBytes: 1_048_576,
+      }, new WeakMap(), fs, {
+        cwd: root,
         authorityMessages: [], scopeMessages: [], touchedPaths: [], includeBaselineScopes: true,
       })
       expect(result?.context.source).toMatchObject({ changes: [

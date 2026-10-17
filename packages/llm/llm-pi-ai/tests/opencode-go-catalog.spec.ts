@@ -1,5 +1,6 @@
 /** Account-scoped Go directories retain their declared protocol and current capabilities. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { normalizeContext } from '@earendil-works/pi-ai'
 import { streamSimple as streamSimpleAnthropic } from '@earendil-works/pi-ai/api/anthropic-messages'
 import { streamSimple as streamSimpleCompletions } from '@earendil-works/pi-ai/api/openai-completions'
 import type { Model } from '@earendil-works/pi-ai'
@@ -122,7 +123,7 @@ describe('OpenCode Go live catalog', () => {
         { headers: { 'content-type': 'text/event-stream' } }))
     })
     const stream = streamSimpleAnthropic(model as Model<'anthropic-messages'>,
-      { messages: [{ role: 'user', content: 'fixture request', timestamp: 0 }] },
+      normalizeContext({ messages: [{ role: 'user', content: 'fixture request', timestamp: 0 }] }),
       { apiKey: 'fixture-api-key', fetch: fetcher, reasoning: 'xhigh', maxTokens: 4096 })
     expect((await stream.result()).stopReason).toBe('stop')
     expect(new URL(url!).origin).toBe('https://opencode.ai')
@@ -161,10 +162,10 @@ describe('OpenCode Go live catalog', () => {
     const native = model as Model<'openai-completions'>
     const user = { role: 'user' as const, content: 'fixture request', timestamp: 0 }
     const options = { apiKey: 'fixture-api-key', fetch: fetcher, reasoning: 'high' as const, maxTokens: 4096 }
-    const first = await streamSimpleCompletions(native, { messages: [user] }, options).result()
+    const first = await streamSimpleCompletions(native, normalizeContext({ messages: [user] }), options).result()
     expect(first.stopReason).toBe('stop')
-    expect((await streamSimpleCompletions(native, { messages: [user, first,
-      { role: 'user', content: 'fixture follow-up', timestamp: 1 }] }, options).result()).stopReason).toBe('stop')
+    expect((await streamSimpleCompletions(native, normalizeContext({ messages: [user, first,
+      { role: 'user', content: 'fixture follow-up', timestamp: 1 }] }), options).result()).stopReason).toBe('stop')
     expect(bodies[0]).toMatchObject({ model: 'deepseek-v4.1-flash', thinking: { type: 'enabled' }, reasoning_effort: 'high', max_tokens: 4096 })
     expect(bodies[1]?.['messages']).toContainEqual({ role: 'assistant', content: 'fixture reply', reasoning_content: 'fixture thinking' })
   })

@@ -119,7 +119,7 @@ describe('request image policy bounds', () => {
 describe('Codex directory client version', () => {
   it('uses the supported directory version without materializing a schema default into settings', () => {
     expect(resolveCodexDirectoryClientVersion()).toBe('0.162.1')
-    expect(Config({ providers: { 'openai-codex': {} } }).providers?.['openai-codex']?.codexDirectoryClientVersion)
+    expect(Config({ providers: { 'openai-codex': {} } }).providers.get()['openai-codex']?.codexDirectoryClientVersion)
       .toBeUndefined()
   })
 
@@ -127,7 +127,7 @@ describe('Codex directory client version', () => {
     'preserves a valid compatibility version %s', (version) => {
       expect(resolveCodexDirectoryClientVersion(version)).toBe(version)
       expect(Config({ providers: { 'openai-codex': { codexDirectoryClientVersion: version } } })
-        .providers?.['openai-codex']?.codexDirectoryClientVersion).toBe(version)
+        .providers.get()['openai-codex']?.codexDirectoryClientVersion).toBe(version)
     },
   )
 

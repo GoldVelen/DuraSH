@@ -29,6 +29,13 @@ This document separates current source truth from the older DSH fork's accepted 
 | DuraSH Desktop Harness | Local macOS packaging supported | The app includes the product bundle, shares existing Harness data, and keeps Desktop executable packages separate; see [local packaging](apps/desktop/README.md#local-durash-macos-application) |
 | DuraSH npm distribution | Not prepared | Source execution is supported; DuraSH-owned packages are marked private and excluded from the inherited DSH release family, so no npm package is advertised or accidentally published |
 
+## Merge coverage gaps
+
+The `dsh-v0.2.1-rc.2` merge removed upstream packages the product had built against. Two consequences are recorded here instead of being silently absorbed:
+
+- Upstream deleted `@deepseek-ai/dsh-settings-file` and moved `settings.yaml` handling into `@deepseek-ai/dsh-settings`; the `llm-pi-ai` live-catalog Loader harness that mounted the removed provider was deleted with it. The runtime catalog paths it exercised (`catalog.ts`, `discovery.ts`, `opencode-go*.ts`) are unchanged and still covered by the adapter-level suites.
+- Upstream deleted the `agent-presets` package and its preset-scoped service lookup, so the global-rules tests for preset isolation and the `--lan` certificate helper (`web-app/src/lan-cert.ts`) no longer describe shipped behavior and were removed with their tests.
+
 ## Current upstream drift
 
 The primary source revision and vendored snapshots are recorded in [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json). The scheduled audit reports changes against those records. Vendored package updates require the compatibility procedure in [`vendor/README.md`](vendor/README.md); a newer public package release does not establish that its source is integrated.

@@ -16,6 +16,7 @@ const unusedHook = (() => { throw new Error('The file editor does not consume se
 const kit = {
   useSessions: unusedHook, useSessionStatus: unusedHook, usePanelInfo: unusedHook,
   useSessionRetainInfo: unusedHook, useResource: unusedHook, useWorkspaces: unusedHook,
+  useRemoteAccess: unusedHook, useSessionAccess: unusedHook, useWorkspaceAccess: unusedHook,
   close: vi.fn(),
 }
 const t: GlobalRulesSectionProps['t'] = (key, values) => {
