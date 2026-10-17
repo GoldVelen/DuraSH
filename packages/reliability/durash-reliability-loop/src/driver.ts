@@ -188,7 +188,7 @@ export class LoopDriver {
       if (kind === 'review') {
         const room = this.maxHandoffChars - request.prompt.length
         if (room > 80) {
-          const cwd = this.parent.session?.header.cwd
+          const cwd = this.parent.session.header.cwd
           const diff = await boundedDiff(cwd)
           request.prompt += `\n\nFinal diff:\n${diff.slice(0, room - 20)}`
         }

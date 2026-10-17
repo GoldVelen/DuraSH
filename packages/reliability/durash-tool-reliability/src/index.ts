@@ -141,7 +141,7 @@ export function apply(ctx: Context): void {
       }
       const acceptanceTaskId = ctx.reliabilityLoopRuntime.acceptance.activeTask(agent.id)
       exec.signal.throwIfAborted()
-      const roles = ctx.reliabilityPolicy.roleRoutes?.(agent.id)
+      const roles = ctx.reliabilityPolicy.roleRoutes(agent.id)
       const handle = await ctx.reliabilityLoopRuntime.handoff({
         parent: agent,
         objective,

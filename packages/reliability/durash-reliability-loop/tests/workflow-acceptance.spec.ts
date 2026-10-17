@@ -27,7 +27,9 @@ function harness(gate?: RuntimeAcceptanceGate, maxHandoffChars = 16_384) {
     }),
     cancel: () => {}, dispose: () => Promise.resolve(),
   }))
-  const driver = new LoopDriver({ start } as unknown as WorkflowEngine, table, {} as Agent, maxHandoffChars, record.loopId, gate)
+  // A parent without a working directory; the diff section reports that.
+  const parent = { session: { header: { cwd: '' } } } as unknown as Agent
+  const driver = new LoopDriver({ start } as unknown as WorkflowEngine, table, parent, maxHandoffChars, record.loopId, gate)
   return { driver, start }
 }
 

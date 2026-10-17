@@ -38,9 +38,9 @@ import type { ReliabilityLoopRecord, ReliabilityLoopStage } from '../src/index.t
 // Allow cold PTC process startup on contended CI runners.
 vi.setConfig({ testTimeout: 30_000 })
 
-/** A minimal parent stand-in: the engine only threads it through to the provider. */
+/** A minimal parent stand-in: the engine only threads it through to the provider, and the review stage reads the working directory. */
 function fakeParent(): Agent {
-  return { id: SessionId('reliability-parent'), options: {} } as unknown as Agent
+  return { id: SessionId('reliability-parent'), options: {}, session: { header: { cwd: '' } } } as unknown as Agent
 }
 
 /** Wait for an assertion over contended CI scheduling. */
@@ -310,7 +310,7 @@ describe('durash-reliability-loop', () => {
     if (raced.kind === 'done') throw new Error(raced.record.error ?? raced.record.stage)
     const planning = raced.child
     expect(planning.request.agentOptions).toEqual({ provider: 'plan', model: 'plan-model', reasoningEffort: 'high' })
-    await planning.settle({
+    planning.settle({
       output: [],
       stopReason: 'completed',
       structured: {
@@ -325,10 +325,10 @@ describe('durash-reliability-loop', () => {
     const frontend = await awaitChild(manual, 2)
     expect(frontend.request.agentOptions).toEqual({ provider: 'front', model: 'front-model', reasoningEffort: 'low' })
     expect(childPrompt(frontend.request)).toContain('page only')
-    await frontend.settle({ output: [{ type: 'text', text: 'rendered' }], stopReason: 'completed' })
+    frontend.settle({ output: [{ type: 'text', text: 'rendered' }], stopReason: 'completed' })
     const testing = await awaitChild(manual, 3)
     expect(testing.request.agentOptions).toEqual({ provider: 'test', model: 'test-model', reasoningEffort: 'low' })
-    await testing.settle({ output: [{ type: 'text', text: 'tests passed' }], stopReason: 'completed' })
+    testing.settle({ output: [{ type: 'text', text: 'tests passed' }], stopReason: 'completed' })
     const failed = await handle.result
     expect(failed.stage).toBe('failed')
     expect(failed.error).toContain('no host-observed tool result')

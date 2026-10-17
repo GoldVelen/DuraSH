@@ -1,7 +1,8 @@
 /** Fail-closed parsers and POSIX probes for system-observed implementation evidence. */
 import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
-import { XMLParser, XMLValidator } from 'fast-xml-parser'
+import { XMLParser } from 'fast-xml-parser'
+import { SyntaxValidator } from 'fast-xml-validator'
 import type { ContentIdentity, EvidenceIO, IOSBundleIdentity, IOSIdentity, SourceIdentity, TestChangeRisk, TestCounts } from './evidence-adapter-types.ts'
 
 function quote(value: string): string {
@@ -130,7 +131,13 @@ function count(value: unknown): number {
 
 function xmlDocument(xml: string, preserveOrder = false): unknown {
   if (/<!ENTITY/i.test(xml) || /<!DOCTYPE[^>]*\[/i.test(xml)) throw new Error('XML entity declarations are not supported')
-  if (XMLValidator.validate(xml) !== true) throw new Error('Malformed evidence XML')
+  try {
+    SyntaxValidator.validate(xml)
+  } catch (error) {
+    // The validator reports well-formedness failures by throwing; the loop only
+    // needs one stable message for unreadable evidence.
+    throw new Error('Malformed evidence XML', { cause: error })
+  }
   const parser = new XMLParser({
     ignoreAttributes: false, parseAttributeValue: false, parseTagValue: false, preserveOrder, processEntities: false,
   })

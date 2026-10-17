@@ -44,6 +44,7 @@ async function setup(options: {
   getAgent?: (id: string) => Agent | undefined
   currentInitiator?: () => Agent | undefined
   roots?: () => Agent[]
+  roleRoutes?: () => Record<string, { provider: string; model: string }> | undefined
 } = {}): Promise<{ ctx: Context; agent: Agent; start: ReturnType<typeof vi.fn> }> {
   const agent = options.agent ?? testAgent()
   const start = options.start ?? vi.fn(async () => ({
@@ -66,6 +67,7 @@ async function setup(options: {
         review: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
       }
       : undefined,
+    roleRoutes: options.roleRoutes ?? (() => undefined),
   })
   ctx.provide('reliabilityLoopRuntime', {
     start,
@@ -204,6 +206,20 @@ describe('durash-tool-reliability', () => {
       review: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
     })
     expect(result.value).toMatchObject({ status: 'completed', verdict: 'approved' })
+  })
+
+  it('forwards the configured stage roles to the loop', async () => {
+    const roles = { planning: { provider: 'deepseek-official', model: 'deepseek-v4-pro' } }
+    const { ctx, agent, start } = await setup({ enabled: true, roleRoutes: () => roles })
+    const result = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('call-roles'),
+      name: 'dsh_reliability_handoff',
+      arguments: { objective: 'ship the widget' },
+      agent,
+    })
+    expect(result.isError).toBe(false)
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ roles }))
   })
 
   it('compacts each terminal result and bounds a long implementation summary', async () => {
