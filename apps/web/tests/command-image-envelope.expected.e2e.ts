@@ -9,7 +9,7 @@
 // when the image is the whole `/plan` task.
 import { fireEvent, waitFor } from '@testing-library/react'
 import { expect, it } from 'vitest'
-import { installAssembledBootEnv, mountAssembledApp, startFixtureComposer } from './assembled-boot.ts'
+import { createAssembledSessionComposer, installAssembledBootEnv, mountAssembledApp } from './assembled-boot.ts'
 
 installAssembledBootEnv()
 
@@ -39,8 +39,8 @@ async function pasteImage(textarea: HTMLElement, name: string): Promise<void> {
 }
 
 it('refuses an image-carrying submit to a non-declaring command and keeps draft and images', async () => {
-  mountAssembledApp()
-  const textarea = await startFixtureComposer()
+  const remote = mountAssembledApp()
+  const textarea = await createAssembledSessionComposer(remote)
   await pasteImage(textarea, 'ref.png')
 
   // /echo is a leadingInput fixture command without `input.attachments`.
@@ -65,8 +65,8 @@ it('refuses an image-carrying submit to a non-declaring command and keeps draft 
 })
 
 it('consumes images through a declaring command and clears the composer on success', async () => {
-  mountAssembledApp()
-  const textarea = await startFixtureComposer()
+  const remote = mountAssembledApp()
+  const textarea = await createAssembledSessionComposer(remote)
   await pasteImage(textarea, 'goal-ref.png')
 
   // /goal declares `input.attachments` in the fixture catalog; the claim submit
@@ -81,8 +81,8 @@ it('consumes images through a declaring command and clears the composer on succe
 })
 
 it('submits a bare /plan with an image as an image-only plan request', async () => {
-  mountAssembledApp()
-  const textarea = await startFixtureComposer()
+  const remote = mountAssembledApp()
+  const textarea = await createAssembledSessionComposer(remote)
   await pasteImage(textarea, 'plan-task.png')
 
   // Trailing separator: a bare '/plan' leaves the caret on the token, where

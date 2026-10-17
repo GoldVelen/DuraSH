@@ -12,6 +12,7 @@
  *
  * @module dsh-llm-pi-ai/config
  */
+import type { Volatile } from '@deepseek-ai/cordis'
 
 import type { Api, CacheRetention, ChatTemplateKwargValue, Model, ModelThinkingLevel, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
 import z from '@deepseek-ai/schemastery'
@@ -274,8 +275,11 @@ export interface Config {
    * the dormant settings-driven posture: the adapter mounts with no routes
    * and registers them the moment a settings section supplies profiles.
    */
-  providers?: Record<string, PiAiProviderProfile>
+  providers: Volatile<Record<string, PiAiProviderProfile>>
 }
+
+/** Plain options accepted by the provider resolver. */
+export type Options = { [K in keyof Config]?: Config[K] extends Volatile<infer T> ? T : never }
 
 const thinkingBudgets = z.object({
   minimal: z.number(),
@@ -405,7 +409,7 @@ const modelCatalogTimer = z.transform(z.number().min(Number.MIN_VALUE).max(MAX_T
 
 /** Runtime schema for {@link Config}. */
 export const Config: z<Config> = z.object({
-  providers: z.dict(profile).default({}),
+  providers: z.dict(profile).default({}).volatile(),
   modelCatalogRefreshMs: modelCatalogTimer.default(DEFAULT_MODEL_CATALOG_REFRESH_MS),
   modelCatalogTimeoutMs: modelCatalogTimer.default(DEFAULT_MODEL_CATALOG_TIMEOUT_MS),
 })

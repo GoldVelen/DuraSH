@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-31-browser-sign-in-surface.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-31-browser-sign-in-surface.md
-2026-08-31-browser-sign-in-surface.md: ff90080bce94206c56b42fbf67e6f1f68206242a
-2026-08-31-browser-sign-in-surface.zh.md: 0dc1038b4cab12c4a43e690a991daaefcba7adaf
+/agent-note-browser-sign-in-surface-for-authorization-flows:
+  en: 505cabc49641bdc0
+  zh: 90e7b3b7491a8be7
+/agent-note-browser-sign-in-surface-for-authorization-flows/problem:
+  en: 90fc9b61ef685ad4
+  zh: 63a53c67978305a8
+/agent-note-browser-sign-in-surface-for-authorization-flows/decision:
+  en: e711da4fb47f4978
+  zh: d8af486fb06e5b82
+/agent-note-browser-sign-in-surface-for-authorization-flows/alternatives-considered:
+  en: a1f213b17b05f2a5
+  zh: 2b2a75acc45e713e
+/agent-note-browser-sign-in-surface-for-authorization-flows/consequences:
+  en: f7fba1edba7fb28f
+  zh: 703df5f89cdf1062
+/agent-note-browser-sign-in-surface-for-authorization-flows/testing:
+  en: 8dafbb51568743fa
+  zh: 0e51424018c2aaeb

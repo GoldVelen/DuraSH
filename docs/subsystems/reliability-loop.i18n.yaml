@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for reliability-loop.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/reliability-loop.md
-reliability-loop.md: 71d9b58823742aa500adec8299b7434f8e8089be
-reliability-loop.zh.md: d53fb51bc5128d22da8e835f7526f5da95e10667
+/reliability-loop:
+  en: d4bfe7a04d2370ad
+  zh: 1dcd98e0f4c619e6
+/reliability-loop/public-types:
+  en: 514e3a869e355a86
+  zh: 5332c6c0df3d7f36
+/reliability-loop/session-policy-types:
+  en: 066cd4b160c11e6e
+  zh: ee65e1cf1174b92a
+/reliability-loop/state-and-durability:
+  en: f3112dd80bfa1a63
+  zh: 27610eb534a36468
+/reliability-loop/lifecycle-and-recovery:
+  en: 9f759aed95488e8d
+  zh: eccfa7864e8f95ec
+/reliability-loop/boundaries-and-limitations:
+  en: c2eb2def8248225f
+  zh: c27e777eb8708a25

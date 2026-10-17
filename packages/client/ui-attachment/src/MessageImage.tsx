@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import { IconLoadingOutline16, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { ImageLightbox } from './ImageLightbox.tsx'
-import type { ImageLightboxLabels } from './ImageLightbox.tsx'
+import { IconLoadingOutlineRegular, IconRefreshOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { ImageLightbox } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MessageImageLabels } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import css from './MessageImage.module.css'
+
+export type { MessageImageLabels } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Loads a session-authorized durable image URL and may expose a cached URL synchronously. */
 export type ImageLoader = ((attachment: ImageAttachmentRef) => Promise<string>) & {
@@ -25,22 +27,6 @@ export type MessageImageSpec =
       readonly height?: number
     }
   }
-
-/** Message-image strings the owner resolves from its own locale namespace. */
-export interface MessageImageLabels {
-  /** Fallback display name for an unnamed image. */
-  image: string
-  /** Thumbnail tooltip inviting the original-image preview. */
-  open: string
-  /** Accessible thumbnail label; receives the image's display name. */
-  openNamed: (label: string) => string
-  /** Loading placeholder shown until bytes resolve. */
-  loading: string
-  /** Retry-control label shown when the load fails. */
-  loadFailed: string
-  /** Lightbox strings forwarded to the opened preview. */
-  lightbox: ImageLightboxLabels
-}
 
 /** Display box for a lone image (DeepSeek Chat rule): long edge 240px with
  * the rendered aspect ratio clamped to [0.25, 4] — the overflow is cropped by
@@ -135,7 +121,7 @@ export function MessageImage({ image, load, variant, labels }: {
       onClick={request}
     >
       {variant === 'thumbnail'
-        ? <span aria-hidden="true"><IconRefreshOutline16 /></span>
+        ? <span aria-hidden="true"><IconRefreshOutlineRegular /></span>
         : labels.loadFailed}
     </button>
   )
@@ -154,7 +140,7 @@ export function MessageImage({ image, load, variant, labels }: {
         {src === null
           ? (
             <span className={css.loading} aria-hidden={loadingThumbnail || undefined}>
-              {loadingThumbnail ? <IconLoadingOutline16 className={css.spinner} /> : labels.loading}
+              {loadingThumbnail ? <IconLoadingOutlineRegular className={css.spinner} /> : labels.loading}
             </span>
           )
           : <img src={src} alt={label} style={fit === undefined ? undefined : { objectPosition: fit.objectPosition }} />}

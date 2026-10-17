@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-README.md: f370c6baa3a8fbd7044795147331793e0a9e8920
-README.zh.md: 96a22b32ee62ea9f7211ffd5bc08cb3d8c28a4b1
+/durash:
+  en: 1a4210bf1f83a712
+  zh: 0ca783b5bb572a67
+/durash/what-durash-does-today:
+  en: 2c41051a2f7f6514
+  zh: ea922dfce4fc99f9
+/durash/developer-preview:
+  en: 82bec182d491fef4
+  zh: 3ab35cd4da9ac07f
+/durash/run:
+  en: 4e0248e4c6474fc6
+  zh: eb2fb8d78c7d6bc0
+/durash/run/run-the-durash-profile-from-source:
+  en: faf85797b656843e
+  zh: 885becc5fc7b14e4
+/durash/run/use-the-desktop-application:
+  en: 25d3e8a177c676fe
+  zh: c41e151c8f53dba5
+/durash/what-is-durash-owned:
+  en: 5d4e9f52b7ef984b
+  zh: b70a8a529ae1ec01
+/durash/staying-current:
+  en: 46f6d6b0a40caf49
+  zh: de684490556ff398
+/durash/community-and-support:
+  en: 552008ca4f7c2328
+  zh: 79cc249895da7459
+/durash/contributing:
+  en: cabc2d3e9f8898bd
+  zh: 83b6d238bae29ce3
+/durash/development:
+  en: 803ca2b11b497bed
+  zh: 949cd1761ad8cf2a
+/durash/citation:
+  en: 6704e9e5a8d49a91
+  zh: 85c9cdd8d56f8e9d
+/durash/license:
+  en: 22f8a1c108654f38
+  zh: 9998cd82422bb08e

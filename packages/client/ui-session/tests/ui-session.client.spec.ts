@@ -53,8 +53,7 @@ function createSessionsBench(ctx: Context): SessionsBench {
     ids: [],
     byId: {},
     phase: 'ready',
-    subagentsByParent: {},
-    jobsBySession: {},
+    projectionsBySession: {},
   })
   const bindings = new Map<SessionId, SessionBinding>()
   const scopes = new Map<SessionId, Context>()
@@ -522,6 +521,27 @@ describe('UiSession bindings', () => {
 })
 
 describe('UiSession status', () => {
+  it('keeps synthetic-row status unknown until an event or Host baseline establishes it', () => {
+    const ctx = new Context()
+    const bench = createSessionsBench(ctx)
+    const id = sessionId('catalog-only')
+    bench.list.update((draft) => {
+      draft.byId[id] = { id, displayTitle: id, running: false, retainedBy: {}, blank: false, updatedAt: 0 }
+    })
+    const service = createUiSession(ctx, bench)
+    expect(service.sessionStatus.getSnapshot().get(id)?.running).toBeUndefined()
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+
+    bench.emitStatus(id, true)
+    bench.list.update((draft) => { draft.byId[id]!.displayTitle = 'Renamed child' })
+    expect(service.sessionStatus.getSnapshot().get(id)?.running).toBe(true)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+
+    bench.list.update((draft) => { draft.ids.push(id) })
+    expect(service.sessionStatus.getSnapshot().get(id)?.running).toBe(false)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(true)
+  })
+
   it('records non-main completions and lets main-view activity acknowledge them', () => {
     const ctx = new Context()
     const bench = createSessionsBench(ctx)
@@ -695,24 +715,49 @@ describe('ui-session apply', () => {
     const slots = {
       provideRoot: vi.fn(),
       installScope: vi.fn(),
+      bindStoreScope: vi.fn(),
+    }
+    const accessSources = new Map<string, HostObservable<boolean>>()
+    const remoteAccess = {
+      source: vi.fn((kind: string, id: string, action: string): HostObservable<boolean> => {
+        const key = `${kind}:${id}:${action}`
+        let source = accessSources.get(key)
+        if (source === undefined) {
+          source = createSnapshotStore(false)
+          accessSources.set(key, source)
+        }
+        return source
+      }),
     }
     ctx.provide('sessions', bench.sessions)
     ctx.provide('slots', slots as never)
+    ctx.provide('remoteAccess', remoteAccess)
 
     apply(ctx)
 
     expect(ctx.uiSession).toBeInstanceOf(UiSession)
+    const retainInfoMatcher: unknown = expect.any(Function)
+    const sessionAccessMatcher: unknown = expect.any(Function)
     expect(slots.provideRoot).toHaveBeenCalledWith({
       hooks: {
         sessions: bench.sessions.list,
         sessionStatus: ctx.uiSession.sessionStatus,
       },
-      keyedHooks: { sessionRetainInfo: expect.any(Function) as unknown },
+      keyedHooks: { sessionRetainInfo: retainInfoMatcher, sessionAccess: sessionAccessMatcher },
     })
     expect(slots.installScope).toHaveBeenCalledWith('session', ctx.uiSession.adapter)
     const root = slots.provideRoot.mock.calls[0]![0] as RootStandardSourceContribution
     expect(root.keyedHooks?.sessionRetainInfo?.(sessionId('s1')))
       .toBe(bench.retainInfo(sessionId('s1')))
+    // `useSessionAccess(sessionId, action)` reads the Session resource's answer; a call without an action names no source.
+    expect(root.keyedHooks?.sessionAccess?.(sessionId('s1'), 'session/fork'))
+      .toBe(remoteAccess.source('session', sessionId('s1'), 'session/fork'))
+    expect(root.keyedHooks?.sessionAccess?.(sessionId('s1'))).toBeUndefined()
+
+    // The Session scope's `useAccess(action)` reads the bound Session's answer from the same source.
+    const binding = bench.binding(sessionId('s2'))
+    const scoped = ctx.uiSession.bindingSource(bench.reference(binding)).getSnapshot()
+    expect(scoped.keyedHooks.access?.('session/fork')).toBe(remoteAccess.source('session', sessionId('s2'), 'session/fork'))
   })
 
   it('keeps the Host loader half inert', () => {

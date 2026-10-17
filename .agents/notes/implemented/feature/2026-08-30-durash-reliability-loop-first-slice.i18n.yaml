@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-30-durash-reliability-loop-first-slice.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-30-durash-reliability-loop-first-slice.md
-2026-08-30-durash-reliability-loop-first-slice.md: 00d8feace068a618b6fb2f9f41625dafc883184b
-2026-08-30-durash-reliability-loop-first-slice.zh.md: 6321bcf2697fe495cda780bd1fd5493af41a4d40
+/agent-note-durash-reliability-loop-first-vertical-slice:
+  en: 5832971656d9882d
+  zh: 801380149ce8f256
+/agent-note-durash-reliability-loop-first-vertical-slice/problem:
+  en: 0691640a16a37543
+  zh: 309ee3c87df024f8
+/agent-note-durash-reliability-loop-first-vertical-slice/decision:
+  en: 0c3e48c301a38dda
+  zh: cc2ab2ee99e7e343
+/agent-note-durash-reliability-loop-first-vertical-slice/alternatives-considered:
+  en: 2d6d6178ecd2f9e1
+  zh: 42a4068052acbb22
+/agent-note-durash-reliability-loop-first-vertical-slice/consequences:
+  en: dd9fec30d9956d18
+  zh: faa8d09e59549e24
+/agent-note-durash-reliability-loop-first-vertical-slice/testing:
+  en: b8f8f76b6ba6fa9f
+  zh: 156cf617da53ea7a

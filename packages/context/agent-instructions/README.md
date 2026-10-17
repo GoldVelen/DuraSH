@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-agent-instructions` gives agents workspace guidance from user-global and project-level `AGENTS.md`-compatible files. It loads the applicable chain for the first request. Global rules settings edits the same Host file and refreshes existing sessions before request admission. It does not watch external edits continuously: successful filesystem operations discover newly relevant nested files and make later changes or removals visible, while session resume reconciles the baseline. `dsh-base` enables this behavior by default, while profiles can disable it. A byte budget bounds the injected context: broader files are omitted before the most specific file is truncated, and an empty chain adds nothing.
+`dsh-agent-instructions` gives agents workspace guidance from user-global and project-level `AGENTS.md`-compatible files. It loads the applicable chain for the first request. It does not watch external edits continuously: successful filesystem operations discover newly relevant nested files and make later changes or removals visible, while session resume reconciles the baseline. `dsh-base` enables this behavior by default, while profiles can disable it. A byte budget bounds the injected context: broader files are omitted before the most specific file is truncated, and an empty chain adds nothing.
 
 ## Table of Contents
 
@@ -25,17 +25,21 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Changing the Session's working directory reloads the applicable project instruction chain before the next request.
+
 Mount this plugin when agents should work from the workspace's own instruction files. `dsh-base` already includes it with a 65,536-byte budget, so base-backed profiles only need to replace the row when they want another `maxBytes`; providerless trees load nothing until a filesystem provider is present.
 
 ### What the agent gets
 
-The first request includes one durable baseline message with the Host’s user-global `$DSH_HOME/AGENTS.md` followed by the filesystem provider’s project chain — every existing candidate file from the project root down to the session working directory, in broad-to-specific order. Sibling files whose content matches after trimming render once, so a `CLAUDE.md` that duplicates its `AGENTS.md` is not repeated. After a successful `read`, `write`, or `edit` call reaches a deeper directory, the next request includes the newly applicable instruction file; a changed file replaces its content, and a file that disappears or duplicates an earlier candidate produces a removal notice.
+The first request includes one durable baseline message with the user-global chain — `$DSH_HOME/AGENTS.md`, then `<agentsHome>/AGENTS.md` — followed by the project chain: every existing candidate file from the project root down to the session working directory, in broad-to-specific order. Within one candidate group, files whose content matches after trimming render once: a `CLAUDE.md` that duplicates its `AGENTS.md` is not repeated, and a shared-root `AGENTS.md` that duplicates the harness-home file collapses behind it. After a successful `read`, `write`, or `edit` call reaches a deeper directory, the next request includes the newly applicable instruction file; a changed file replaces its content, and a file that disappears or duplicates an earlier candidate produces a removal notice.
 
 ### Configuration
 
 The defaults suit a typical checkout: `.git` marks the project root, `AGENTS.md` and `CLAUDE.md` are the base candidates, and `AGENTS.local.md` and `CLAUDE.local.md` are additive local overlays. Only `maxBytes` is required — it caps the complete rendered baseline so each deployment chooses its prompt budget explicitly.
 
-Root discovery climbs only when a marker probe confirms that the marker is absent. A permission or I/O failure stops discovery and surfaces the host or filesystem-provider error instead of selecting an ancestor project. The [root-marker metadata decision](../../../.agents/notes/implemented/bug-fix/2026-09-03-root-marker-metadata-failures.md) records why discovery fails instead of substituting another root.
+The harness home holding the user-global `AGENTS.md` is process policy rather than row configuration: the plugin resolves `$DSH_HOME`, or `~/.dsh`, through `@deepseek-ai/dsh-home-paths`, so instruction loading always reads the process home. The shared agents root resolves the same way, from `$DSH_AGENTS_HOME` or `~/.agents`. Stray `dshHome` and `agentsHome` row keys are ignored.
+
+Root discovery climbs only when a marker probe confirms that the marker is absent. A permission or I/O failure stops discovery and surfaces the host or filesystem-provider error instead of selecting an ancestor project. The [historical root-marker metadata decision](../../../.agents/notes/archived/bug-fix/2026-09-03-root-marker-metadata-failures.md) records why discovery fails instead of substituting another root.
 
 ```yaml
 - name: '@deepseek-ai/dsh-agent-instructions'
@@ -47,7 +51,6 @@ The accepted fields, at a glance:
 
 ```ts
 export interface Config {
-  dshHome?: string
   projectRootMarkers?: string[]
   maxBytes: number
   maxSourceBytes?: number
@@ -63,16 +66,8 @@ export interface Config {
 | `projectRootMarkers` | `['.git']` | Directory names that mark the project root |
 | `instructionFileCandidates` | `['AGENTS.md', 'CLAUDE.md']` | Base file names loaded in each project directory |
 | `localInstructionFileCandidates` | `['AGENTS.local.md', 'CLAUDE.local.md']` | Local overlay file names loaded after the base files |
-| `dshHome` | `$DSH_HOME` or `~/.dsh` | Directory containing the user-global `AGENTS.md` |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-instructions) is the exhaustive source for every accepted field and its JSDoc.
-
-<a id="editing-global-rules"></a>
-### Editing global rules
-
-Settings → Global rules reads the exact Host file resolved from this plugin’s `dshHome`, then `$DSH_HOME`, then `~/.dsh`. The file is the only editable source: opening the page does not create it, and saving preserves the submitted UTF-8 text. Revision checks before preparation and replacement reject stale edits; permission bits are restored before atomic replacement, independently of the process umask. Symbolic links can be read but saving through them is refused.
-
-A successful save confirms storage only. Before an existing session’s next admitted request, the plugin rebuilds the baseline and previously discovered nested scopes, records `user/message` surface replacements for earlier instruction nodes, and starts a new request series. Old rule text leaves derived history; unchanged saves do not repeat it. Running tools and already sent requests continue unchanged. New sessions read the saved file on their first request. In-process workflow children use the same plugin; external agent providers retain their own instruction mechanisms. Disabling this plugin or its filesystem provider prevents loading, and source/render budgets may omit rules. The recorded instruction message and request context, rather than the save result, establish what a particular request loaded.
 
 ### Observing the budget
 
@@ -96,14 +91,12 @@ The plugin is built on one principle: workspace instructions are durable convers
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: pre-step and request-context listeners, `tools/result` touch tracking, inbox composition |
-| [`src/global-rules.ts`](src/global-rules.ts) | Host file editor, revision checks, and save generation |
+| [`src/index.ts`](src/index.ts) | Plugin entry: pre-step listener, `tools/result` touch tracking, inbox composition |
 | [`src/config.ts`](src/config.ts) | `Config` schema, budget resolution, baseline identity |
 | [`src/files.ts`](src/files.ts) | Candidate discovery, project-root search, bounded streaming reads |
 | [`src/render.ts`](src/render.ts) | Instruction rendering, budget truncation, change records |
 | [`src/state.ts`](src/state.ts) | Durable message sources, version/digest cache, reconciliation |
-| [`src/digest.ts`](src/digest.ts) | SHA-1 content identity and per-directory duplicate keys |
-| — | No runtime invariant companion is published; replay intentionally tolerates unknown or malformed workspace sources, while focused pipeline tests own its private pending/cache state transitions. |
+| [`src/digest.ts`](src/digest.ts) | SHA-1 content identity and per-candidate-group duplicate keys |
 
 ### Main flow
 
@@ -148,6 +141,10 @@ Instructions from: ~/.dsh/AGENTS.md
 
 <user-global-instructions>
 
+Instructions from: ~/.agents/AGENTS.md
+
+<shared-agents-instructions>
+
 Instructions from: AGENTS.md
 
 <project-instructions>
@@ -166,7 +163,7 @@ Append-only after the existing reusable prefix. Resume preserves reuse when the 
 
 #### What the model sees
 
-After a successful first-party filesystem call reaches a deeper directory, the next request includes one retained sourced `user/message` with the newly applicable instruction file.
+After a successful first-party filesystem call reaches a deeper directory, the next request includes one retained sourced `user/message` with the newly applicable instruction file. A user-global file discovered after the baseline renders the same section with `These user-global instructions apply to all work.` in place of the scope sentence below, because a user-global scope directory is an internal reconciliation key rather than a project directory.
 
 ##### Additional instruction template
 
@@ -210,7 +207,7 @@ Each confirmed change or removal is one retained history message bounded by `max
 
 #### KV Cache effect
 
-Filesystem-tool updates append after the reusable prefix. Settings saves replace existing instruction nodes and begin a new request series, invalidating the reusable prefix from the first changed instruction node.
+Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV Cache entries.
 
 ## Known Limitations and Deferred Work
 
@@ -220,10 +217,11 @@ Filesystem-tool updates append after the reusable prefix. Settings saves replace
 These limits define when instruction loading is a poor fit or needs operational awareness. They are current package constraints, not a task backlog.
 
 - **Discovery follows structured fs tools, not shell navigation** — a `bash` command that changes directories does not trigger nested instruction discovery because shell syntax and per-call shell state are not a reliable filesystem seam.
-- **External writers can race the final replacement** — saves detect changes during editing and file preparation. A process that ignores the writer lock can still change the file between the final revision check and rename; the filesystem does not provide an atomic compare-and-swap for this operation.
-- **External refresh has no watcher** — settings saves explicitly refresh the next admitted request; external edits become visible on the next successful first-party `read`, `write`, or `edit`, when resume reconciles a visible baseline, or when an entering pre-step restores a shadowed baseline.
-- **Candidate semantics stay intentionally small** — lowercase names, `.claude/rules/`, and `@path` imports are not interpreted; project scopes load `AGENTS.local.md`/`CLAUDE.local.md` overlays by default, but the user-global `$DSH_HOME` scope has no local overlay and other custom names require explicit candidate configuration.
-- **Per-directory dedup is content-based** — sibling candidates collapse only when byte-identical after trimming leading and trailing whitespace; a `CLAUDE.md` that symlinks its sibling `AGENTS.md` resolves to the same content and collapses like any duplicate, while a distinct real copy that has drifted from `AGENTS.md` loads in full alongside it.
+- **Refresh is touch-driven** — there is no watcher; external edits become visible on the next successful first-party `read`, `write`, or `edit`, when resume reconciles a visible baseline, or when an entering pre-step restores a shadowed baseline.
+- **Candidate semantics stay intentionally small** — lowercase names, `.claude/rules/`, and `@path` imports are not interpreted; project scopes load `AGENTS.local.md`/`CLAUDE.local.md` overlays by default, but neither user-global root has a local overlay and other custom names require explicit candidate configuration. A project directory named like a user-global scope directory renders as `./<name>/...`, so it keeps its own scope instead of resolving to the global root.
+- **Deduplication is content-based within one candidate group** — candidates collapse only when byte-identical after trimming leading and trailing whitespace. The two user-global roots share one group, so the shared-root file collapses behind a matching harness-home file; sibling project candidates collapse the same way, while a distinct real copy that has drifted from `AGENTS.md` loads in full alongside it. A duplicate of budget-retained content stays reconciled: when the retained candidate changes or disappears, the duplicate becomes visible again. Unchanged hidden duplicates, including files removed from visible state as duplicates, use cached metadata instead of content reads.
+- **One candidate group shares failure fate** — when metadata or content cannot be read for any candidate, including a hidden duplicate, the group keeps its last-good state for that pass. An unreadable shared agents root therefore also postpones a harness-home change notice until a later pass observes both roots.
+- **A byte-budget omission does not re-enter reconciliation** — a candidate the baseline dropped for budget reasons, including any content duplicate of that candidate, is not probed again while that visible baseline holds; it becomes visible only after the baseline is rebuilt.
 - **Symlinked instruction files are followed across the trust boundary** — a candidate whose final component is a symlink is resolved and its target loaded, so a cloned repository can surface off-tree file content as lower-authority workspace guidance (it never overrides system, developer, or direct user instructions). Confine `ctx.fs` with the filesystem policy gate or an OS sandbox when loading untrusted repositories.
 - **Instruction content is bounded, not summarized** — over-budget broad files are omitted and the most-specific file may be truncated; the plugin never asks a model to compress instruction prose.
 

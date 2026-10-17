@@ -11,7 +11,6 @@ import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createUserMessage, freezeMessage, LlmError } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, LlmResolvedModelInfo, UserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 // Type-only: the `title` projection key plus the live registry and durable
 // cache Context merges — the two projection faces discovery labels from.
@@ -63,6 +62,9 @@ ${REFERENCE_WARNING}
 <referenced-sessions>
 `
 const PROMPT_SUFFIX = '\n</referenced-sessions>'
+
+/** Projection keys a discovery label is answered from. */
+const LABEL_KEYS = ['title', 'subagent'] as const
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -203,7 +205,7 @@ export class SessionReferenceResolver extends TypertRemoteService {
     const records = (await settleWithCancellation(this.ctx.sessionQuery.listSessions(signal), signal))
       .filter(record => record.header.id !== agent.id)
       .map((record, index) => ({ record, index }))
-    const labelled = records.map(({ record, index }) => ({ record, index, ...this.projectedLabels(record) }))
+    const labelled = this.projectedLabels(records)
     return labelled.filter(({ record, label, displayTitle }) => {
       if (needle === '') return true
       return record.header.id.toLocaleLowerCase().includes(needle)
@@ -224,7 +226,7 @@ export class SessionReferenceResolver extends TypertRemoteService {
   }
 
   /**
-   * The mention label and display title a Session's projections can answer without reading its log.
+   * The mention label and display title each listed Session's projections can answer without reading its log.
    *
    * Attachment is decided by the store at read time, not by the listing:
    * a session that attached in between would otherwise be answered from a
@@ -239,32 +241,40 @@ export class SessionReferenceResolver extends TypertRemoteService {
    * Nothing else is attempted. Folding a title from a log costs the whole
    * log, and this call sits under every keystroke of `@` completion. A
    * session that no projection can answer for — one persisted before the
-   * cache was composed, or seeded straight to disk — is labeled by its id
-   * and cannot be found by its title until it is opened once, which
-   * checkpoints it.
-   * @param record - the listed session, live or cold.
-   * @returns the title-backed mention label and the subagent-label-first display title.
+   * cache was composed — is labeled by its id and cannot be found by its
+   * title until it is opened once, which checkpoints it.
+   *
+   * Services are resolved once per call and the cache's snapshot method is
+   * bound once: a service lookup per listed session would dominate the call.
+   * @param items - the listed sessions, live or cold.
+   * @returns each item with its title-backed mention label and subagent-label-first display title.
    */
-  private projectedLabels(record: SessionRecord): { label: string; displayTitle: string } {
-    const attached = this.ctx.get('sessions')?.get(record.header.id)
+  private projectedLabels<T extends { readonly record: SessionRecord }>(
+    items: readonly T[],
+  ): Array<T & { label: string; displayTitle: string }> {
     const projections = this.ctx.get('sessionProjections')
-    const snapshot = attached !== undefined && projections !== undefined
-      ? projections.snapshot(attached, ['title', 'subagent'])
-      : record.header.isSeeded
-        ? undefined
-        : this.ctx.get('sessionProjectionCache')?.cachedSnapshot(
-          record.header,
-          SessionLogOffset(0),
-          ['title', 'subagent'],
-        )
-    const label = titleOf(snapshot) ?? record.header.id
-    const subagent = snapshot?.values.subagent
-    return {
-      label,
-      displayTitle: subagent === undefined || subagent === null
-        ? label
-        : subagent.label ?? label,
-    }
+    const sessions = this.ctx.get('sessions')
+    // An attached session answers from its live cut only while the registry is mounted.
+    const attached = new Map(sessions === undefined || projections === undefined
+      ? undefined
+      : sessions.list().map(session => [session.id, session]))
+    const cache = this.ctx.get('sessionProjectionCache')
+    const cachedSnapshot = cache?.cachedSnapshot.bind(cache)
+    return items.map((item) => {
+      const session = attached.get(item.record.header.id)
+      const snapshot = session !== undefined && projections !== undefined
+        ? projections.snapshot(session, LABEL_KEYS)
+        : cachedSnapshot?.(item.record.header, LABEL_KEYS)
+      const label = titleOf(snapshot) ?? item.record.header.id
+      const subagent = snapshot?.values.subagent
+      return {
+        ...item,
+        label,
+        displayTitle: subagent === undefined || subagent === null
+          ? label
+          : subagent.label ?? label,
+      }
+    })
   }
 
   /**

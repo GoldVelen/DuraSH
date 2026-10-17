@@ -42,12 +42,13 @@ import { TestRemote } from './remote.ts'
 import { TestSessions } from './sessions.ts'
 import { TestWorkspaces } from './workspaces.ts'
 import type { Stabilizer } from './fixtures.ts'
+import { allowAllAccessPlugin } from './access.ts'
 
 export type { UseSession } from '@deepseek-ai/dsh-client-ui-session/client'
 export { domSnapshotSerializer, registerDomSnapshotSerializer } from './snapshot.ts'
 export { FixtureSession, TestSessions } from './sessions.ts'
-export { stubSettingsScope } from './settings-scope.ts'
-export type { StubSettingsScope } from './settings-scope.ts'
+export { stubConfigForm } from './config-form.ts'
+export type { StubConfigForm } from './config-form.ts'
 export { TestWorkspaces } from './workspaces.ts'
 export { RemoteError, TestRemote } from './remote.ts'
 export {
@@ -57,6 +58,8 @@ export type {
   FixtureSnapshot, SessionBehaviorOverrides, SessionFixture, SessionFixtureSnapshot, Stabilizer,
 } from './fixtures.ts'
 export { makeTranslate } from './translate.ts'
+export { allowAllAccess, allowAllAccessPlugin } from './access.ts'
+export type { AccessStandardProps } from './access.ts'
 export { usePinnedBrowserLanguages } from './locale-env.ts'
 
 /**
@@ -197,7 +200,7 @@ export class TestRoot {
     await this.stabilize(() => {
       // Erased hop (same pattern as SlotRegistry's own implementation arm);
       // the declaration signature above is the typed contract.
-      this.disposeEntry = (this.slots.register as unknown as ErasedRegister)({ name: 'root', children }, frame)
+      this.disposeEntry = (this.slots.register as ErasedRegister)({ name: 'root', children }, frame)
     })
   }
 
@@ -284,6 +287,7 @@ export class SlotTestRuntime {
     const fiber = ctx.plugin(SlotRegistry)
     await fiber.await()
     const runtime = new SlotTestRuntime(ctx, ctx.get('slots') as SlotRegistry)
+    await ctx.plugin(allowAllAccessPlugin).await()
     await ctx.plugin({ inject: [...uiSessionInject], apply: applyUiSession }).await()
     return runtime
   }

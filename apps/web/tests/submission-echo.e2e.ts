@@ -8,14 +8,13 @@
 // path here is the production correlation, not a test hook.
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, it } from 'vitest'
-import { installAssembledBootEnv, mountAssembledApp, startFixtureComposer } from './assembled-boot.ts'
+import { createAssembledSessionComposer, installAssembledBootEnv, mountAssembledApp } from './assembled-boot.ts'
 
 installAssembledBootEnv()
 
 it('paints the submission echo on the send keystroke and swaps it for the durable node', async () => {
-  mountAssembledApp()
-
-  const composer = await startFixtureComposer()
+  const remote = mountAssembledApp()
+  const composer = await createAssembledSessionComposer(remote)
   const image = new File([new Uint8Array([137, 80, 78, 71])], 'echoed.png', { type: 'image/png' })
   fireEvent.paste(composer, {
     clipboardData: {

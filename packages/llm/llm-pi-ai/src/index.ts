@@ -63,14 +63,16 @@
  *
  * @module @deepseek-ai/dsh-llm-pi-ai
  */
+import type {} from '@deepseek-ai/dsh-settings'
 
-import { FiberState, type Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
+
+import type { Context } from '@deepseek-ai/cordis'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-fs'
-import type {} from '@deepseek-ai/dsh-settings'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { PiAiAdapter } from './adapter.ts'
 import { authContextFrom, credentialStoreFrom } from './auth.ts'
@@ -81,13 +83,14 @@ import { discoverModels } from './discovery.ts'
 import type { StoredModelDiscoveryProfile } from './discovery.ts'
 import { registerPiAiFlows } from './login.ts'
 import { createModels } from './models.ts'
-import { LiveCatalogSync } from './live-catalog-sync.ts'
 import { createModelDirectoryReader } from './model-directory-http.ts'
+import { providerDefaultsOf } from './provider-data.ts'
 
 export { PiAiAdapter } from './adapter.ts'
 export type { PiAiAdapterOptions } from './adapter.ts'
 export { Config } from './config.ts'
 export type {
+  Options,
   PiAiCompatProfile,
   PiAiModality,
   PiAiModelOverride,
@@ -127,29 +130,34 @@ function registrationFacts(profiles: ReadonlyMap<string, ResolvedPiAiProviderPro
  * The configurable-provider directory: every installed catalog route, plus
  * every route the current profiles declare. A hand-declared route has no
  * catalog entry, so without this union it would have no settings address and
- * configuration surfaces could neither show nor edit it.
+ * configuration surfaces could neither show nor edit it. A catalog route also
+ * carries its catalog endpoint and native authentication, which a settings
+ * editor shows while the profile leaves the endpoint or the credential
+ * reference unset.
  * @param profiles - the currently resolved provider profiles.
  * @returns the directory entries in catalog order, declared routes last.
  */
 function directoryEntries(
   profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile>,
+  settingsNs: string,
 ): LlmConfigurableProvider[] {
-  const catalog = new Set(catalogProviderIds())
   const entries = new Map<string, LlmConfigurableProvider>()
   const declare = (provider: string, displayName: string, error?: string): void => {
+    const installed = catalogProvider(provider)
     entries.set(provider, {
       provider,
       displayName,
-      settingsNs: NS,
+      settingsNs,
       settingsPath: ['providers', provider],
       // Membership of the installed catalog, not of the settings document:
       // narrowing a shipped provider's models stores a profile too, and that
       // route is still one pi-ai knows.
-      declared: !catalog.has(provider),
+      declared: installed === undefined,
+      ...installed === undefined ? {} : providerDefaultsOf(installed),
       ...error === undefined ? {} : { error },
     })
   }
-  for (const provider of catalog) declare(provider, provider)
+  for (const provider of catalogProviderIds()) declare(provider, provider)
   for (const [provider, profile] of profiles) declare(provider, profile.displayName, profile.catalogError)
   return [...entries.values()]
 }
@@ -157,17 +165,13 @@ function directoryEntries(
 /** Register one generic pi-ai adapter for all configured provider routes. */
 export function apply(ctx: Context, config: Config): void {
   resolveModelCatalogTiming(config)
-  let current: () => Config = () => config
+  ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
+  const settingsNs = ctx.fiber.entry?.options.id ?? NS
   const runtimeCatalogs = new Map<string, readonly Model<Api>[]>()
   const readDirectory = createModelDirectoryReader()
-  const catalogErrors = new Map<string, string>()
-  const catalogSources = new Map<string, unknown>()
-  const sourceCleared = new Set<string>()
-  const directoryAt = new Map<string, string>()
-  const retiredModels = new Map<string, readonly string[]>()
-  let catalogRevision = 0
+  const catalogRevision = 0
   let lastCatalogRevision = -1
-  let lastRaw: Config | undefined
+  let lastRaw: ReturnType<Config['providers']['get']> | undefined
   let memoized: ReadonlyMap<string, ResolvedPiAiProviderProfile> | undefined
   /**
    * Profiles resolve from the configuration identity and Host catalog revision.
@@ -178,15 +182,25 @@ export function apply(ctx: Context, config: Config): void {
    * Scalar configuration errors still reject resolution.
    */
   const profiles = (): ReadonlyMap<string, ResolvedPiAiProviderProfile> => {
-    const raw = current()
+    const raw = config.providers.get()
     if (raw === lastRaw && lastCatalogRevision === catalogRevision && memoized !== undefined) return memoized
-    const next = resolveProfiles(raw.providers, 'deferred', runtimeCatalogs)
+    const next = resolveProfiles(structuredClone(raw) as import('./config.ts').Options['providers'], 'deferred', runtimeCatalogs)
     lastRaw = raw
     lastCatalogRevision = catalogRevision
     memoized = next
     return next
   }
   profiles()
+  ctx.on('internal/config', function (this: import('@deepseek-ai/cordis').Fiber, _raw, next) {
+    const raw: unknown = next()
+    if (this !== ctx.fiber) return raw
+    const candidate = Config(raw as import('./config.ts').Options)
+    assertServiceable(
+      { providers: structuredClone(candidate.providers.get()) } as import('./config.ts').Options,
+      { providers: structuredClone(config.providers.get()) } as import('./config.ts').Options,
+    )
+    return raw
+  })
 
   const resolveApiKey = async (
     provider: string,
@@ -269,17 +283,7 @@ export function apply(ctx: Context, config: Config): void {
   let directory: DirectoryRegistrationHandle | undefined
   let directoryFacts: unknown
   const ensureDirectory = (): void => {
-    const entries = directoryEntries(profiles()).map((entry) => {
-      const error = catalogErrors.get(entry.provider)
-      const observedAt = directoryAt.get(entry.provider)
-      const retired = retiredModels.get(entry.provider)
-      return {
-        ...entry,
-        ...error === undefined ? {} : { error },
-        ...observedAt === undefined ? {} : { directoryAt: observedAt },
-        ...retired === undefined || retired.length === 0 ? {} : { retiredModels: retired },
-      }
-    })
+    const entries = directoryEntries(profiles(), settingsNs)
     if (deepEqualJson(entries, directoryFacts)) return
     // Atomic replace, never dispose-then-register: a route another adapter
     // family already declares (a profile keyed `deepseek-official`) would
@@ -321,22 +325,16 @@ export function apply(ctx: Context, config: Config): void {
       },
     }
   }
-  // Namespace-wide discovery serves drafts before their route is configured.
-  // Stored native refreshes share the Host's catalog coordinator; draft keys,
-  // endpoints, and protocols cannot publish into its account directory.
-  // Stored credentials and deployment headers remain on the Host, where native
-  // authentication is available before the first profile is saved.
-  ctx.llm.registerModelDiscovery(NS, async (request, signal) => {
-    const provider = request.provider
-    const profile = provider === undefined ? undefined : profiles().get(provider)
-    if (request.refresh === true && provider !== undefined && onlineProviders().includes(provider)
-      && request.apiKey === undefined && request.api === undefined
-      && (request.baseURL === undefined || request.baseURL === profile?.baseURL)) {
-      await catalogs.refresh(provider, signal)
-      return discoverModels({ provider }, () => storedDiscoveryProfile(provider))
-    }
-    return discoverModels({ ...request, ...signal === undefined ? {} : { signal } }, () => storedDiscoveryProfile(provider))
-  })
+  // Interrogating an endpoint is a configuration-time action over a draft, so
+  // it is offered for the whole namespace rather than per route: the provider
+  // a surface is adding does not exist yet. The draft is the whole request
+  // except the stored credential and deployment-owned headers: the curated UI
+  // accepts neither, so an already-configured route supplies both inside the
+  // Host rather than widening the discovery request.
+  ctx.llm.registerModelDiscovery(settingsNs, (request, signal) => discoverModels(
+    { ...request, ...signal === undefined ? {} : { signal } },
+    () => storedDiscoveryProfile(request.provider),
+  ))
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below. A bare
   // mount (zero routes) is the dormant posture: nothing registers until a
@@ -368,218 +366,11 @@ export function apply(ctx: Context, config: Config): void {
   }
   ensureRegistrationFacts()
 
-  /** Settings that select a directory authority and its authentication. */
-  function catalogSource(provider: string): unknown {
-    const profile = current().providers?.[provider]
-    return { provider: profile?.catalogProvider ?? provider, baseURL: profile?.baseURL,
-      api: profile?.api, apiKeyEnv: profile?.apiKeyEnv, headers: profile?.headers,
-      codexDirectoryClientVersion: profile?.codexDirectoryClientVersion }
-  }
-
-  /** Publish complete Host metadata and invalidate the consumers of this route's models. */
-  function publishCatalog(provider: string, models: readonly Model<Api>[]): void {
-    const previous = runtimeCatalogs.get(provider)
-    const hadError = catalogErrors.delete(provider)
-    const cleared = sourceCleared.delete(provider)
-    if (!hadError && !cleared && deepEqualJson(previous, models)) return
-    if (cleared) retiredModels.delete(provider)
-    else if (previous !== undefined && previous.length > 0) {
-      const nextIds = new Set(models.map(model => model.id))
-      const retired = previous.map(model => model.id).filter(id => !nextIds.has(id))
-      if (retired.length > 0) retiredModels.set(provider, retired)
-      else retiredModels.delete(provider)
+  ctx.on('loader/volatile-update', () => {
+    try { ensureRegistrationFacts(); ensureDirectory() }
+    catch (error) {
+      ctx.logger.error('llm-pi-ai: configuration conflicts with an existing provider route')
+      ctx.logger.error(error)
     }
-    directoryAt.set(provider, new Date().toISOString())
-    runtimeCatalogs.set(provider, models)
-    catalogRevision += 1
-    const previousDirectory = directoryFacts
-    ensureRegistrationFacts()
-    ensureDirectory()
-    if (previousDirectory === directoryFacts) registration?.replace([...profiles().keys()])
-  }
-
-  /** Native account directories synchronize automatically; private endpoints opt in explicitly. */
-  function onlineProviders(): readonly string[] {
-    return Object.entries(current().providers ?? {}).flatMap(([provider, profile]) => {
-      const source = profile.catalogProvider ?? provider
-      if (!['openai-codex', 'opencode-go', 'xai'].includes(source) || profile.api !== undefined) return []
-      if (profile.baseURL !== undefined && profile.modelCatalogMode !== 'live') {
-        const base = catalogProvider(source)?.baseUrl
-        if (base === undefined || !URL.canParse(profile.baseURL) || new URL(profile.baseURL).origin !== new URL(base).origin) return []
-      }
-      return [provider]
-    })
-  }
-
-  const catalogs = new LiveCatalogSync({
-    providers: onlineProviders,
-    timeoutMs: () => resolveModelCatalogTiming(current()).timeoutMs,
-    refreshMs: () => resolveModelCatalogTiming(current()).refreshMs,
-    fetch: async (provider, signal) => {
-      let models: readonly Model<Api>[] | undefined
-      // The coordinator invokes only current, configured native sources.
-      const stored = storedDiscoveryProfile(provider) as StoredModelDiscoveryProfile
-      await discoverModels({ provider, refresh: true, signal }, () => ({ ...stored,
-        publishCatalog: (candidate) => { models = candidate },
-      }))
-      // Each eligible source publishes native metadata before its successful refresh returns.
-      return models as readonly Model<Api>[]
-    },
-    publish: publishCatalog,
-    failure: (provider, error) => {
-      const message = error instanceof LlmError ? error.message : 'Model directory could not be loaded; check account sign-in and refresh'
-      const observedAt = new Date().toISOString()
-      catalogErrors.set(provider, `${message} (directory observed at ${observedAt})`)
-      directoryAt.set(provider, observedAt)
-      if (sourceCleared.has(provider)) {
-        runtimeCatalogs.set(provider, [])
-        retiredModels.delete(provider)
-      }
-      ensureDirectory()
-      ctx.logger.warn('llm-pi-ai: model directory for "%s": %s', provider, message)
-    },
-  })
-
-  /**
-   * Drop one route's published models until the next successful directory.
-   * The pending diagnostic does not look like an upstream refusal.
-   * @param provider - route whose account, credential, or endpoint changed.
-   */
-  function clearCatalogSource(provider: string): void {
-    runtimeCatalogs.set(provider, [])
-    sourceCleared.add(provider)
-    retiredModels.delete(provider)
-    const observedAt = new Date().toISOString()
-    directoryAt.set(provider, observedAt)
-    catalogErrors.set(provider, `Model directory is refreshing after the account, credential, or endpoint changed (directory observed at ${observedAt})`)
-    catalogRevision += 1
-  }
-
-  /** Invalidate directories after their endpoint or credential selection changes. */
-  function synchronizeSources(): void {
-    const active = new Set(onlineProviders())
-    for (const provider of new Set([...catalogSources.keys(), ...active])) {
-      const source = catalogSource(provider)
-      if (active.has(provider) && deepEqualJson(source, catalogSources.get(provider))) continue
-      catalogs.invalidate(provider)
-      if (active.has(provider) && catalogSources.has(provider)) clearCatalogSource(provider)
-      else {
-        runtimeCatalogs.delete(provider)
-        catalogErrors.delete(provider)
-        sourceCleared.delete(provider)
-        retiredModels.delete(provider)
-        directoryAt.delete(provider)
-        catalogRevision += 1
-      }
-      if (active.has(provider)) catalogSources.set(provider, source)
-      else catalogSources.delete(provider)
-    }
-    catalogs.notify()
-  }
-
-  ctx.on('credentials/record-updated', (key) => {
-    const provider = onlineProviders().find(route => `llm-pi-ai/${route}` === key)
-    if (provider === undefined) return
-    if (ownCredentialWrites.has(provider)) { catalogs.notify(); return }
-    catalogs.invalidate(provider)
-    clearCatalogSource(provider)
-    ensureRegistrationFacts()
-    ensureDirectory()
-    catalogs.notify()
-  })
-  ctx.on('credentials/reference-updated', (ref) => {
-    for (const provider of onlineProviders()) {
-      if (profiles().get(provider)?.apiKeyEnv !== ref) continue
-      catalogs.invalidate(provider)
-      clearCatalogSource(provider)
-    }
-    ensureRegistrationFacts()
-    ensureDirectory()
-    catalogs.notify()
-  })
-  ctx.inject(['authorization'], (authorized) => {
-    authorized.on('authorization/settled', (key, settlement) => {
-      if (settlement !== 'authorized') return
-      const provider = onlineProviders().find(route => `llm-pi-ai/${route}` === key)
-      if (provider === undefined) return
-      catalogs.invalidate(provider)
-      clearCatalogSource(provider)
-      ensureRegistrationFacts()
-      ensureDirectory()
-      catalogs.notify()
-    })
-  })
-  let credentialsReady = ctx.get('credentials') !== undefined
-  ctx.on('internal/service', (service) => {
-    if (service === 'credentials' && ctx.get('credentials') === undefined) credentialsReady = false
-  })
-  ctx.inject(['credentials'], (credentialCtx) => {
-    /** Invalidate account metadata when the optional credential service becomes ready or leaves. */
-    function synchronizeCredentials(): void {
-      for (const provider of onlineProviders()) {
-        catalogs.invalidate(provider)
-        clearCatalogSource(provider)
-      }
-      ensureRegistrationFacts()
-      ensureDirectory()
-      catalogs.notify()
-    }
-    credentialCtx.effect(() => {
-      if (!credentialsReady) synchronizeCredentials()
-      credentialsReady = true
-      return () => {
-        credentialsReady = false
-        if (ctx.fiber.state === FiberState.ACTIVE) synchronizeCredentials()
-      }
-    })
-  })
-  ctx.effect(() => {
-    synchronizeSources()
-    catalogs.start()
-    return () => catalogs.close()
-  })
-
-  ctx.inject(['settings'], (settingsCtx) => {
-    let registering = true
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      validate: (value) => {
-        // Stored catalog drift must not prevent registration of the repair UI.
-        if (registering) {
-          resolveProfiles(value.providers, 'deferred', runtimeCatalogs)
-        } else {
-          assertServiceable(value, current(), runtimeCatalogs)
-        }
-      },
-      setSource: (source) => {
-        current = source
-      },
-      onChange: () => {
-        synchronizeSources()
-        // Named here rather than left to the settings watcher: `assertServiceable`
-        // cannot see the llm registry, so a profile claiming a route another
-        // adapter family owns is stored successfully and only fails at this swap.
-        // Without its own diagnostic that refusal reaches the operator as a
-        // generic "settings: watcher failed", naming neither the route nor why it
-        // is not serving. The previous routes keep serving either way.
-        try {
-          ensureRegistrationFacts()
-        } catch (error) {
-          ctx.logger.error('llm-pi-ai: keeping the previously registered routes after a refused update')
-          ctx.logger.error(error)
-        }
-        // The directory follows the profiles the registry accepted, so a route
-        // that failed to register is not advertised as configurable. A refused
-        // directory swap is contained here for the same reason the registry's
-        // is: the previous entries keep serving, and `directoryFacts` stays put
-        // so returning to a working configuration re-applies.
-        try {
-          ensureDirectory()
-        } catch (error) {
-          ctx.logger.error('llm-pi-ai: keeping the previous configurable-provider directory after a refused update')
-          ctx.logger.error(error)
-        }
-      },
-    })
-    registering = false
   })
 }

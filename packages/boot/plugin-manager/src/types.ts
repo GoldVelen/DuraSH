@@ -1,5 +1,6 @@
 /** Public plugin management records shared with clients. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { PluginLocalizedMeta } from '@deepseek-ai/dsh-package-manifest'
 import type { PluginInventoryEntry } from '@deepseek-ai/dsh-host-plugin-inventory/types'
 export type { PluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory/types'
 import type { PluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory/types'
@@ -7,11 +8,31 @@ import type { PluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory/types
 /** Reasons a profile control cannot modify its target. */
 export type ReadOnlyReason = 'management-required' | 'unaddressable'
 
+/** A package whose declared DSH requirements reject the running DSH version, without an exemption for the exact pair. */
+export interface IncompatiblePlugin {
+  name: string
+  version: string
+  runtimeVersion: string
+  /** Only the requirements the running version does not satisfy, keyed `engines.dsh` or by DSH peer package name. */
+  requirements: Record<string, string>
+}
+
 /** Localizable management failure and optional external diagnostic. */
 export interface ManagementError {
-  code: ReadOnlyReason | 'unknown-plugin' | 'invalid-spec' | 'ambiguous-install' | 'not-bundle' | 'not-removable' | 'stop-profile' | 'bundle-in-use' | 'stale-approval' | 'operation-error'
+  code: ReadOnlyReason | 'unknown-plugin' | 'invalid-spec' | 'already-installed' | 'ambiguous-install' | 'not-bundle' | 'not-removable' | 'stop-profile' | 'bundle-in-use' | 'stale-approval' | 'incompatible-version' | 'operation-error'
   diagnostic?: string
+  /** Present with `incompatible-version`: the packages the running DSH version rejects. */
+  incompatible?: IncompatiblePlugin[]
 }
+
+/**
+ * Why a change waits for the next start: `no-hmr` profiles apply changes only at startup; `package-moved` changes map an
+ * installed package to another directory without removing it first, or change or locally override a package the DSH
+ * installation provides; `host-module` changes reach
+ * modules the running process itself imports; `unmanaged-plugin` changes reach a plugin running outside a Loader entry;
+ * `module-comparison` means loaded modules could not be compared with disk.
+ */
+export type RestartReason = 'no-hmr' | 'package-moved' | 'host-module' | 'unmanaged-plugin' | 'module-comparison'
 
 /** One running-profile entry and its persistent control availability. */
 export type PluginInfo = PluginInventoryEntry & (
@@ -25,19 +46,35 @@ export interface BundleRowInfo {
   rowId: string
   /** The module the row names. */
   moduleName: string
+  /** Local package display metadata, including rows whose bundle is disabled. */
+  meta?: PluginLocalizedMeta
   /** The Loader entry carrying this row, when exactly one live entry has its id. */
   entryId?: PluginEntryId
 }
 
-/** One installed or installation-provided bundle. */
+/** One shipped, profile-installed, or discoverable on-demand bundle. */
 export interface BundleInfo {
   name: string
+  /** Project-maintained shipped optional bundle or on-demand catalog entry, independent of installation and selection. */
+  official: boolean
+  /** Readable package location; on-demand catalog entries exclude undeclared transitive copies, and declared files may be missing. */
+  availability: 'installation' | 'profile' | 'missing'
+  /** Exact released Host version or same-checkout development link offered for an on-demand catalog entry. */
+  installTarget?: { spec: string; version: string }
   version?: string
-  /** `description` of the package manifest. */
+  /** Local display text with available translations or literal fallbacks, or a metadata diagnostic. */
+  meta?: PluginLocalizedMeta
+  /** Untranslated `description` of this bundle's package manifest. */
   description?: string
+  /** Selected in the profile manifest; a load error means its layer was skipped. */
   enabled: boolean
-  /** Whether the profile's own dependencies hold the package; false for a bundle the dsh installation supplies. */
+  /** Whether the profile declares this dependency; availability separately reports whether its files can be read. */
   installed: boolean
+  /**
+   * Present for a profile dependency the installation does not also supply: the spec `pnpm add` accepts, with local
+   * paths made absolute and the user information of an http(s) URL removed.
+   */
+  source?: string
   /**
    * Whether the installation ships the bundle for the person to switch on: named by the launcher's `OPTIONAL_BUNDLES`,
    * held by the installation's dependencies, selected by no shipped template, and never removable.
@@ -52,7 +89,18 @@ export interface BundleInfo {
   overrides: string[]
 }
 
-/** How a pnpm run failed, read off how it ended and what it printed. */
+/** A registry to install from: an http(s) URL, or null for the one pnpm's own configuration names. */
+export type Registry = string | null
+
+/** The registries the manager asks: the configured first one, its fallbacks in order, and what pnpm's own configuration names. */
+export interface PluginRegistries {
+  readonly registry: Registry
+  readonly fallbackRegistries: readonly string[]
+  /** The URL pnpm's own configuration names in the profile, read from pnpm; null when it could not be read. */
+  readonly resolved: string | null
+}
+
+/** How a package operation failed, read off how it ended and what it printed. */
 export type PluginInstallFailureKind =
   | 'pnpm-missing'
   | 'timeout'
@@ -65,7 +113,7 @@ export type PluginInstallFailureKind =
   | 'integrity'
   | 'unknown'
 
-/** Pnpm completion, including a retrieval path for unabridged diagnostics. */
+/** Package operation completion, including Git checks and a retrieval path for unabridged diagnostics. */
 export interface PackageResult {
   exitCode: number
   output: string
@@ -73,6 +121,10 @@ export interface PackageResult {
   logPath: string
   /** Present when the run failed: what kind of failure its exit and output describe. */
   kind?: PluginInstallFailureKind
+  /** The manager terminated the run after it printed nothing for its silence bound; `exitCode` still reports how it ended. */
+  timedOut?: boolean
+  /** Present when a compatibility check refused the run: the packages the running DSH version rejects. */
+  incompatible?: IncompatiblePlugin[]
 }
 
 /** Persisted change and independently observed application outcome. */
@@ -80,6 +132,8 @@ export interface ChangeResult {
   changed: boolean
   /** `cancelled` is an installation the caller stopped, its files restored. */
   application: 'applied' | 'restart-required' | 'overridden' | 'failed' | 'cancelled'
+  /** Present with `restart-required`: why the change takes effect only at the next start. */
+  restartReason?: RestartReason
   /** Last attempted step; successful installation can proceed to enablement. */
   stage: 'install' | 'enable' | 'remove'
   target: string
@@ -90,10 +144,19 @@ export interface ChangeResult {
   packageResult?: PackageResult
   /** The bundle an installation added, once pnpm and the bundle check accepted it. */
   bundle?: string
+  /** The installed bundle's manifest version, when declared; pnpm's `minimumReleaseAge` can make it older than the newest release. */
+  version?: string
   /** Exact package names awaiting explicit script approval in the profile's pnpm settings, read after a failed run. */
   pendingBuilds?: string[]
   /** Package script permissions saved before this installation attempt. */
   approvedBuilds?: string[]
+  /** The registries the installation asked, in order; `packageResult` is the last one's run. */
+  registries?: Registry[]
+  /**
+   * What the last failed run could not reach or get an answer from: the registry it asked, or the host a git or
+   * tarball spec is fetched from, which no registry stands in for; absent for a failure neither explains.
+   */
+  failedAt?: 'registry' | 'spec-host'
 }
 
 /** Identifies one installation from its start to its settlement, including its log chunks and cancellation. */
@@ -102,9 +165,19 @@ export type PluginInstallRequestId = Branded<'PluginInstallRequestId'>
 /** Bundle installation defaults to activation; callers that offer cancellation supply their request id. */
 export interface InstallBundleOptions {
   enabled?: boolean
+  /** Save the resolved dependency version without a range; applies to any bundle installation. */
+  saveExact?: boolean
   requestId?: PluginInstallRequestId
   /** Explicitly allow these pending packages' scripts for this profile, then install; a name no longer pending refuses the call. */
   approvedBuilds?: string[]
+  /** The registry asked first; absent, the configured one. The configured fallbacks follow while a registry is unreachable or stale. */
+  registry?: Registry
+}
+
+/** Where an inspection asks. */
+export interface InspectOptions {
+  /** The registry asked first; absent, the configured one. */
+  readonly registry?: Registry
 }
 
 /** The form one install spec takes, in pnpm's vocabulary. */
@@ -135,18 +208,26 @@ export type PluginSpecInspection =
     readonly description?: string
     /** Whether the package declares a bundle patch; null when the spec's form does not say. */
     readonly bundle: boolean | null
+    /** The registry that answered for a name, and for the other forms the one an install of the spec asks first. */
+    readonly registry: Registry
+    /** The host a git spec or a tarball URL is fetched from, which no registry stands in for. */
+    readonly host?: string
   }
   | {
     readonly status: 'refused'
     readonly problem: PluginInspectProblem
     /** What pnpm, the registry, or the file system said. */
     readonly reason: string
+    /** The registries asked, in order, when the refusal came from asking them; `reason` is the last one's. */
+    readonly registries?: Registry[]
   }
 
-/** The Host phase of one installation, before its install call settles. */
+/** The Host phase of one installation, before its install call settles; `installing` is announced once per registry asked. */
 export interface PluginInstallProgress {
   readonly requestId: PluginInstallRequestId
   readonly phase: 'installing' | 'cancelling' | 'applying'
+  /** With `installing`: the registry this attempt asks, its one-based position, and how many the installation may ask. */
+  readonly attempt?: { readonly registry: Registry; readonly index: number; readonly total: number }
 }
 
 /** Cancellation is confirmed only after process exit and file restoration. */
@@ -193,9 +274,10 @@ declare module '@deepseek-ai/cordis' {
      */
     'plugin-manager/install-log'(chunk: PluginInstallLogChunk): void
     /**
-     * An installation moved between its Host phases.
+     * An installation moved between its Host phases. `installing` is announced once per registry the
+     * installation asks, with the attempt's registry and position; `cancelling` and `applying` once.
      * @mode emit
-     * @param progress - the installation's request id and phase.
+     * @param progress - the installation's request id and phase, with the attempt while installing.
      */
     'plugin-manager/install-state'(progress: PluginInstallProgress): void
   }

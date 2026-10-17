@@ -1,10 +1,13 @@
 /** Shared model fields and actions for both adapter catalog editors. */
 
 import type { ReactNode } from 'react'
-import { IconChevronDownOutline14, IconChevronRightOutline14, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconTrashOutlineRegular,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
 import type { ModelsKey } from './locales.ts'
 import { ModelInputTypes } from './ModelInputTypes.tsx'
+import { ModelReasoningEfforts } from './ModelReasoningEfforts.tsx'
 import styles from './ModelsSection.module.css'
 
 /** A capacity's editable text and adapter-specific inherited hint. */
@@ -22,6 +25,8 @@ interface ModelRowProps {
   inputField: 'inputModalities' | 'input'
   inputFallback?: readonly string[] | undefined
   inputLoading?: boolean
+  /** Levels the row's `reasoningEfforts` may declare; absent or empty shows no reasoning control. */
+  reasoningLevels?: readonly string[] | undefined
   expanded: boolean
   disabled: boolean
   t: (key: ModelsKey) => string
@@ -68,7 +73,7 @@ export function ModelRow(props: ModelRowProps): ReactNode {
           title={t('modelAdvanced')}
           onClick={props.onToggle}
         >
-          {props.expanded ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
+          {props.expanded ? <IconChevronDownOutlineRegular /> : <IconChevronRightOutlineRegular />}
         </button>
         <button
           type="button"
@@ -78,7 +83,7 @@ export function ModelRow(props: ModelRowProps): ReactNode {
           disabled={disabled}
           onClick={props.onRemove}
         >
-          <IconTrashOutline16 size={14} />
+          <IconTrashOutlineRegular size={14} />
         </button>
       </div>
       {props.expanded
@@ -104,6 +109,13 @@ export function ModelRow(props: ModelRowProps): ReactNode {
               model={model} field={props.inputField} position={position}
               fallback={props.inputFallback} disabled={disabled || props.inputLoading === true} t={t} onChange={props.onChange}
             />
+            {props.reasoningLevels !== undefined && props.reasoningLevels.length > 0
+              ? (
+                <ModelReasoningEfforts
+                  model={model} levels={props.reasoningLevels} position={position} disabled={disabled} t={t} onChange={props.onChange}
+                />
+              )
+              : null}
           </div>
         )
         : null}

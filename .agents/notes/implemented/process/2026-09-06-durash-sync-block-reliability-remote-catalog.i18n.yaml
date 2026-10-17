@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-06-durash-sync-block-reliability-remote-catalog.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-06-durash-sync-block-reliability-remote-catalog.md
-2026-09-06-durash-sync-block-reliability-remote-catalog.md: dd8bbb549b1548fa8bfd77edb824bf63036fd25f
-2026-09-06-durash-sync-block-reliability-remote-catalog.zh.md: e289859858444854f2922cdb86603e8a07aa4fce
+/agent-note-persistent-upstream-sync-blocks-client-reliability-remote-and-durash-tool-catalog:
+  en: 6f0e2008be3136a7
+  zh: 149c52e8cd526c04
+/agent-note-persistent-upstream-sync-blocks-client-reliability-remote-and-durash-tool-catalog/problem:
+  en: f3ecf674ab41e146
+  zh: 6b18dff3619e7003
+/agent-note-persistent-upstream-sync-blocks-client-reliability-remote-and-durash-tool-catalog/decision:
+  en: 2903a3c71021f1ba
+  zh: f0b5ae383a17e059
+/agent-note-persistent-upstream-sync-blocks-client-reliability-remote-and-durash-tool-catalog/alternatives-considered:
+  en: 3efe62704db1e921
+  zh: 03675e570a929c79
+/agent-note-persistent-upstream-sync-blocks-client-reliability-remote-and-durash-tool-catalog/consequences:
+  en: 8d3639ad086ebdd2
+  zh: 2d386351cf4915fd
+/agent-note-persistent-upstream-sync-blocks-client-reliability-remote-and-durash-tool-catalog/verification:
+  en: e5a954a62cacd1ac
+  zh: 2dfdf12f34522300

@@ -1,5 +1,5 @@
 ---
-description: "Host Remote owner for settings, credential, and sign-in configuration surfaces, including redacted reads, writes, credential references, authorization attempts, and native document opening."
+description: "Host Remote owner for settings and credential configuration surfaces, including redacted reads, writes, credential references, and native document opening."
 kind: "package-reference"
 ---
 # Settings Controller
@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-api-settings-controller` exposes generated `ctx.remote.settings`, `ctx.remote.credentials`, and `ctx.remote.authorization` namespaces for browser configuration surfaces. It returns redacted settings and credential metadata, supports settings and credential writes without returning secret values, and opens provider-owned settings or Agent preset locations on the Host desktop. When a provider is absent, the namespace remains registered and returns an actionable configuration error.
+`@deepseek-ai/dsh-api-settings-controller` exposes generated `ctx.remote.settings` and `ctx.remote.credentials` namespaces for browser configuration surfaces. It returns redacted settings and credential metadata, supports settings and credential writes without returning secret values, and opens provider-owned settings or Agent preset locations on the Host desktop. When a provider is absent, the namespace remains registered and returns an actionable configuration error.
 
 ## Table of Contents
 
@@ -29,11 +29,10 @@ Mount this package as a Loader entry in a profile that serves browser configurat
 
 `settings.describe()` returns deployment facts and every namespace under `redactSecrets: true`. `settings.update`, `settings.replace`, and `settings.mutate` expose the settings service's three write operations and return the namespace's new redacted view; stale writes use `settings-conflict` and other provider refusals use `settings-rejected`.
 
-`settings.readGlobalRules()` reads the exact global `AGENTS.md` selected by the Host's root instruction loader or its default preset's standing composition and returns its path, revision, existence, and loading limits; it returns `null` when that plugin is absent. `settings.saveGlobalRules(content, expectedRevision)` saves only that file with atomic replacement and a revision check, reporting concurrent edits as `global-rules/conflict` and read or write refusals as `global-rules/rejected`. No browser-supplied path is accepted. A successful response confirms file storage; instruction admission remains the [instruction loader's responsibility](../../context/agent-instructions/README.md).
+`settings.openSettingsDocument()` prepares the provider-owned document and opens it with the native text editor; it accepts no browser-supplied filesystem target.
 
-`authorization.describe()` lists every registered sign-in flow beside the controller-tracked attempts, so a page polls one snapshot for both the offer and an attempt's progress. When a flow has no tracked attempt, an existing configured credential is projected as `authorized`; a current tracked attempt takes precedence. `authorization.begin({ key, method? })` starts an attempt against a Host-held interaction and answers at once — an attempt waits on a human for minutes, so no request stays open — while `authorization.respond({ key, promptId, value | declined })` answers the pending prompt and `authorization.cancel({ key })` withdraws. Notices accumulate under a retention bound, one prompt is pending at a time, and a secret answer crosses in this direction only. Attempt state is the Host's own: a reloaded page rejoining `describe` sees the same attempt, and a second begin while one runs reports `conflict`. A failed view states whether the controller had received a notice or prompt, or whether credential commit failed; its outer message is token-redacted and may include only bounded, allowlisted network metadata from nested transport errors.
+`settings.readGlobalRules()` reads the Host global `AGENTS.md` owned by the mounted instruction loader and returns its path, revision, existence, and load limits; it returns `null` when that service is not mounted. `settings.saveGlobalRules(content, expectedRevision)` saves that file with an atomic replacement and revision check. A concurrent edit returns `global-rules/conflict`, and a read or write refusal returns `global-rules/rejected`. It accepts no browser-supplied path. A successful save confirms the file write only; whether the instruction enters a request is owned by the [instruction loader](../../context/agent-instructions/README.md).
 
-`settings.openSettingsDocument()` prepares the provider-owned document and opens it with the native text-editor intent. `settings.canOpenAgentPresetDirectory()` reports native-opening availability when the preset page becomes visible. `settings.openAgentPresetDirectory(id)` resolves only a user-authored preset and either opens its directory or returns the path when native opening is unavailable; neither open method accepts a browser-supplied filesystem target.
 
 -----
 
@@ -42,7 +41,6 @@ Mount this package as a Loader entry in a profile that serves browser configurat
 
 | Field | Default | Meaning |
 |---|---|---|
-| `nativeOpen` | platform-detected | Whether Agent preset directories can be handed to a native desktop opener |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-api-settings-controller) is the exhaustive source for accepted fields and their JSDoc.
 
@@ -51,7 +49,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as this controller registers no prompt, tool, or session event; global rule text reaches later requests through the instruction loader.
+None, as settings and credential configuration are browser and Host state and register no prompt, tool, or session event.
 
 #### KV Cache effect
 
@@ -72,5 +70,3 @@ No direct effect; reading or writing these configuration values does not alter m
 None.
 
 </details>
-
-**Runtime invariant:** No companion is published. The settings and credential seams own storage and update events, while this package only projects their methods onto the wire.

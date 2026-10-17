@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-agent-instructions` 向 agent（智能体）提供来自用户全局文件和项目级文件的工作区指引；这些文件均与 `AGENTS.md` 兼容。它为第一次请求加载适用的指令链。“全局规则”设置编辑同一个 Host 文件，并在请求准入前刷新已有会话。它不会持续监视外部编辑：成功的文件系统操作会发现新适用的嵌套文件，并让后续变更或移除可见；恢复会话也会对账基线。`dsh-base` 默认启用此行为，profile 可以禁用。字节预算限制注入的上下文：较宽泛的文件先被省略，最具体的文件最后被截断，空指令链不添加任何内容。
+`dsh-agent-instructions` 向 agent（智能体）提供来自用户全局文件和项目级文件的工作区指引；这些文件均与 `AGENTS.md` 兼容。它为第一次请求加载适用的指令链。它不会持续监视外部编辑：成功的文件系统操作会发现新适用的嵌套文件，并让后续变更或移除可见；恢复会话也会对账基线。`dsh-base` 默认启用此行为，profile 可以禁用。字节预算限制注入的上下文：较宽泛的文件先被省略，最具体的文件最后被截断，空指令链不添加任何内容。
 
 ## 目录
 
@@ -25,17 +25,21 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+切换 Session 工作目录后，下一次请求前会重新加载适用的项目指令链。
+
 当 agent 需要依据工作区自身的指令文件工作时，挂载此插件。`dsh-base` 已包含它并给予 65,536 字节预算，因此基于 base 的 profile 仅在需要其他 `maxBytes` 时替换该配置行；没有文件系统提供方的树加载不到任何内容，直到提供方出现。
 
 ### agent 获得的内容
 
-第一次请求包含一条持久基线消息：先是 Host 上的用户全局 `$DSH_HOME/AGENTS.md`，再按从宽泛到具体的顺序包含文件系统提供方的项目指令链——从项目根目录到会话工作目录的每个目录中所有现有候选文件。去除首尾空白后内容一致的同级文件只渲染一次，因此复制了 `AGENTS.md` 的 `CLAUDE.md` 不会被重复加载。当成功的 `read`、`write` 或 `edit` 调用到达更深的目录后，下一次请求会包含新适用的指令文件；已改变的文件会替换其内容，消失或成为较早候选文件重复项的文件会产生移除通知。
+第一次请求包含一条持久基线消息：先是用户全局指令链——`$DSH_HOME/AGENTS.md`，然后是 `<agentsHome>/AGENTS.md`——再按从宽泛到具体的顺序包含项目指令链：从项目根目录到会话工作目录的每个目录中所有现有候选文件。同一候选组内去除首尾空白后内容一致的文件只渲染一次：复制了 `AGENTS.md` 的 `CLAUDE.md` 不会被重复加载，与 harness home 文件重复的共享根 `AGENTS.md` 也会折叠在其后。当成功的 `read`、`write` 或 `edit` 调用到达更深的目录后，下一次请求会包含新适用的指令文件；已改变的文件会替换其内容，消失或成为较早候选文件重复项的文件会产生移除通知。
 
 ### 配置
 
 默认设置适合典型检出：`.git` 标记项目根目录，`AGENTS.md` 与 `CLAUDE.md` 是基础候选，`AGENTS.local.md` 与 `CLAUDE.local.md` 是叠加的本地 overlay。只有 `maxBytes` 必填——它限制完整渲染后的基线，让每个部署显式选择自己的提示词预算。
 
-只有确认项目根标记不存在时，项目根发现才会继续上溯。权限或 I/O 失败会停止发现，并抛出宿主或文件系统提供方的原始错误，而不会选择祖先项目。[根标记元数据决策](../../../.agents/notes/implemented/bug-fix/2026-09-03-root-marker-metadata-failures.zh.md)说明发现为何必须失败，而不能替换为其他根目录。
+存放用户全局 `AGENTS.md` 的 harness home 属于进程策略，而不是配置行：该插件通过 `@deepseek-ai/dsh-home-paths` 解析 `$DSH_HOME` 或 `~/.dsh`，因此指令加载始终读取进程 home。共享 agents 根目录同样如此解析：`$DSH_AGENTS_HOME` 或 `~/.agents`。残留的 `dshHome` 与 `agentsHome` 配置行字段会被忽略。
+
+只有确认项目根标记不存在时，项目根发现才会继续上溯。权限或 I/O 失败会停止发现，并抛出宿主或文件系统提供方的原始错误，而不会选择祖先项目。[历史根标记元数据决策](../../../.agents/notes/archived/bug-fix/2026-09-03-root-marker-metadata-failures.md)说明发现为何必须失败，而不能替换为其他根目录。
 
 ```yaml
 - name: '@deepseek-ai/dsh-agent-instructions'
@@ -47,7 +51,6 @@ kind: "package-reference"
 
 ```ts
 export interface Config {
-  dshHome?: string
   projectRootMarkers?: string[]
   maxBytes: number
   maxSourceBytes?: number
@@ -63,16 +66,8 @@ export interface Config {
 | `projectRootMarkers` | `['.git']` | 标记项目根目录的目录名 |
 | `instructionFileCandidates` | `['AGENTS.md', 'CLAUDE.md']` | 每个项目目录中加载的基础文件名 |
 | `localInstructionFileCandidates` | `['AGENTS.local.md', 'CLAUDE.local.md']` | 在基础文件之后加载的本地 overlay 文件名 |
-| `dshHome` | `$DSH_HOME` 或 `~/.dsh` | 存放用户全局 `AGENTS.md` 的目录 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-agent-instructions)是每个受支持字段及其 JSDoc 的穷尽式真源。
-
-<a id="editing-global-rules"></a>
-### 编辑全局规则
-
-设置 → 全局规则读取本插件依次通过 `dshHome`、`$DSH_HOME`、`~/.dsh` 解析的 Host 文件原文。文件是唯一可编辑真源：打开页面不会创建文件，保存保持提交的 UTF-8 文本。写入准备前和替换前的版本检查拒绝过期编辑；原子替换前显式恢复权限位，不受进程 umask 影响。符号链接可以读取，但不能通过此编辑器保存。
-
-保存成功仅确认文件已写入。已有会话下一次请求被接纳前，插件重建基线与此前已发现的嵌套作用域，为旧指令节点记录 `user/message` surface 替换，并开始新的请求系列。旧规则正文从派生历史中移除；相同正文的保存不会重复注入。运行中的工具与已发出的请求继续执行。新会话首次请求读取已保存文件。进程内工作流子代理使用同一插件；外部代理提供方仍使用各自的指令机制。禁用此插件或文件系统提供方会阻止加载，源文件和渲染预算也可能省略规则。某次请求加载了什么，应由持久指令消息与请求上下文确认，不能以保存结果代替。
 
 ### 观察预算
 
@@ -96,14 +91,12 @@ export interface Config {
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：pre-step 和 request-context 监听器、`tools/result` touch 跟踪、inbox 组合 |
-| [`src/global-rules.ts`](src/global-rules.ts) | Host 文件编辑器、版本检查与保存代次 |
+| [`src/index.ts`](src/index.ts) | 插件入口：pre-step 监听器、`tools/result` touch 跟踪、inbox 组合 |
 | [`src/config.ts`](src/config.ts) | `Config` schema、预算解析、基线标识 |
 | [`src/files.ts`](src/files.ts) | 候选发现、项目根搜索、有界流式读取 |
 | [`src/render.ts`](src/render.ts) | 指令渲染、预算截断、变更记录 |
 | [`src/state.ts`](src/state.ts) | 持久消息来源、版本／digest 缓存、对账 |
-| [`src/digest.ts`](src/digest.ts) | SHA-1 内容标识与每目录重复键 |
-| — | 不发布运行时不变式伴生入口；回放会容忍未知或格式错误的 workspace source，私有 pending/cache 状态转换由针对性流水线测试覆盖。 |
+| [`src/digest.ts`](src/digest.ts) | SHA-1 内容标识与每候选组重复键 |
 
 ### 主要流程
 
@@ -148,6 +141,10 @@ Instructions from: ~/.dsh/AGENTS.md
 
 <user-global-instructions>
 
+Instructions from: ~/.agents/AGENTS.md
+
+<shared-agents-instructions>
+
 Instructions from: AGENTS.md
 
 <project-instructions>
@@ -166,7 +163,7 @@ Instructions from: AGENTS.md
 
 #### 模型看到的内容
 
-成功的第一方文件系统调用到达更深目录后，下一次请求会包含一条保留的带来源 `user/message`，其中包含新适用的指令文件。
+成功的第一方文件系统调用到达更深目录后，下一次请求会包含一条保留的带来源 `user/message`，其中包含新适用的指令文件。基线之后才发现的用户全局文件渲染同一段落，但用 `These user-global instructions apply to all work.` 取代下面的 scope 句子，因为用户全局 scope 目录是对账用的内部 key，而不是项目目录。
 
 ##### 附加指令模板
 
@@ -210,7 +207,7 @@ The previously loaded instructions from this file no longer apply.
 
 #### KV Cache 影响
 
-文件系统工具更新追加在可复用前缀之后。设置保存会替换已有指令节点并开始新的请求系列，因此从第一个改变的指令节点起使可复用前缀失效。
+仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV Cache 条目失效。
 
 ## 已知限制与延期工作
 
@@ -220,10 +217,11 @@ The previously loaded instructions from this file no longer apply.
 这些限制说明指令加载何时不合适或需要运维注意。它们是当前包约束，不是任务积压。
 
 - **发现跟随结构化 fs 工具，而非 shell 导航**：更改目录的 `bash` 命令不会触发嵌套指令发现，因为 shell 语法与每次调用的 shell 状态不是可靠的文件系统 seam。
-- **外部写入方仍可能与最终替换竞争**——保存会检测编辑期间和文件准备期间的更改。不遵从写锁的进程仍可能在最终版本检查与重命名之间修改文件；文件系统不为此操作提供原子的比较并交换保证。
-- **外部刷新没有 watcher**：设置保存会明确刷新下一次被接纳的请求；外部编辑会在下一次成功的第一方 `read`、`write` 或 `edit` 时、恢复对账可见基线时，或进入步骤的 pre-step 恢复被遮蔽基线时可见。
-- **候选语义有意保持简单**：不解释小写名称、`.claude/rules/` 与 `@path` import；项目 scope 默认加载 `AGENTS.local.md`／`CLAUDE.local.md` overlay，但用户全局 `$DSH_HOME` scope 没有本地 overlay，其他自定义名称需要显式候选配置。
-- **每目录去重基于内容**：同级候选只有在去除首尾空白后字节完全一致时才折叠。`CLAUDE.md` 若 symlink 到同级 `AGENTS.md`，会解析为相同内容并像任何重复项一样折叠；从 `AGENTS.md` 漂移的独立副本则会与它一起完整加载。
+- **刷新由 touch 驱动**：没有 watcher；外部编辑会在下一次成功的第一方 `read`、`write` 或 `edit` 时、恢复对账可见基线时，或进入步骤的 pre-step 恢复被遮蔽基线时可见。
+- **候选语义有意保持简单**：不解释小写名称、`.claude/rules/` 与 `@path` import；项目 scope 默认加载 `AGENTS.local.md`／`CLAUDE.local.md` overlay，但两个用户全局根目录都没有本地 overlay，其他自定义名称需要显式候选配置。与用户全局 scope 目录同名的项目目录会渲染为 `./<name>/...`，从而保留自己的 scope，而不会解析到全局根目录。
+- **去重在同一候选组内基于内容**：候选只有在去除首尾空白后字节完全一致时才折叠。两个用户全局根目录共享同一个组，因此共享根文件会折叠在内容一致的 harness home 文件之后；同级项目候选同样折叠，而从 `AGENTS.md` 漂移的独立副本则会与它一起完整加载。预算保留内容的重复候选仍参与对账：保留的候选一旦改变或消失，它就会重新可见。未改变的隐藏重复项（包括因重复而从可见状态移除的文件）使用缓存元数据，不重新读取内容。
+- **同一候选组共享失败命运**：组内任一候选（包括隐藏的重复项）的元数据或内容无法读取时，整个组在该轮保留最后一次成功状态。因此共享 agents 根目录不可读时，harness home 的变更通知也会推迟到之后某一轮同时观测到两个根目录时。
+- **字节预算省略的候选不重新进入对账**：基线因预算丢弃的候选及其内容重复项在可见基线存续期间不再被探测，只有基线重建后才会重新可见。
 - **Symlink 指令文件会跨越信任边界跟随**：最终组件是 symlink 的候选文件会被解析并加载其目标，因此克隆仓库可以将树外文件内容呈现为较低优先级的工作区指引（它绝不覆盖 system、developer 或用户直接下达的指令）。加载不受信任仓库时，请用文件系统策略门禁或 OS 沙箱限制 `ctx.fs`。
 - **指令内容受限但不会被摘要**：超出预算的宽泛文件会被省略，最具体文件可能被截断；该插件绝不请求模型压缩指令文本。
 

@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for durash-tool-catalog.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/durash-tool-catalog.md
-durash-tool-catalog.md: 2eaac7f8ff9189b1370c64ee519c0f5aff9f1082
-durash-tool-catalog.zh.md: 882bb1f1ef122554a624aa9b404a70facf67127b
+/:
+  en: 24e53ddc3560defa
+  zh: e38183fa59d729be
+/durash-tool-schema-catalog:
+  en: 550b3caff62fb657
+  zh: 058a837de12e938e
+/durash-tool-schema-catalog/tool-package-map:
+  en: 21291c72339f64ed
+  zh: 702954bae314a45a
+/durash-tool-schema-catalog/durash-dsh-tool-reliability:
+  en: 2d84927d7c91b012
+  zh: 2d84927d7c91b012
+/durash-tool-schema-catalog/durash-dsh-tool-reliability/dsh-acceptance:
+  en: 266d87ea6e6ebcd0
+  zh: c54cbb76c5767605
+/durash-tool-schema-catalog/durash-dsh-tool-reliability/dsh-reliability-handoff:
+  en: d446eb7eb3512604
+  zh: 9f6b1015e2493b3e

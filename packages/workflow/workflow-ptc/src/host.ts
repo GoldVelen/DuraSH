@@ -1,12 +1,13 @@
 /** Workflow child ownership and progress over the shared sandboxed PTC executor. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import type { PtcBindingFunction, PtcJsonValue, PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import type { SubagentRun } from '@deepseek-ai/dsh-subagent'
+import type { SubagentActivation } from '@deepseek-ai/dsh-subagent'
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import { assertNever, snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
@@ -19,7 +20,7 @@ import type { ChildStartRequest, WorkerInit } from './types.ts'
 
 interface ChildRecord {
   readonly callId: number
-  readonly run: SubagentRun
+  readonly run: SubagentActivation
   readonly label?: string
   disposal?: Promise<void>
 }
@@ -128,6 +129,7 @@ export class PtcWorkflowRun implements WorkflowRun {
   private readonly externalAbort: () => void
   private readonly toolEvidence = new Set<string>()
   private readonly stopEvidence: () => void
+  private readonly cwd: Promise<string>
 
   constructor(
     private readonly ctx: Context,
@@ -151,6 +153,7 @@ export class PtcWorkflowRun implements WorkflowRun {
     this.externalAbort = () => { this.cancel('workflow signal aborted') }
     if (signal?.aborted) this.externalAbort()
     else signal?.addEventListener('abort', this.externalAbort, { once: true })
+    this.cwd = ctx.workingDirectory.ensure(parent, this.controller.signal)
     // Consumers attach durable run recording after start() returns.
     this.result = Promise.resolve().then(() => this.drive())
   }
@@ -212,16 +215,22 @@ export class PtcWorkflowRun implements WorkflowRun {
   private async startChild(request: ChildStartRequest): Promise<PtcJsonValue> {
     this.requireActive()
     const callId = ++this.started
-    const run = await this.subagents.start(this.provider, {
-      prompt: [{ type: 'text', text: request.prompt }],
-      parent: this.parent,
+    const run = await this.subagents.startActivation({
+      provider: this.provider,
+      label: `${this.meta.name} child ${callId}`,
+      delivery: 'caller',
       signal: this.controller.signal,
-      ...request.schema === undefined ? {} : { outputSchema: request.schema },
-      ...request.provider === undefined && request.model === undefined && request.effort === undefined ? {} : {
-        agentOptions: {
-          ...request.provider === undefined ? {} : { provider: request.provider },
-          ...request.model === undefined ? {} : { model: request.model },
-          ...request.effort === undefined ? {} : { reasoningEffort: ReasoningEffortId(request.effort) },
+      request: {
+        cwd: await this.cwd,
+        prompt: [{ type: 'text', text: request.prompt }],
+        parent: this.parent,
+        ...request.schema === undefined ? {} : { outputSchema: request.schema },
+        ...request.provider === undefined && request.model === undefined && request.effort === undefined ? {} : {
+          agentOptions: {
+            ...request.provider === undefined ? {} : { provider: request.provider },
+            ...request.model === undefined ? {} : { model: request.model },
+            ...request.effort === undefined ? {} : { reasoningEffort: ReasoningEffortId(request.effort) },
+          },
         },
       },
     })
@@ -232,7 +241,7 @@ export class PtcWorkflowRun implements WorkflowRun {
       await this.disposeChild(record)
       throw new Error('workflow child started after cancellation')
     }
-    return { callId, childId: run.id }
+    return { callId, childId: run.childId }
   }
 
   private async childResult(record: ChildRecord): Promise<PtcJsonValue> {
@@ -243,7 +252,7 @@ export class PtcWorkflowRun implements WorkflowRun {
     signal.addEventListener('abort', onAbort, { once: true })
     try {
       const result = await Promise.race([record.run.result, aborted.promise])
-      if (record.label === 'testing' && !this.toolEvidence.has(record.run.id)) {
+      if (record.label === 'testing' && !this.toolEvidence.has(record.run.childId)) {
         return json({
           output: result.output,
           stopReason: 'error',
@@ -295,11 +304,16 @@ export class PtcWorkflowRun implements WorkflowRun {
   private async drive(): Promise<WorkflowResult> {
     let result: WorkflowResult
     try {
+      const cwd = await this.cwd
+      this.requireActive()
+      if (this.runtime.sandboxMode === undefined && this.policy.mode !== 'danger-full-access') {
+        throw new Error(`workflow runtime cannot enforce the ${this.policy.mode} file policy`)
+      }
       const outcome = await this.runtime.run(this.runtime.resolve({
-        program: PROGRAM,
+        program: this.runtime.programFormat === 'repl' ? `await (async () => {\n${PROGRAM}\n})()` : PROGRAM,
         bindings: [{ global: 'workflowHost', functions: this.bindings() }],
-        cwd: this.policy.workspaceRoot,
-        sandboxPolicy: this.policy,
+        cwd,
+        ...this.runtime.sandboxMode === undefined ? {} : { sandboxPolicy: this.policy },
         timeoutMs: null,
         signal: this.controller.signal,
       }))

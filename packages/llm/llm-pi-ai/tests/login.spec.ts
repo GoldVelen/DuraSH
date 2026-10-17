@@ -20,6 +20,7 @@ vi.mock('../src/models.ts', async importOriginal => ({
 }))
 
 const { credentialStoreFrom, authContextFrom, recordKeyFor } = await import('../src/auth.ts')
+const { catalogProvider } = await import('../src/catalog.ts')
 const { registerPiAiFlows } = await import('../src/login.ts')
 
 const CODEX = recordKeyFor('openai-codex')
@@ -98,6 +99,11 @@ describe('pi-ai login flows', () => {
       .toEqual(['api-key'])
     expect(offered.find(entry => entry.key === recordKeyFor('opencode-go'))?.methods.map(one => one.id))
       .toEqual(['oauth', 'api-key'])
+    // pi-ai ships Sign in with ChatGPT for `openai`, which needs an
+    // installation ID the harness does not supply; only the key login is offered.
+    expect(catalogProvider('openai')?.auth.oauth?.loginLabel).toBe('Sign in with ChatGPT')
+    expect(offered.find(entry => entry.key === recordKeyFor('openai'))?.methods.map(one => one.id))
+      .toEqual(['api-key'])
   })
 
   it('runs the pi-ai auth type the chosen method names', async () => {

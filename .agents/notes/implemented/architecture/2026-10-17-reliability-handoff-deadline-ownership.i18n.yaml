@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-10-17-reliability-handoff-deadline-ownership.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-17-reliability-handoff-deadline-ownership.md
-2026-10-17-reliability-handoff-deadline-ownership.md: e732eb16d30f59db62009ac19c01517d7f3620fd
-2026-10-17-reliability-handoff-deadline-ownership.zh.md: 4663a65380cd26f29a9f30a6180bc9b0820be291
+/agent-note-reliability-handoff-deadline-ownership:
+  en: c0ce1c614f3161e7
+  zh: bdaec73e697b8fc1
+/agent-note-reliability-handoff-deadline-ownership/problem:
+  en: cb0194952cab61b5
+  zh: 079e9c85f1783274
+/agent-note-reliability-handoff-deadline-ownership/decision:
+  en: 911ceca10e2c6d9f
+  zh: f29d7a7e360283cd
+/agent-note-reliability-handoff-deadline-ownership/alternatives-considered:
+  en: 0093d42f53890ebc
+  zh: 493f14e9f5c4a83a
+/agent-note-reliability-handoff-deadline-ownership/consequences:
+  en: ad2b9b4cfadece0c
+  zh: de3244988bf61402

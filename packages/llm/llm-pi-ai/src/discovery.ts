@@ -5,10 +5,10 @@
  * Passive reads use the Host's account-bound catalog when available, then the
  * installed catalog. Hand-declared routes use their model-listing endpoint.
  *
- * A stored-source native refresh can publish complete model descriptors through
- * a Host callback without writing settings. The Host keeps draft endpoint,
- * protocol, and credential requests separate from its account directory;
- * those replies remain candidates for an editor to adopt.
+ * Neither path is a catalog refresh. Nothing here is stored: the request
+ * carries a draft the user is still editing, and the reply is candidate
+ * metadata the surface offers for adoption. `cordis.patch.yml` remains the only
+ * thing that decides what a route serves.
  *
  * OpenAI-compatible and Anthropic Messages protocols are interrogated through
  * their native model-listing endpoints. The parser accepts the standard

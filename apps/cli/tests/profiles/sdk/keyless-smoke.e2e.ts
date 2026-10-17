@@ -1,13 +1,14 @@
 import { createServer } from 'node:http'
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { zstdDecompress } from 'node:zlib'
 import { resolveExampleLaunch } from '@deepseek-ai/dsh-loader-smoke'
 import { execa } from 'execa'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import { workspaceDependencyPaths, type PrimaryRuntimeManifest } from '@deepseek-ai/dsh-tool-workspace-dependencies'
 
 const repoRoot = fileURLToPath(new URL('../../../../../', import.meta.url))
 const launch = resolveExampleLaunch({
@@ -201,10 +202,14 @@ describe('Python SDK dsh profile keyless smoke', () => {
   }, 40_000)
 
   it.each([
-    { label: 'boots the standalone minimal profile through its generated manifest', editorEnabled: false },
-    { label: 'executes the documented editor opt-in patch with sdk-minimal', editorEnabled: true },
-  ])('$label', async ({ editorEnabled }) => {
+    { label: 'boots the standalone minimal profile through its generated manifest', editorEnabled: false, imageEnabled: false, optOut: false, offloadEnabled: false },
+    { label: 'executes the documented editor opt-in patch with sdk-minimal', editorEnabled: true, imageEnabled: false, optOut: false, offloadEnabled: false },
+    { label: 'sends a read_image result to the model with sdk-minimal', editorEnabled: false, imageEnabled: true, optOut: false, offloadEnabled: false },
+    { label: 'offloads an over-budget image and continues with sdk-minimal', editorEnabled: false, imageEnabled: true, optOut: false, offloadEnabled: true },
+    { label: 'retains the previous tools through the documented opt-out patch', editorEnabled: false, imageEnabled: false, optOut: true, offloadEnabled: false },
+  ])('$label', async ({ editorEnabled, imageEnabled, optOut, offloadEnabled }) => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-python-sdk-minimal-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
     const editorPatch = join(root, 'editor.patch.yml')
     if (editorEnabled) {
       const guide = await readFile(join(repoRoot, 'docs/user/guide/python-sdk.md'), 'utf8')
@@ -213,7 +218,24 @@ describe('Python SDK dsh profile keyless smoke', () => {
       expect(yaml).toBeDefined()
       await writeFile(editorPatch, yaml!)
     }
+    if (optOut) {
+      const guide = await readFile(join(repoRoot, 'docs/upgrade-guide/v0.2.1-alpha.2/sdk-minimal-image-compaction/guide.md'), 'utf8')
+      const yaml = guide.match(/```yaml\n([\s\S]*?)```/)?.[1]
+      expect(yaml).toBeDefined()
+      await writeFile(editorPatch, yaml!)
+    }
+    if (offloadEnabled) await writeFile(editorPatch, [
+      '- id: llm-deepseek',
+      '  config:',
+      '    apiKeyEnv: DEEPSEEK_API_KEY',
+      '    maxRequestFilesBytes: 1',
+      '    imageOffloadByteQuantum: 1',
+      '',
+    ].join('\n'))
     const editorFile = join(root, 'editor.txt')
+    if (imageEnabled) await writeFile(join(root, 'red.png'), Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC', 'base64',
+    ))
     const editorContent = 'sdk-minimal editor opt-in\n'
     const editorCalls = editorEnabled ? [
       { command: 'create', path: editorFile, file_text: editorContent },
@@ -221,17 +243,29 @@ describe('Python SDK dsh profile keyless smoke', () => {
     ] : []
     const modelRequests: Record<string, unknown>[] = []
     const modelServer = createServer((request, response) => {
+      if (imageEnabled && request.url?.endsWith('/files')) {
+        request.resume()
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({
+          id: 'file-minimal-image', type: 'file', size_bytes: 69,
+          created_at: new Date().toISOString(),
+          filename: 'red.png', mime_type: 'image/png',
+        }))
+        return
+      }
       let body = ''
       request.setEncoding('utf8')
       request.on('data', (chunk: string) => { body += chunk })
       request.on('end', () => {
         modelRequests.push(JSON.parse(body) as Record<string, unknown>)
         response.writeHead(200, { 'content-type': 'text/event-stream' })
-        const toolCall = editorCalls[modelRequests.length - 1]
+        const toolCall = imageEnabled && modelRequests.length === 1
+          ? { file_path: 'red.png' }
+          : editorCalls[modelRequests.length - 1]
         response.end(messagesResponse(toolCall ? {
           type: 'tool_use',
-          id: `editor-${toolCall.command}`,
-          name: 'str_replace_editor',
+          id: imageEnabled ? 'minimal-image-read' : `editor-${editorCalls[modelRequests.length - 1]?.command}`,
+          name: imageEnabled ? 'read_image' : 'str_replace_editor',
           input: toolCall,
         } : { type: 'text', text: 'done' }, toolCall ? 'tool_use' : 'end_turn'))
       })
@@ -243,7 +277,7 @@ describe('Python SDK dsh profile keyless smoke', () => {
       ...launch.args,
       '--profile',
       'sdk-minimal',
-      ...(editorEnabled ? ['--patch', editorPatch] : []),
+      ...(editorEnabled || optOut || offloadEnabled ? ['--patch', editorPatch] : []),
     ], {
       cwd: repoRoot,
       env: {
@@ -273,7 +307,7 @@ describe('Python SDK dsh profile keyless smoke', () => {
         jsonrpc: '2.0',
         id: 1,
         method: 'initialize',
-        params: { cwd: root, provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+        params: { cwd: root, provider: 'deepseek-official', model: imageEnabled ? 'deepseek-flash' : 'deepseek-v4-pro' },
       })}\n`)
       await waitForLine(lines, value => value.id === 1, () => stderr)
       child.stdin.write(`${JSON.stringify({
@@ -282,9 +316,11 @@ describe('Python SDK dsh profile keyless smoke', () => {
         method: 'session/prompt',
         params: { sessionId: 'minimal', contentBlocks: [{ type: 'text', text: 'inspect tools' }] },
       })}\n`)
+      const offloads: Record<string, unknown>[] = []
       const turnEnd = await waitForLine(lines, (value) => {
         const params = value.params as Record<string, unknown> | undefined
         const event = params?.event as Record<string, unknown> | undefined
+        if (params?.sessionId === 'minimal' && event?.type === 'image/offload') offloads.push(event)
         return params?.sessionId === 'minimal' && event?.type === 'turn/end'
       }, () => stderr)
       expect(turnEnd, `${JSON.stringify(turnEnd)}\n${stderr}`).toMatchObject({
@@ -301,9 +337,31 @@ describe('Python SDK dsh profile keyless smoke', () => {
       const tools = modelRequests[0]?.tools as { name?: string }[]
       expect(tools.map(tool => tool.name)).toEqual([
         process.platform === 'win32' ? 'pwsh' : 'bash',
+        ...(optOut ? [] : ['read_image']),
         ...(editorEnabled ? ['str_replace_editor'] : []),
+        'working_directory',
       ])
-      expect(modelRequests).toHaveLength(editorEnabled ? 3 : 1)
+      expect(modelRequests).toHaveLength(editorEnabled ? 3 : imageEnabled ? 2 : 1)
+      if (imageEnabled) {
+        const messages = modelRequests[1]?.messages as {
+          content: { type: string; tool_use_id?: string; content?: { type: string; source?: { type: string; file_id: string } }[] }[]
+        }[]
+        const imageResult = messages.flatMap(message => message.content)
+          .find(block => block.type === 'tool_result' && block.tool_use_id === 'minimal-image-read')
+        if (offloadEnabled) {
+          expect(offloads).toHaveLength(1)
+          expect(offloads[0]).toMatchObject({ data: { targets: [{ imageIndexes: [0] }] } })
+          expect(imageResult?.content?.some(block => block.type === 'image')).toBe(false)
+          expect(JSON.stringify(imageResult?.content)).toContain('red.png')
+        } else {
+          expect(offloads).toEqual([])
+          expect(imageResult?.content).toEqual(expect.arrayContaining([
+            { type: 'image', source: { type: 'file', file_id: 'file-minimal-image' } },
+          ]))
+        }
+        const stored = await readdir(join(root, '.dsh', 'attachments', 'v1', 'objects'), { recursive: true })
+        expect(stored.some(file => /[a-f0-9]{64}$/u.test(file))).toBe(true)
+      }
       if (editorEnabled) {
         expect(await readFile(editorFile, 'utf8')).toBe(editorContent)
         expect(modelRequests[2]?.messages).toEqual(expect.arrayContaining([
@@ -332,7 +390,6 @@ describe('Python SDK dsh profile keyless smoke', () => {
       child.kill('SIGKILL')
       await child
       await new Promise<void>(resolve => modelServer.close(() => { resolve() }))
-      await rm(root, { recursive: true, force: true })
     }
   }, 40_000)
 
@@ -407,4 +464,130 @@ describe('Python SDK dsh profile keyless smoke', () => {
       await rm(root, { recursive: true, force: true })
     }
   }, 30_000)
+})
+
+/** Materialize a native-layout payload whose paths the query can validate without executing binaries. */
+async function officeFixture(root: string, pythonOnly: boolean) {
+  const source = join(root, 'resources', 'primary-runtime')
+  const manifest: PrimaryRuntimeManifest = {
+    desktopVersion: '1.0.0', platform: process.platform, arch: process.arch,
+    python: '3.12.14',
+    ...(pythonOnly ? {} : { node: '24.21.0', pnpm: '11.7.0' }),
+    pythonPackages: { 'python-docx': '1.2.0', 'python-pptx': '1.0.2', openpyxl: '3.1.5' },
+  }
+  const paths = workspaceDependencyPaths(source, manifest)
+  for (const file of [paths.python, paths.node, paths.pnpm]) {
+    if (file === undefined) continue
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, 'fixture interpreter')
+  }
+  await mkdir(paths.pythonPackages, { recursive: true })
+  if (paths.nodePackages !== undefined) await mkdir(paths.nodePackages, { recursive: true })
+  await writeFile(join(source, 'runtime.json'), JSON.stringify(manifest))
+  await cp(join(repoRoot, 'packages/skill/skill-office/assets'), join(root, 'resources', 'office-skills'), { recursive: true })
+  return { source, paths }
+}
+
+it.each(['unset', 'empty', 'bundled', 'full', 'python-only', 'python-only-no-cli', 'missing-assets', 'wrong-type'] as const)('composes Office resources through the SDK profile (%s)', async (mode) => {
+  const root = await mkdtemp(join(tmpdir(), 'sdk-office-'))
+  onTestFinished(() => rm(root, { recursive: true, force: true }))
+  const enabled = mode !== 'unset' && mode !== 'empty'
+  const { source, paths } = await officeFixture(root, mode.startsWith('python-only'))
+  if (mode === 'missing-assets') await rm(join(root, 'resources', 'office-skills'), { recursive: true })
+  if (mode === 'wrong-type') {
+    await rm(paths.python)
+    await mkdir(paths.python)
+  }
+  const requests: Record<string, unknown>[] = []
+  const server = createServer((request, response) => {
+    let body = ''
+    request.setEncoding('utf8').on('data', (chunk: string) => { body += chunk })
+    request.on('end', () => {
+      requests.push(JSON.parse(body) as Record<string, unknown>)
+      const query = requests.length === 1 && enabled
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(messagesResponse(query
+        ? { type: 'tool_use', id: 'workspace-dependencies', name: 'load_workspace_dependencies', input: {} }
+        : { type: 'text', text: 'done' }, query ? 'tool_use' : 'end_turn'))
+    })
+  })
+  onTestFinished(() => new Promise<void>((resolve) => { server.close(() => { resolve() }) }))
+  await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('model fixture did not bind')
+  const home = join(root, 'home')
+  const cliPatch = join(root, 'cli.patch.yml')
+  await writeFile(cliPatch, JSON.stringify(mode === 'python-only-no-cli' ? [{ id: 'skill-office', config: { assetRoot: join(root, 'resources', 'office-skills'), cli: false } }] : []))
+  const officeLaunch = resolveExampleLaunch({
+    srcBin: fileURLToPath(new URL('../../../src/bin.ts', import.meta.url)), mode: 'lib',
+    configArgs: ['--profile', 'sdk', '--patch', cliPatch],
+    env: { DSH_HOME: home, DSH_PRIMARY_RUNTIME: mode === 'unset' || mode === 'bundled' ? undefined : mode === 'empty' ? '' : source + '/',
+      DSH_BUNDLED_PRIMARY_RUNTIME: mode === 'unset' ? undefined : mode === 'bundled' || mode === 'empty' ? source : join(root, 'unused-default'),
+      DSH_PERMISSION_MODE: 'danger-full-access', DSH_TELEMETRY_DISABLED: '1',
+      DEEPSEEK_API_KEY: 'local-fixture', DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}` },
+  })
+  const child = execa(officeLaunch.command, officeLaunch.args, { cwd: repoRoot, env: officeLaunch.env, timeout: 60_000, reject: false })
+  onTestFinished(async () => { child.kill('SIGKILL'); await child })
+  let buffer = '', stderr = ''
+  const lines: string[] = []
+  child.stdout.on('data', (chunk: Buffer) => {
+    buffer += chunk.toString()
+    const parts = buffer.split('\n')
+    buffer = parts.pop() ?? ''
+    lines.push(...parts)
+  })
+  child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+  const send = (id: number, method: string, params?: object) => {
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
+    return waitForLine(lines, value => value.id === id, () => stderr)
+  }
+  expect(await send(1, 'initialize', { cwd: root, provider: 'deepseek-official', model: 'deepseek-v4-pro' })).toHaveProperty('result')
+  await send(2, 'session/prompt', { sessionId: 'office', contentBlocks: [{ type: 'text', text: 'Query workspace dependencies.' }] })
+  await waitForLine(lines, (value) => {
+    const params = value.params as { sessionId?: string; event?: { type?: string } } | undefined
+    return value.method === 'session.event' && params?.sessionId === 'office' && params.event?.type === 'turn/end'
+  }, () => stderr)
+  const names = (requests[0]!.tools as { name: string }[]).map(value => value.name)
+  expect(names.includes('load_workspace_dependencies')).toBe(enabled)
+  expect(JSON.stringify(requests[0]!.messages).includes('`office`')).toBe(enabled && mode !== 'missing-assets')
+  expect(names).not.toContain('office_tools')
+  expect(names).not.toContain('render_document')
+  for (const name of ['office-docx', 'office-pptx', 'office-xlsx']) {
+    expect(JSON.stringify(requests[0]!.messages).includes(name)).toBe(enabled && mode !== 'missing-assets')
+  }
+  if (mode === 'wrong-type') {
+    expect(requests).toHaveLength(2)
+    const messages = requests[1]!.messages as { content: { type: string; tool_use_id?: string; content?: unknown }[] }[]
+    const result = messages.flatMap(message => message.content).find(block => block.tool_use_id === 'workspace-dependencies')
+    expect(JSON.parse(JSON.stringify(result).replaceAll(JSON.stringify(paths.python).slice(1, -1), '<python>'))).toMatchInlineSnapshot(`
+      {
+        "content": [
+          {
+            "text": "Error: primary runtime: expected file at <python>",
+            "type": "text",
+          },
+        ],
+        "is_error": true,
+        "tool_use_id": "workspace-dependencies",
+        "type": "tool_result",
+      }
+    `)
+  } else if (enabled) {
+    expect(requests).toHaveLength(2)
+    const content: unknown = expect.arrayContaining([
+      expect.objectContaining({ type: 'tool_result', tool_use_id: 'workspace-dependencies',
+        content: [{ type: 'text', text: JSON.stringify(paths, undefined, 2) }] }),
+    ])
+    expect(requests[1]!.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'user', content }),
+    ]))
+  }
+  if (mode === 'python-only') expect(stderr).not.toContain('ENOENT')
+  if (mode === 'missing-assets') expect(stderr).toContain('SKILL.md')
+  await send(3, 'shutdown')
+  const exit = await child
+  expect(exit.timedOut).toBe(false)
+  expect(exit.signal).toBeUndefined()
+  expect(exit.exitCode, stderr).toBe(0)
+  await expect(readFile(join(home, 'dsh-runtimes', 'dsh-primary-runtime', 'runtime.json'))).rejects.toMatchObject({ code: 'ENOENT' })
 })

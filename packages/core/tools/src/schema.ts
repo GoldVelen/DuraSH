@@ -493,9 +493,11 @@ export interface DefineToolOptions<S extends ParameterSchemaSpec, O extends Valu
     readonly schema: O
     /** Pure Native/model rendering of one validated canonical value. */
     render(args: InferArgs<S>, value: InferValue<NoInfer<O>>): ContentBlock[]
-    /** Pure replayable presentation metadata for direct top-level calls. */
+    /** Pure replayable presentation metadata for native and nested calls. */
     presentationMeta?(args: InferArgs<S>, value: InferValue<NoInfer<O>>): JsonValue
   }
+  /** Requests deferred loading of the tool definition; see {@link @deepseek-ai/dsh-llm#ToolSchema.deferLoading}. */
+  readonly deferLoading?: true
   /** Optional positive cooperative timeout budget in milliseconds. */
   readonly timeoutMs?: number
   /** Exclude this call from an enclosing run_code elapsed deadline. */
@@ -513,6 +515,13 @@ export interface DefineToolOptions<S extends ParameterSchemaSpec, O extends Valu
    * @returns The canonical value declared by `output.schema`.
    */
   execute(args: InferArgs<S>, exec: ToolRunContext): Promise<InferValue<NoInfer<O>>>
+  /**
+   * Install execution-prepared content before result policies.
+   * @param exec - immutable execution identity and arguments.
+   * @param result - normalized outcome entering post-execute.
+   * @returns replacement content, or undefined to preserve it.
+   */
+  projectContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined
   /**
    * Optional last-mile content transform for every normalized outcome. Unlike
    * `execute`, arguments remain `unknown` because invalid-input failures also
@@ -553,6 +562,8 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends 
   // oxlint-disable-next-line typescript/unbound-method
   const userFinalizeContent = options.finalizeContent
   // oxlint-disable-next-line typescript/unbound-method
+  const userProjectContent = options.projectContent
+  // oxlint-disable-next-line typescript/unbound-method
   const userRender = options.output.render
   // oxlint-disable-next-line typescript/unbound-method
   const userPresentationMeta = options.output.presentationMeta
@@ -575,14 +586,15 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends 
     output: {
       schema: outputSchema,
       render(args: unknown, value: JsonValue): ContentBlock[] {
-        return userRender(args as InferArgs<S>, value as unknown as InferValue<NoInfer<O>>)
+        return userRender(args as InferArgs<S>, value as InferValue<NoInfer<O>>)
       },
       ...userPresentationMeta !== undefined ? {
         presentationMeta(args: unknown, value: JsonValue): JsonValue {
-          return userPresentationMeta(args as InferArgs<S>, value as unknown as InferValue<NoInfer<O>>)
+          return userPresentationMeta(args as InferArgs<S>, value as InferValue<NoInfer<O>>)
         },
       } : {},
     },
+    ...(options.deferLoading === true ? { deferLoading: options.deferLoading } : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     ...(options.runCodeDeadline !== undefined ? { runCodeDeadline: options.runCodeDeadline } : {}),
     async execute(args: unknown, exec: ToolRunContext): Promise<JsonValue> {
@@ -590,6 +602,9 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends 
       if (violations.length > 0) throw new ToolArgsError(violations)
       return userExecute(args as InferArgs<S>, exec) as Promise<JsonValue>
     },
+  }
+  if (userProjectContent) {
+    tool.projectContent = (exec, result) => userProjectContent(exec, result)
   }
   if (userFinalizeContent) {
     tool.finalizeContent = (exec, result) => userFinalizeContent(exec, result)

@@ -36,7 +36,7 @@
       "path": "../../util/home-paths"
     },
     {
-      "path": "../../util/atomic-write"
+      "path": "../../session/working-directory"
     }
   ]
 }

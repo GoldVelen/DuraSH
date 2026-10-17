@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-21-durash-upstream-integration.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-21-durash-upstream-integration.md
-2026-09-21-durash-upstream-integration.md: fd7231ff24561cd7da9f54cd8141dbbaade06760
-2026-09-21-durash-upstream-integration.zh.md: 99c9a9c661fa8c1de430b9fcb18ed46088426e7c
+/agent-note-integrate-upstream-mechanisms-while-retaining-durash-ownership:
+  en: 5899117c920c6b21
+  zh: 012c40e5b386a739
+/agent-note-integrate-upstream-mechanisms-while-retaining-durash-ownership/problem:
+  en: 6a66f809e0a32ea0
+  zh: 15bd644ab8bce81b
+/agent-note-integrate-upstream-mechanisms-while-retaining-durash-ownership/decision:
+  en: c351caf131751df7
+  zh: 3bfcc3b430b6d126
+/agent-note-integrate-upstream-mechanisms-while-retaining-durash-ownership/alternatives-considered:
+  en: 82c6ada5bb3c9f59
+  zh: 77a1cca4a9ed74b4
+/agent-note-integrate-upstream-mechanisms-while-retaining-durash-ownership/consequences:
+  en: 430f7dc9649a9fd2
+  zh: d121590c4c958ffd
+/agent-note-integrate-upstream-mechanisms-while-retaining-durash-ownership/verification:
+  en: b624b8b9cb08dbad
+  zh: 11af2a3fb9066c69
