@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-reliability` 注册直接验收证据工具 `dsh_acceptance` 和工作流交接工具 `dsh_reliability_handoff`。交接工具在进程内始终存在，但除非本会话的 composer 开关打开，否则会闭门失败。启用后，它用该会话的实施与审查路由启动一次可靠性闭环，并等待终态记录。
+`dsh-tool-reliability` 注册直接验收证据工具 `dsh_acceptance` 和工作流交接工具 `dsh_reliability_handoff`。交接工具在进程内始终存在，但除非本会话的 composer 开关打开，否则会闭门失败。启用后，它用保存的路由启动或继续该会话的可靠性闭环，并等待终态记录。这次等待不计入外层 run_code 截止时间。
 
 ## 目录
 
@@ -43,7 +43,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-交接工具要求存活的根代理、该会话上的直接人类用户消息，以及已启用的策略路由。已经取消的调用不会启动闭环；启动期间收到取消时，会在获得句柄后立即取消闭环。闭环结果终结时，调用移除取消监听器，并在返回前等待资源释放。压缩结果是闭环终态、有界摘要，以及存在时的审查裁决。
+交接工具要求存活的根代理、该会话上的直接人类用户消息，以及已启用的策略路由。已经取消的调用不会启动闭环；启动期间收到用户取消时，会在获得句柄后立即取消闭环。外层 run_code 截止时间不会取消闭环：调用继续等待，之后的交接会附上该所有者的存活或未完成记录。闭环结果终结时，调用移除取消监听器，并在返回前等待资源释放；截止时间中止且仍在等待时除外。压缩结果是闭环终态、有界摘要，以及存在时的审查裁决。
 
 本工具不发布运行时 invariant companion，因为它不拥有独立状态或事件流；策略与闭环 companion 负责它所消费的关系。
 
@@ -72,7 +72,7 @@ kind: "package-reference"
 ##### 可靠性交接指导
 
 ```markdown
-For this Session the reliability loop is enabled. This tool is the only implementer dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another model or agent. Analyze the human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only review stay on this Session and do not hand off. The call remains in the current model turn until the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain that result to the human. If the workflow is disabled, the tool fails closed.
+For this Session the reliability loop is enabled. This tool is the only implementer dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another model or agent. Analyze the human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only review stay on this Session and do not hand off. The handoff wait is not part of the enclosing run_code deadline. If that call is reported as an execution deadline, the loop was not cancelled: call dsh_reliability_handoff again with the same objective and wait. A different objective is rejected while that loop is unfinished. Do not implement the objective in this Session. The call remains in the current model turn until the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain that result to the human. If the workflow is disabled, the tool fails closed.
 ```
 
 #### Token 影响

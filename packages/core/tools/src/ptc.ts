@@ -22,6 +22,29 @@ import type {} from './types.ts'
 /** The model-facing name of the PTC mode tool. */
 export const RUN_CODE_NAME = 'run_code'
 
+const enclosingRunDeadlines = new Set<string>()
+
+/**
+ * Record that this owner's enclosing run_code hit its elapsed deadline.
+ * A nested reliability handoff reads this once when it settles, so a discarded
+ * deadline result can be collected by the next handoff instead of being disposed.
+ * @param ownerId - root session id.
+ */
+export function markEnclosingRunDeadline(ownerId: string): void {
+  enclosingRunDeadlines.add(ownerId)
+}
+
+/**
+ * Take and clear the enclosing-deadline mark for one owner.
+ * @param ownerId - root session id.
+ * @returns whether that owner's latest run_code deadline was still uncollected.
+ */
+export function consumeEnclosingRunDeadline(ownerId: string): boolean {
+  const marked = enclosingRunDeadlines.has(ownerId)
+  if (marked) enclosingRunDeadlines.delete(ownerId)
+  return marked
+}
+
 /**
  * The language-specific `run_code` schema text: the tool `description` and its
  * `code` parameter description, kept together so a language's two model-facing
@@ -402,7 +425,10 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
       // run settles for ANY reason, so an in-flight sub-dispatch is aborted
       // (its executor kills on this signal) instead of orphaned, and
       // queued-unstarted dispatches are abandoned.
+      const deadline = { pause() {}, resume() {} }
       const runController = new AbortController()
+      const programAbandon = new AbortController()
+      const excludedSignal = AbortSignal.any([exec.signal, programAbandon.signal])
       const onOuterAbort = (): void => { runController.abort(exec.signal.reason) }
       exec.signal.addEventListener('abort', onOuterAbort, { once: true })
 
@@ -530,143 +556,149 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
 
       const binding = (schema: ToolSchema): PtcBindingFunction => async (rawArgs: unknown): Promise<JsonValue> => {
         const { name } = schema
-        if (runOver()) {
-          throw new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} not dispatched`)
-        }
-        const normalized = jsonNormalizeArgs(rawArgs)
-        const n = ++dispatches
-        const subCallId = brandString<ToolCallId>(`${String(exec.callId)}:ptc:${n}`)
-        const input = {
-          callId: subCallId,
-          rootCallId: exec.rootCallId,
-          name,
-          schema,
-          arguments: normalized.dispatched,
-          ...exec.agent ? { agent: exec.agent } : {},
-          parent: exec.token,
-          signal: runController.signal,
-        }
-        type DispatchOutcome = { isError: true; message: string } | { isError: false; value: JsonValue }
-        const scheduler = registry[TOOL_RUNTIME_SCHEDULER]
-        const outcome = await new Promise<DispatchOutcome>((resolve, reject) => {
-          // Set by the dispatch stage (or start() for a pre-settled result): what commit() finalizes in submission order.
-          let parked:
-            | { kind: 'post-result' | 'final-result'; exec: ToolRunContext; result: ToolExecutionResult }
-            | undefined
-          const settle = (result: ToolExecutionResult): void => {
-            // The program gets its value NOW: the log-content listener (for
-            // example, a spill backend) must never delay the binding or occupy
-            // a dispatch slot. The event append is tracked side work; the run's
-            // settlement drains logWork so every settle event is still appended
-            // inside the open turn (shapeDispatchLog is contained, so this
-            // chain cannot reject).
-            resolve(result.isError
-              ? { isError: true, message: result.error.message }
-              : { isError: false, value: result.value })
-            const agent = exec.agent
-            if (agent === undefined) return
-            const task: Promise<void> = (async () => {
-              // The listener may replace the durable copy with a preview and
-              // locator; the program's value and model-visible result are
-              // untouched.
-              const logged = await shapeDispatchLog({
-                exec, agent, subCallId, name, isError: result.isError,
-                // The registry deep-froze this projection at result
-                // finalization; append snapshots the final copy again, so
-                // the log stays detached.
-                content: result.content,
-              })
-              agent.session.append('tool/ptc-dispatch', {
-                rootCallId: exec.rootCallId,
-                parentCallId: exec.callId,
-                subCallId,
-                name,
-                // The SIBLING parse of the dispatched value: byte-identical JSON,
-                // but a separate object — a tool mutating its args cannot desync
-                // this record from what it actually received.
-                arguments: normalized.logged,
-                isError: result.isError,
-                ...result.error?.info === undefined ? {} : { error: result.error.info },
-                content: logged,
-              })
-            })().finally(() => { logWork.delete(task) })
-            logWork.add(task)
+        const excluded = registry.get(name, exec.agent)?.runCodeDeadline === 'excluded'
+        if (excluded) deadline.pause()
+        try {
+          if (runOver()) {
+            throw new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} not dispatched`)
           }
-          pendingQueue.push({
-            flight: Promise.resolve(),
-            settled: false,
-            // Re-read per driver pass against the same agent view the SDK
-            // declared; fail-closed exclusive when undeclared/invalid.
-            classify: () => registry.executionMode(input).kind,
-            abandon: () => {
-              reject(new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} tool call abandoned`))
-            },
-            async start(): Promise<void> {
-              exec.agent?.session.append('tool/ptc-dispatch-start', {
-                rootCallId: exec.rootCallId,
-                parentCallId: exec.callId,
-                subCallId,
-                name,
-                arguments: normalized.logged,
-              })
-              // Ordered prepare runs INSIDE the driver lane: the next entry's
-              // pre-execute waits for this resolution, as under the native
-              // scheduler. Only the launched body below overlaps.
-              const prepared = await scheduler.prepare(input)
-              if (prepared.kind === 'dispatch') {
-                this.flight = scheduler.dispatch(prepared.exec).then((dispatchOutcome) => {
-                  parked = { kind: dispatchOutcome.kind, exec: prepared.exec, result: dispatchOutcome.result }
-                  this.settled = true
-                })
-                return
-              }
-              parked = { kind: prepared.kind, exec: prepared.exec, result: prepared.result }
-              this.settled = true
-            },
-            async commit(): Promise<void> {
-              /* v8 ignore next -- commit() runs only after `settled` flipped, which set parked. */
-              if (parked === undefined) return
-              const result = parked.kind === 'post-result'
-                ? await scheduler.finalize(parked.exec, parked.result)
-                : scheduler.finish(parked.exec, parked.result)
-              if (!result.isError && result.content.some(block => block.type === 'image')) {
-                exec.deferContext(createUserMessage({
+          const normalized = jsonNormalizeArgs(rawArgs)
+          const n = ++dispatches
+          const subCallId = brandString<ToolCallId>(`${String(exec.callId)}:ptc:${n}`)
+          const input = {
+            callId: subCallId,
+            rootCallId: exec.rootCallId,
+            name,
+            schema,
+            arguments: normalized.dispatched,
+            ...exec.agent ? { agent: exec.agent } : {},
+            parent: exec.token,
+            signal: excluded ? excludedSignal : runController.signal,
+          }
+          type DispatchOutcome = { isError: true; message: string } | { isError: false; value: JsonValue }
+          const scheduler = registry[TOOL_RUNTIME_SCHEDULER]
+          const outcome = await new Promise<DispatchOutcome>((resolve, reject) => {
+            // Set by the dispatch stage (or start() for a pre-settled result): what commit() finalizes in submission order.
+            let parked:
+              | { kind: 'post-result' | 'final-result'; exec: ToolRunContext; result: ToolExecutionResult }
+              | undefined
+            const settle = (result: ToolExecutionResult): void => {
+              // The program gets its value NOW: the log-content listener (for
+              // example, a spill backend) must never delay the binding or occupy
+              // a dispatch slot. The event append is tracked side work; the run's
+              // settlement drains logWork so every settle event is still appended
+              // inside the open turn (shapeDispatchLog is contained, so this
+              // chain cannot reject).
+              resolve(result.isError
+                ? { isError: true, message: result.error.message }
+                : { isError: false, value: result.value })
+              const agent = exec.agent
+              if (agent === undefined) return
+              const task: Promise<void> = (async () => {
+                // The listener may replace the durable copy with a preview and
+                // locator; the program's value and model-visible result are
+                // untouched.
+                const logged = await shapeDispatchLog({
+                  exec, agent, subCallId, name, isError: result.isError,
+                  // The registry deep-froze this projection at result
+                  // finalization; append snapshots the final copy again, so
+                  // the log stays detached.
                   content: result.content,
-                  source: { kind: 'plugin', plugin: 'tools-ptc' },
-                }))
-              }
-              for (const context of result.additionalContexts ?? []) {
-                exec.deferContext(context)
-              }
-              // The composite forwards `additionalContexts` above and
-              // `concludesTurn` here from the nested result. Only a successful
-              // nested result can carry the terminal marker
-              // (ToolExecutionFailure types it never), so a policy-converted
-              // failure cannot stop the turn through a recovering program.
-              if (result.concludesTurn) exec.concludeTurn()
-              settle(result)
-              // Backpressure on pending event-append tasks: each task retains
-              // a full result while a slow backend stores it, so the pool cap
-              // bounds their count. Beyond the cap, the
-              // ordered lane waits, so later sub-calls cannot start and
-              // pending I/O/memory cannot grow without bound.
-              while (logWork.size > maxParallel) await Promise.race(logWork)
-            },
+                })
+                agent.session.append('tool/ptc-dispatch', {
+                  rootCallId: exec.rootCallId,
+                  parentCallId: exec.callId,
+                  subCallId,
+                  name,
+                  // The SIBLING parse of the dispatched value: byte-identical JSON,
+                  // but a separate object — a tool mutating its args cannot desync
+                  // this record from what it actually received.
+                  arguments: normalized.logged,
+                  isError: result.isError,
+                  ...result.error?.info === undefined ? {} : { error: result.error.info },
+                  content: logged,
+                })
+              })().finally(() => { logWork.delete(task) })
+              logWork.add(task)
+            }
+            pendingQueue.push({
+              flight: Promise.resolve(),
+              settled: false,
+              // Re-read per driver pass against the same agent view the SDK
+              // declared; fail-closed exclusive when undeclared/invalid.
+              classify: () => registry.executionMode(input).kind,
+              abandon: () => {
+                reject(new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} tool call abandoned`))
+              },
+              async start(): Promise<void> {
+                exec.agent?.session.append('tool/ptc-dispatch-start', {
+                  rootCallId: exec.rootCallId,
+                  parentCallId: exec.callId,
+                  subCallId,
+                  name,
+                  arguments: normalized.logged,
+                })
+                // Ordered prepare runs INSIDE the driver lane: the next entry's
+                // pre-execute waits for this resolution, as under the native
+                // scheduler. Only the launched body below overlaps.
+                const prepared = await scheduler.prepare(input)
+                if (prepared.kind === 'dispatch') {
+                  this.flight = scheduler.dispatch(prepared.exec).then((dispatchOutcome) => {
+                    parked = { kind: dispatchOutcome.kind, exec: prepared.exec, result: dispatchOutcome.result }
+                    this.settled = true
+                  })
+                  return
+                }
+                parked = { kind: prepared.kind, exec: prepared.exec, result: prepared.result }
+                this.settled = true
+              },
+              async commit(): Promise<void> {
+                /* v8 ignore next -- commit() runs only after `settled` flipped, which set parked. */
+                if (parked === undefined) return
+                const result = parked.kind === 'post-result'
+                  ? await scheduler.finalize(parked.exec, parked.result)
+                  : scheduler.finish(parked.exec, parked.result)
+                if (!result.isError && result.content.some(block => block.type === 'image')) {
+                  exec.deferContext(createUserMessage({
+                    content: result.content,
+                    source: { kind: 'plugin', plugin: 'tools-ptc' },
+                  }))
+                }
+                for (const context of result.additionalContexts ?? []) {
+                  exec.deferContext(context)
+                }
+                // The composite forwards `additionalContexts` above and
+                // `concludesTurn` here from the nested result. Only a successful
+                // nested result can carry the terminal marker
+                // (ToolExecutionFailure types it never), so a policy-converted
+                // failure cannot stop the turn through a recovering program.
+                if (result.concludesTurn) exec.concludeTurn()
+                settle(result)
+                // Backpressure on pending event-append tasks: each task retains
+                // a full result while a slow backend stores it, so the pool cap
+                // bounds their count. Beyond the cap, the
+                // ordered lane waits, so later sub-calls cannot start and
+                // pending I/O/memory cannot grow without bound.
+                while (logWork.size > maxParallel) await Promise.race(logWork)
+              },
+            })
+            wakeup()
+            void drive()
           })
-          wakeup()
-          void drive()
-        })
-        // A budget expiry or outer cancel that occurs while this call was in
-        // flight already aborted the dispatch; stop the program now rather
-        // than hand it a result from a run that is over.
-        if (runOver()) {
-          throw new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} result discarded`)
+          // A budget expiry or outer cancel that occurs while this call was in
+          // flight already aborted the dispatch; stop the program now rather
+          // than hand it a result from a run that is over.
+          if (runOver()) {
+            throw new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} result discarded`)
+          }
+          // The worker turns a binding rejection into ToolCallError and adds
+          // only the binding name. Native content and internal error metadata
+          // stay outside the program-facing failure contract.
+          if (outcome.isError) throw new Error(outcome.message)
+          return outcome.value
+        } finally {
+          if (excluded) deadline.resume()
         }
-        // The worker turns a binding rejection into ToolCallError and adds
-        // only the binding name. Native content and internal error metadata
-        // stay outside the program-facing failure contract.
-        if (outcome.isError) throw new Error(outcome.message)
-        return outcome.value
       }
 
       // Null-prototype + defineProperty, mirroring the worker-side namespace
@@ -686,6 +718,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
 
       try {
         let result: PtcRunResult
+        let timedOutMessage: string | undefined
         try {
           result = await runtime.run(runtime.resolve({
             program: args.code,
@@ -694,16 +727,24 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
               functions,
               errorClass: { name: 'ToolCallError', memberNameProperty: 'toolName' },
             }],
+            deadlineControl: deadline,
             signal: runController.signal,
             ...exec.agent?.session.header.cwd !== undefined ? { cwd: exec.agent.session.header.cwd } : {},
             ...policy !== undefined ? { sandboxPolicy: policy } : {},
             ...args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {},
           }))
+          if (result.error?.kind === 'timeout') timedOutMessage = result.error.message
         } finally {
-          // Abort sub-dispatches and drain every in-flight dispatch before
-          // closing the turn (queued-unstarted ones are abandoned unlogged).
-          // Binding failures remain observable through their individual promises.
-          runController.abort('run_code settled')
+          // A deadline does not abort an excluded handoff; that call follows
+          // the turn signal, so a later user stop can still cancel it. Any other
+          // program settlement abandons the handoff. Then drain the live pool.
+          if (timedOutMessage !== undefined) {
+            if (exec.agent !== undefined) markEnclosingRunDeadline(String(exec.agent.id))
+            runController.abort(timedOutMessage)
+          } else {
+            programAbandon.abort('run_code settled')
+            runController.abort('run_code settled')
+          }
           await drainDispatches()
         }
 

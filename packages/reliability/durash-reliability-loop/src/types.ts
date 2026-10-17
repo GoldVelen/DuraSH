@@ -98,6 +98,8 @@ export interface ReviewAttempt {
 export interface ReliabilityLoopRecord {
   /** The loop's id. */
   readonly loopId: ReliabilityLoopId
+  /** Root session that owns this loop. Absent on records written before owner attachment. */
+  readonly ownerId?: string | undefined
   /** What the implementation must achieve, verbatim from the caller. */
   readonly objective: string
   /** Optional task whose execution evidence must pass before completion. */
@@ -159,6 +161,11 @@ export interface ReliabilityLoopHandle {
    * Never rejects; idempotent; safe on every path.
    */
   dispose(): Promise<void>
+  /**
+   * Release this waiter without cancelling or disposing the driver.
+   * The next handoff for the same owner can collect the still-live record.
+   */
+  park?(): Promise<void>
 }
 
 /** Optional provider/model override for one stage lane. */

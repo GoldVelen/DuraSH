@@ -8,7 +8,7 @@
 import { registerAcceptanceTool } from './acceptance.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { consumeEnclosingRunDeadline, defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ReliabilityLoopRecord } from '@durash/dsh-reliability-loop'
 import type {} from '@durash/dsh-reliability-policy'
@@ -24,15 +24,19 @@ const COMPACT_SUMMARY_CHARS = 800
 const DESCRIPTION = 'After presenting the implementation plan in the ordinary assistant response, hand the '
   + 'current objective to the enabled reliability loop and wait for one implementation stage, one '
   + 'independent review, and at most one rework pass to reach a terminal result. Supply the complete '
-  + 'objective. This is a foreground call: do not poll or repeat the same handoff while it is pending.'
+  + 'objective. This is a foreground call: do not poll or repeat the same handoff while it is pending. '
+  + 'The wait is not part of an enclosing run_code deadline. A repeated call continues the unfinished loop.'
 
 const GUIDANCE = 'For this Session the reliability loop is enabled. This tool is the only implementer '
   + 'dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another '
   + 'model or agent. Analyze the human request, present a concise implementation plan in the same Step, '
   + 'then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only '
-  + 'review stay on this Session and do not hand off. The call remains in the current model turn until '
-  + 'the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain '
-  + 'that result to the human. If the workflow is disabled, the tool fails closed.'
+  + 'review stay on this Session and do not hand off. The handoff wait is not part of the enclosing '
+  + 'run_code deadline. If that call is reported as an execution deadline, the loop was not cancelled: '
+  + 'call dsh_reliability_handoff again with the same objective and wait. A different objective is rejected '
+  + 'while that loop is unfinished. Do not implement the objective in this Session. The call remains in the current model turn until the loop is completed, '
+  + 'blocked, cancelled, or failed; after its compact result arrives, explain that result to the human. '
+  + 'If the workflow is disabled, the tool fails closed.'
 
 interface HandoffArgs {
   readonly objective: string
@@ -101,6 +105,7 @@ export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: TOOL_NAME,
     description: DESCRIPTION,
+    runCodeDeadline: 'excluded',
     parameters: {
       objective: {
         type: 'string',
@@ -137,7 +142,7 @@ export function apply(ctx: Context): void {
       const acceptanceTaskId = ctx.reliabilityLoopRuntime.acceptance.activeTask(agent.id)
       exec.signal.throwIfAborted()
       const roles = ctx.reliabilityPolicy.roleRoutes?.(agent.id)
-      const handle = await ctx.reliabilityLoopRuntime.start({
+      const handle = await ctx.reliabilityLoopRuntime.handoff({
         parent: agent,
         objective,
         ...acceptanceTaskId ? { acceptanceTaskId } : {},
@@ -145,15 +150,26 @@ export function apply(ctx: Context): void {
         review: routes.review,
         ...roles === undefined ? {} : { roles },
       })
-      const cancel = () => { handle.cancel('reliability handoff cancelled') }
+      const deadlineReason = (): boolean => exec.signal.aborted
+        && String(exec.signal.reason ?? '').includes('execution deadline reached')
+      const cancel = () => {
+        if (deadlineReason()) return
+        handle.cancel('reliability handoff cancelled')
+      }
       exec.signal.addEventListener('abort', cancel, { once: true })
+      let finished = false
       try {
         if (exec.signal.aborted) cancel()
         const record = await handle.result
+        finished = true
         return compactRecord(record)
       } finally {
         exec.signal.removeEventListener('abort', cancel)
-        await handle.dispose()
+        const lostDeadline = consumeEnclosingRunDeadline(String(agent.id)) || deadlineReason()
+        const userStopped = exec.signal.aborted && !deadlineReason()
+        if (userStopped || !finished) await handle.dispose()
+        else if (lostDeadline && handle.park !== undefined) await handle.park()
+        else await handle.dispose()
       }
     },
     presentCall: (args: HandoffArgs) => ({

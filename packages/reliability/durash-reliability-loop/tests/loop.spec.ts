@@ -563,6 +563,20 @@ describe('durash-reliability-loop', () => {
     expect(() => cold.get(ReliabilityLoopId('missing'))).toThrow(/not started yet/)
   })
 
+  it('handoff attaches to the live loop instead of starting another', async () => {
+    const { runtime, manual, parent } = await harness()
+    const handle = await runtime.handoff({ parent, objective: 'ship the widget' })
+    await awaitChild(manual, 1)
+    const attached = await runtime.handoff({ parent, objective: 'ship the widget' })
+    expect(attached.loopId).toBe(handle.loopId)
+    expect(manual.runs).toHaveLength(1)
+    expect(runtime.get(handle.loopId)?.ownerId).toBe(String(parent.id))
+    await attached.dispose()
+    expect(runtime.get(handle.loopId)?.stage).toBe('implementing')
+    await expect(runtime.handoff({ parent, objective: 'a different objective' })).rejects.toThrow('different objective')
+    await handle.dispose()
+  })
+
   it('restart recovery resumes from the first unsettled stage without re-running settled work', async () => {
     // The third durable write is the post-review transition: the crash lands
     // after the review settled but before the loop could record it.

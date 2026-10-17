@@ -95,6 +95,24 @@ export interface PtcRunRequest {
    * binding calls are the CALLER's to settle — the runtime only stops asking.
    */
   signal?: AbortSignal
+  /**
+   * Mutable elapsed-deadline control. When present, a supporting runtime
+   * installs `pause` and `resume` before accepting binding calls. Pausing
+   * stops the elapsed budget; resume continues from the remainder. A runtime
+   * that ignores the control leaves the caller's no-op methods in place.
+   */
+  deadlineControl?: PtcDeadlineControl
+}
+
+/**
+ * Caller-owned handle a runtime binds to its elapsed deadline.
+ * `pause` and `resume` are replaced for the duration of one run.
+ */
+export interface PtcDeadlineControl {
+  /** Stop charging the elapsed budget. Overlapping pauses nest. */
+  pause(): void
+  /** End one pause. The budget resumes when every pause has ended. */
+  resume(): void
 }
 
 /** Fully resolved execution inputs; run never supplies a missing directory or deadline choice. */

@@ -52,6 +52,7 @@ export const reviewAttempt = z.object({
 /** Durable shape of one loop record (see {@link ReliabilityLoopRecord}). */
 export const reliabilityLoopRecord = z.object({
   loopId,
+  ownerId: z.string().optional(),
   objective: z.string(),
   acceptanceTaskId: z.string().transform(value => value as AcceptanceTaskId).optional(),
   diagnostic: z.string().optional(),

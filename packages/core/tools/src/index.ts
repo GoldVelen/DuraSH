@@ -23,6 +23,7 @@ import type { ToolCallView, ToolResultView } from './presentation.ts'
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from './json-schema.ts'
 import type { JsonSchemaNode } from './json-schema.ts'
 import { createRunCodeTool, RUN_CODE_NAME } from './ptc.ts'
+export { consumeEnclosingRunDeadline, markEnclosingRunDeadline } from './ptc.ts'
 import type { PtcSdkLanguage } from './ptc.ts'
 import { renderToolsSdk } from './ts-types.ts'
 import type { ToolSdkSchema } from './ts-types.ts'
@@ -247,6 +248,13 @@ export interface ToolDefinition extends ToolSchema {
    * cooperative implementation that can reach quiescence when the signal aborts.
    */
   timeoutMs?: number
+  /**
+   * Whether an enclosing run_code elapsed deadline bounds this call.
+   * `excluded` means the wait is not charged and a deadline abort is not a
+   * user cancellation. Omit to stay inside the caller deadline. Never
+   * model-visible.
+   */
+  runCodeDeadline?: 'excluded'
   /**
    * Pure synchronous classifier for overlap with sibling tool calls. Only
    * `true` opts in; omission, exceptions, non-`true` returns, and invalid
