@@ -190,6 +190,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Its preset id, if bound.',
       },
       {
+        signature: 'async serviceForPreset<K extends string & keyof Context>(id: string | undefined, name: K): Promise<Context[K] | undefined>',
+        description: 'Read a service supplied inside a named preset\'s composition without an Agent.',
+        parameters: [{ name: 'id', description: 'Preset identity, or the default preset when omitted.' }, { name: 'name', description: 'Cordis service name.' }],
+        returns: 'The service, or undefined when the preset publishes none under that name.',
+      },
+      {
         signature: 'serviceFor<K extends string & keyof Context>(agent: { ctx: Context }, name: K): Context[K] | undefined',
         description: 'Read a service supplied inside an Agent\'s isolated preset group.',
         parameters: [{ name: 'agent', description: 'Agent whose composition is queried.' }, { name: 'name', description: 'Cordis service name.' }],

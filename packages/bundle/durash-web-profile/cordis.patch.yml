@@ -6,8 +6,8 @@
 # composer workflow switch, its Host policy, and the gated handoff tool are
 # the model-facing consumer of that loop. The web app ships the workflow
 # engine row disabled; the durash product profile re-enables the engine (not
-# the model-facing workflow/ralph tools) because the reliability loop drives
-# its runs.
+# the model-facing workflow tool) because the reliability loop drives its
+# runs.
 
 - insert:
     - id: ui-settings-global-rules

@@ -26,7 +26,10 @@ describe('DuraSH Web profile overlay', () => {
     expect(runtime).toMatchObject({ name: '@deepseek-ai/dsh-ptc-runtime-node' })
     expect(runtime?.disabled).not.toBe(true)
     expect(entries.find(entry => entry.id === 'tool-workflow')?.disabled).toBe(true)
-    expect(entries.find(entry => entry.id === 'tool-ralph')?.disabled).toBe(true)
+    // The ralph tool ships only through the optional
+    // `@deepseek-ai/dsh-experimental-ralph-bundle`, so the product profile
+    // must not add it back.
+    expect(entries.some(entry => entry.name === '@deepseek-ai/dsh-tool-ralph')).toBe(false)
   })
 
   it('adds the product-owned brand, reliability engine, workflow switch, and re-enables the workflow engine', () => {

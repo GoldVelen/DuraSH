@@ -111,9 +111,11 @@
       disabled: !!js "!ctx.get('profileContext')"
 
     # Credential sources: managed `$DSH_HOME/.credentials.yaml`, then inherited
-    # environment, project `.env`, and user `.env` fallbacks.
-    # Adapters resolve references per request; the Models page writes only the
-    # managed document, which is never materialized into the process environment.
+    # environment, project `.env`, and user `.env` fallbacks, plus interactive
+    # sign-in (OAuth device codes, browser grants) for the llm-pi-ai flows. Inert
+    # until a surface starts an attempt; without it the Models page has no login
+    # to offer. Adapters resolve references per request, and the Models page writes
+    # only the managed document, never the process environment.
     - id: authorization
       name: '@deepseek-ai/dsh-authorization'
 
@@ -124,12 +126,6 @@
 
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
-
-    # Interactive credential sign-in (OAuth device codes, browser grants): the
-    # seam the llm-pi-ai flows register into. Inert until a surface starts an
-    # attempt; without it the web Models page has no login to offer.
-    - id: authorization
-      name: '@deepseek-ai/dsh-authorization'
 
     # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
     # models in the picker) until a `llm-pi-ai:` settings section supplies provider

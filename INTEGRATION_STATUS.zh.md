@@ -29,6 +29,17 @@
 | DuraSH Desktop Harness | 支持本地 macOS 打包 | 应用包含产品 bundle、复用现有 Harness 数据，并独立保存 Desktop 可执行包；参见[本地打包](apps/desktop/README.zh.md#local-durash-macos-application) |
 | DuraSH npm 发行版 | 未准备 | 源码运行已支持；DuraSH 自有包已标记为 private 并从继承的 DSH release family 排除，因此既不宣传 npm 包，也不会被意外发布 |
 
+## 合并覆盖缺口
+
+`dsh-v0.2.1-rc.2` 合并移除了产品此前依赖的上游包。此处记录由此产生的变化，而不是默默吸收：
+
+- **运行时模型目录按配置写入刷新。** 上游删除了 `@deepseek-ai/dsh-settings-file`，把 `settings.yaml` 的处理移入 `@deepseek-ai/dsh-settings`，因此 `llm-pi-ai` 的同步器不再观测到某个 provider。现在它按根 context 各保留一份目录状态，在每次 `internal/config` 写入时重新同步，并且只在事实发生变化时发布 provider、model 与 source；被注册表拒绝的单条路由会被单独丢弃，而不是撤下整个集合。
+- **预设作用域的全局规则走注册表。** 上游用 `agent-preset-registry` 取代了 `agent-presets`；settings 控制器现在通过 `agentPresets.serviceForPreset` 解析随包发布的 Host `AGENTS.md`，因为随包发布的 Web profile 会关闭根指令行并把它挂载到每个预设内部。
+- **Invariant 伴随包已消失。** 上游删除了 `invariants` 服务、`sdk-minimal` 挂载以及每个包的 `./invariant` 伴随入口。可靠性相关的包现在依赖持久写入路径上的 `assertReliabilityLoopRecord`，而不再依赖独立观测者。
+- **`dsh web --lan` 被上游选项取代。** 上游启动器提供 `--public-url` 与 `--tls-cert`/`--tls-key`；DuraSH 独有的 `--lan` 自签名 LAN 路径及其证书辅助模块随启动器重写一并移除，因此 LAN HTTPS 现在需要显式证书对。
+- **Agent 预设改为声明式。** `agent-presets` 包及其预设作用域的服务查找已移除，针对全局规则的预设隔离测试也随之移除。
+- **ralph 工具改为按需启用。** 上游把 `tool-ralph` 及其隔离的 workflow 引擎移入 `@deepseek-ai/dsh-experimental-ralph-bundle`，因此随包发布的 base、web 与 DuraSH profile 都不再包含 `tool-ralph` 行；产品 profile 仍保持面向模型的 `tool-workflow` 行关闭，只重新启用 workflow 引擎。
+
 ## 当前上游漂移
 
 主源码版本与 vendored snapshot 记录在 [`UPSTREAM_SOURCES.json`](UPSTREAM_SOURCES.json) 中。定时审计报告相对于这些记录的变化。Vendored 包更新必须遵循 [`vendor/README.md`](vendor/README.md) 中的兼容性流程；存在更新的公共包发行版，不代表其源码已经完成整合。
