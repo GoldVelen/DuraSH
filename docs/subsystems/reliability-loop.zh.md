@@ -78,11 +78,13 @@ interface ReviewAttempt {
  * slots name `| undefined` explicitly because the zod durable-boundary schema
  * produces that shape and the repo compiles with `exactOptionalPropertyTypes`.
  * Stage semantics (which attempt slots must be settled for which stage) are
- * owned by the runtime and asserted by the `./invariant` companion.
+ * owned by the runtime and asserted by `assertReliabilityLoopRecord` on every write.
  */
 interface ReliabilityLoopRecord {
   /** The loop's id. */
   readonly loopId: ReliabilityLoopId
+  /** Root session that owns this loop. Absent on records written before owner attachment. */
+  readonly ownerId?: string | undefined
   /** What the implementation must achieve, verbatim from the caller. */
   readonly objective: string
   /** Optional task whose execution evidence must pass before completion. */
@@ -164,6 +166,11 @@ interface ReliabilityLoopHandle {
    * Never rejects; idempotent; safe on every path.
    */
   dispose(): Promise<void>
+  /**
+   * Release this waiter without cancelling or disposing the driver.
+   * The next handoff for the same owner can collect the still-live record.
+   */
+  park?(): Promise<void>
 }
 ```
 
@@ -312,6 +319,15 @@ The reliability-loop runtime. One live driver owns one loop; the runtime enforce
 async start(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>
 
 /**
+ * Continue this parent's unfinished loop, or start one.
+ * A live driver is attached. An unsettled durable record resumes from its
+ * current stage. Otherwise a new loop is written and driven.
+ * @param request - the parent agent, objective, and optional routes.
+ * @returns a handle for one waiter. The last waiter releases the driver.
+ */
+async handoff(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>
+
+/**
  * Resume one interrupted loop after a restart: drive the state machine from
  * its record's current stage. Settled attempts are never re-run; the first
  * unsettled stage re-runs exactly once because the driver owns the loop
@@ -381,6 +397,13 @@ workflowEnabled(sessionId: SessionId): boolean
  * @returns both lanes, or `undefined` when the policy is off or incomplete.
  */
 enabledRoutes(sessionId: SessionId): { readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined
+
+/**
+ * Configured planning, frontend, backend, and testing routes.
+ * @param sessionId - exact Session identity.
+ * @returns the roles that have a selector, or undefined when none are set.
+ */
+roleRoutes(sessionId: SessionId): { readonly planning?: ReliabilityLaneRoute readonly frontend?: ReliabilityLaneRoute readonly backend?: ReliabilityLaneRoute readonly testing?: ReliabilityLaneRoute } | undefined
 
 /**
  * Read the Session policy and the current LLM catalog.

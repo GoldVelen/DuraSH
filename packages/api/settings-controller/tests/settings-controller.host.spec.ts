@@ -19,12 +19,11 @@ describe('settings Remote', () => {
       { method: 'describe', invocation: { kind: 'direct' } },
       { method: 'readGlobalRules', invocation: { kind: 'direct' } },
       { method: 'saveGlobalRules', invocation: { kind: 'direct' } },
-      { method: 'canOpenAgentPresetDirectory', invocation: { kind: 'direct' } },
       { method: 'update', invocation: { kind: 'direct' } },
       { method: 'replace', invocation: { kind: 'direct' } },
       { method: 'mutate', invocation: { kind: 'direct' } },
       { method: 'openSettingsDocument', invocation: { kind: 'direct' } },
-      { method: 'openAgentPresetDirectory', invocation: { kind: 'direct' } }    ])
+    ])
     expect(ctx.get('credentialsController')).toBeDefined()
   })
 

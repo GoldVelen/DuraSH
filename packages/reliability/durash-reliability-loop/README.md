@@ -76,7 +76,7 @@ This section explains how the state machine, durability, and lifecycle are split
 
 ### Design concept
 
-One loop is one record: the `loops` table of the `reliability-loop` domain holds the whole state machine, so every transition is a single-record durable write and the record is the only thing recovery reads. The `workflow/*` events stay observe-only; the driver derives transitions from the run handle it owns (`run.result`), so a stage has exactly one live fact source. The record's stage and its settled attempt slots are asserted by the `./invariant` companion at every read and write site.
+One loop is one record: the `loops` table of the `reliability-loop` domain holds the whole state machine, so every transition is a single-record durable write and the record is the only thing recovery reads. The `workflow/*` events stay observe-only; the driver derives transitions from the run handle it owns (`run.result`), so a stage has exactly one live fact source. The record's stage and its settled attempt slots are asserted by `assertReliabilityLoopRecord` on every write and re-checked on the recovery read.
 
 ### Source map
 
@@ -87,7 +87,7 @@ One loop is one record: the `loops` table of the `reliability-loop` domain holds
 | [`src/spec.ts`](src/spec.ts) | The `defineDomain` declaration and zod schemas |
 | [`src/scripts.ts`](src/scripts.ts) | Fixed stage scripts, prompt builders, report validation |
 | [`src/driver.ts`](src/driver.ts) | The per-loop owner: stage machine, run lifecycle, cancel, quiescence |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion: stage/slot coherence |
+| [`src/checks.ts`](src/checks.ts) | Stage/slot coherence asserted on every durable write |
 
 ### Lifecycle and ownership
 

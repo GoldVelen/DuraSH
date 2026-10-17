@@ -10,6 +10,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import type { GlobalRules } from '@deepseek-ai/dsh-agent-instructions'
 import type { GlobalRulesDocument } from '@deepseek-ai/dsh-agent-instructions/types'
+// Type-only: resolves the `agentPresets` Context augmentation this controller reads.
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import {
   openNativeTextFile,
 } from '@deepseek-ai/dsh-native-command'
@@ -227,7 +229,13 @@ export class SettingsController extends TypertRemoteService {
   }
 
   private async globalRulesProvider(): Promise<GlobalRules | undefined> {
-    return this.ctx.get('globalRules')
+    const global = this.ctx.get('globalRules')
+    if (global !== undefined) return global
+    // A shipped Web profile disables the root instructions row; each preset mounts its own
+    // isolated group, so the standing composition is the only place that service exists.
+    const presets = this.ctx.get('agentPresets')
+    if (presets === undefined) return undefined
+    return await presets.serviceForPreset(undefined, 'globalRules')
   }
 
   private async write(

@@ -4,6 +4,10 @@ English | [中文](README.zh.md)
 
 The `dsh` command is the sole supported Node application launcher: profiles are ordered stacks of plugin-bundle patch layers under the user's own overrides. SDK and ACP are profiles, not separate public bins. The Python runtime wheel packages this same command; the SDK defaults to `sdk`, and the minimal example selects `sdk-minimal`. [`src/args.ts`](src/args.ts) owns the command grammar, and [`src/bin.ts`](src/bin.ts) loads only the selected runner. Invalid commands, options from another mode, and fatal configuration or boot failures exit nonzero.
 
+## DuraSH source checkouts
+
+A DuraSH source checkout additionally supplies the private `durash` profile: `base` + `web-app` + `@durash/dsh-web-profile`, selected automatically by the repository's own build and start scripts. A source-tree `web` launch refuses DuraSH client artifacts, because that profile is initialized from the shipped template and the private bundle is not installable from the public registry ([source-build-profile.ts](src/source-build-profile.ts)).
+
 ## Entry modes
 
 | Command | Purpose |

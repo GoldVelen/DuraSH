@@ -549,6 +549,39 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'authorizationController',
+    summary: 'Host service backing the generated `ctx.remote.authorization` namespace.',
+    description: 'Host service backing the generated `ctx.remote.authorization` namespace. It carries the wire obligations the authorization seam itself does not: the long-running attempt is started without a hanging request, its notices and prompts are projected for polling, and every refusal maps to a stable code. Prompts travel one way per question — a `secret` answer is typed into `respond` and never read back.',
+    methods: [
+      {
+        signature: '@Remote describe(): Promise<AuthorizationDescribeValue>',
+        description: 'Snapshot every registered flow and every tracked attempt.',
+        parameters: [],
+        returns: 'the flows a sign-in surface offers, and the attempts it may be watching.',
+        throws: ['RemoteError when no authorization service is mounted.'],
+      },
+      {
+        signature: '@Remote begin(request: { key: string; method?: string }): Promise<{ started: true }>',
+        description: 'Start one authorization attempt without waiting for it to finish.',
+        parameters: [{ name: 'request', description: 'the credential key whose flow to run, and optionally the method; defaults to the flow\'s first.' }],
+        returns: 'confirmation that the attempt started; poll `describe` for its progress.',
+        throws: ['RemoteError `gateway/bad-request` for a malformed payload, `authorization/not-found` when no flow claims the key, or `authorization/conflict` when an attempt is already running.'],
+      },
+      {
+        signature: '@Remote respond(request: { key: string; promptId: string; value?: string; declined?: true }): Promise<void>',
+        description: 'Answer the pending prompt of one running attempt.',
+        parameters: [{ name: 'request', description: 'the key, the prompt id from `describe`, and either the answer or a decline.' }],
+        throws: ['RemoteError `gateway/bad-request` for a malformed payload or a stale prompt id, or `authorization/not-found` when no running attempt exists.'],
+      },
+      {
+        signature: '@Remote cancel(request: { key: string }): Promise<void>',
+        description: 'Withdraw the running attempt for a key, if any.',
+        parameters: [{ name: 'request', description: 'the key whose attempt should stop.' }],
+        throws: ['RemoteError `gateway/bad-request` for a malformed payload.'],
+      },
+    ],
+  },
+  {
     key: 'browserUse',
     summary: 'Owns one optional provider registration in the shared browser-use service.',
     description: 'Owns one optional provider registration in the shared browser-use service.',
@@ -1202,6 +1235,27 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Atomically edit literal text. When supplied, the version guard is checked before matching so stale content reports `FS_STALE_VERSION`; omission edits the current content without a freshness precondition.',
         parameters: [{ name: 'target', description: 'the resolved target to edit.' }, { name: 'edit', description: 'the literal search/replace request.' }, { name: 'expected', description: 'the version guard; omit for an unconditional edit.' }, { name: 'signal', description: 'aborts before atomic publication takes effect.' }, { name: 'sandboxPolicy', description: 'the per-call mode and workspace root this edit runs under; a sandboxing backend fences the edit by it, the bare backend ignores it. Omit to leave the backend its own default.' }],
         returns: 'the outcome, including the version the edit produced.',
+      },
+    ],
+  },
+  {
+    key: 'globalRules',
+    summary: 'Atomic, revision-checked editor; it never stores a second copy of rule text.',
+    description: 'Atomic, revision-checked editor; it never stores a second copy of rule text.',
+    methods: [
+      {
+        signature: 'async read(): Promise<GlobalRulesDocument>',
+        description: 'Read the configured file without creating it; missing files have empty content.',
+        parameters: [],
+        returns: 'exact text, file revision, and current loading limits.',
+        throws: ['Error when the file cannot be read or is not valid UTF-8.'],
+      },
+      {
+        signature: 'async save(content: string, expectedRevision: string): Promise<GlobalRulesDocument>',
+        description: 'Replace exact text after checking the caller\'s revision before and after staging under the writer lock. Retains permission bits independently of umask; symlink targets are readable but cannot be replaced.',
+        parameters: [{ name: 'content', description: 'complete next UTF-8 text, without normalization.' }, { name: 'expectedRevision', description: 'fingerprint returned by the caller\'s last read.' }],
+        returns: 'the committed file state; this is not a model-admission receipt.',
+        throws: ['GlobalRulesConflict when the file changed, or Error on permission and storage failures.'],
       },
     ],
   },
@@ -1921,6 +1975,112 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Execute resolved inputs; program outcomes resolve as result fields.',
         parameters: [{ name: 'spec', description: 'directory, deadline, program, bindings, cancellation and supported policy.' }],
         returns: 'Captured output and the execution outcome.',
+      },
+    ],
+  },
+  {
+    key: 'reliabilityLoopRuntime',
+    summary: 'The reliability-loop runtime.',
+    description: 'The reliability-loop runtime. One live driver owns one loop; the runtime enforces that single ownership and cancels every live loop to quiescence before its domain closes at teardown.',
+    methods: [
+      {
+        signature: 'async start(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>',
+        description: 'Start one loop: write its durable record first, then drive the first stage. The caller owns the returned handle and defines its own interval over `result`.',
+        parameters: [{ name: 'request', description: 'the parent agent and the bounded objective.' }],
+        returns: 'the live loop handle.',
+        throws: ['when the objective is empty or over the handoff bound.'],
+      },
+      {
+        signature: 'async handoff(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle>',
+        description: 'Continue this parent\'s unfinished loop, or start one. A live driver is attached. An unsettled durable record resumes from its current stage. Otherwise a new loop is written and driven.',
+        parameters: [{ name: 'request', description: 'the parent agent, objective, and optional routes.' }],
+        returns: 'a handle for one waiter. The last waiter releases the driver.',
+      },
+      {
+        signature: 'resume(loopId: ReliabilityLoopId, parent: Agent): ReliabilityLoopHandle',
+        description: 'Resume one interrupted loop after a restart: drive the state machine from its record\'s current stage. Settled attempts are never re-run; the first unsettled stage re-runs exactly once because the driver owns the loop exclusively.',
+        parameters: [{ name: 'loopId', description: 'the interrupted loop\'s id.' }, { name: 'parent', description: 'the agent on whose behalf the resumed stages run.' }],
+        returns: 'the live loop handle.',
+        throws: ['when the loop is unknown, already settled, or already owned by a live driver.'],
+      },
+      {
+        signature: 'list(): ReliabilityLoopRecord[]',
+        description: 'Every durable loop record, in storage order.',
+        parameters: [],
+        returns: 'the record snapshot.',
+      },
+      {
+        signature: 'get(loopId: ReliabilityLoopId): ReliabilityLoopRecord | undefined',
+        description: 'Read one loop\'s durable record.',
+        parameters: [{ name: 'loopId', description: 'the loop\'s id.' }],
+        returns: 'the record, or `undefined` when unknown.',
+      },
+      {
+        signature: 'async acceptanceView(sessionId: string): Promise<AcceptanceView | null>',
+        description: 'Read current host acceptance without starting a model.',
+        parameters: [{ name: 'sessionId', description: 'root session identifier.' }],
+        returns: 'current acceptance status, or null for an undeclared task.',
+      },
+      {
+        signature: 'registerTargetAdapter(name: string, probe: TargetProbe): () => void',
+        description: 'Register a trusted target probe; model tools cannot register adapters.',
+        parameters: [{ name: 'name', description: 'deployment-owned adapter identifier.' }, { name: 'probe', description: 'observer using the task execution world.' }],
+        returns: 'disposer restoring the registry.',
+      },
+      {
+        signature: 'evidenceIO(session?: Session): EvidenceIO',
+        description: 'Create policy-aware command and file capabilities in the current execution world.',
+        parameters: [{ name: 'session', description: 'calling session; absent probes use read-only policy.' }],
+        returns: 'capabilities; missing tools remain explicit failures.',
+      },
+    ],
+  },
+  {
+    key: 'reliabilityPolicy',
+    summary: 'Session-keyed reliability policy (`ctx.reliabilityPolicy`).',
+    description: 'Session-keyed reliability policy (`ctx.reliabilityPolicy`). Catalog reads go through `ctx.llm`; the durable row never stores the directory.',
+    methods: [
+      {
+        signature: 'workflowEnabled(sessionId: SessionId): boolean',
+        description: 'Whether the reliability handoff tool is enabled for this Session.',
+        parameters: [{ name: 'sessionId', description: 'exact Session identity.' }],
+        returns: 'the persisted enablement flag, false when no row exists.',
+      },
+      {
+        signature: 'enabledRoutes(sessionId: SessionId): { readonly implementation: ReliabilityLaneRoute readonly review: ReliabilityLaneRoute } | undefined',
+        description: 'Parsed implementation and review routes when the policy is enabled.',
+        parameters: [{ name: 'sessionId', description: 'exact Session identity.' }],
+        returns: 'both lanes, or `undefined` when the policy is off or incomplete.',
+      },
+      {
+        signature: 'roleRoutes(sessionId: SessionId): { readonly planning?: ReliabilityLaneRoute readonly frontend?: ReliabilityLaneRoute readonly backend?: ReliabilityLaneRoute readonly testing?: ReliabilityLaneRoute } | undefined',
+        description: 'Configured planning, frontend, backend, and testing routes.',
+        parameters: [{ name: 'sessionId', description: 'exact Session identity.' }],
+        returns: 'the roles that have a selector, or undefined when none are set.',
+      },
+      {
+        signature: '@Remote(\'policy\') policy(request: ReliabilityPolicyRequest): Promise<ReliabilityPolicySnapshot>',
+        description: 'Read the Session policy and the current LLM catalog.',
+        parameters: [{ name: 'request', description: 'Session identity.' }],
+        returns: 'the snapshot the composer switch renders.',
+      },
+      {
+        signature: '@Remote(\'acceptance\') acceptance(request: ReliabilityPolicyRequest): Promise<AcceptanceView | null>',
+        description: 'Read current task acceptance without starting a workflow or model call.',
+        parameters: [{ name: 'request', description: 'Session whose recorded checks to inspect.' }],
+        returns: 'the evaluated task, or null when the runtime or task is absent.',
+      },
+      {
+        signature: '@Remote(\'ensurePolicy\') ensurePolicy(request: ReliabilityPolicyRequest): Promise<ReliabilityPolicySnapshot>',
+        description: 'Ensure a durable row exists, then return it with the current catalog.',
+        parameters: [{ name: 'request', description: 'Session identity.' }],
+        returns: 'the snapshot, creating a disabled row when none exists.',
+      },
+      {
+        signature: '@Remote(\'configure\') configure(request: ReliabilityPolicyConfigureRequest): Promise<ReliabilityPolicySnapshot>',
+        description: 'Replace the Session policy. Enabling requires both lanes to name catalog models; a missing route cannot stay enabled.',
+        parameters: [{ name: 'request', description: 'complete replacement.' }],
+        returns: 'the committed snapshot.',
       },
     ],
   },
@@ -2693,6 +2853,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
         returns: 'provider writability, local-document presence, and one view per namespace.',
         throws: ['RemoteError when no settings provider is mounted.'],
+      },
+      {
+        signature: '@Remote async readGlobalRules(): Promise<GlobalRulesDocument | null>',
+        description: 'Read the sole global instruction file on this Host.',
+        parameters: [],
+        returns: 'current text and revision, or null when instruction loading is not mounted.',
+        throws: ['RemoteError when the file cannot be read.'],
+      },
+      {
+        signature: '@Remote async saveGlobalRules(content: string, expectedRevision: string): Promise<GlobalRulesDocument>',
+        description: 'Save exact global rule text against the editor\'s last observed file revision.',
+        parameters: [{ name: 'content', description: 'complete next text.' }, { name: 'expectedRevision', description: 'revision returned by readGlobalRules.' }],
+        returns: 'committed file state, without claiming model admission.',
+        throws: ['RemoteError when loading is absent, a concurrent edit conflicts, or storage refuses the write.'],
       },
       {
         signature: '@Remote update( ns: string, patch: Record<string, JsonValue>, expectedRevision: number | undefined, ): Promise<SettingsNamespaceView>',
@@ -4086,6 +4260,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'payload', description: '.signal - the current turn\'s explicit abort signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
   },
   {
+    name: 'agent/request-context',
+    mode: 'waterfall',
+    signature: '\'agent/request-context\'(this: Scoped<Agent>, payload: { agent: Agent; messages: readonly UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<readonly UserMessage[]>): Promise<readonly UserMessage[]>',
+    summary: 'Reconcile plugin-owned context after route preparation, immediately before synchronous prompt admission and request freezing.',
+    description: 'Reconcile plugin-owned context after route preparation, immediately before synchronous prompt admission and request freezing. Call `next()` to retain accepted input; replacements of retained context must be durable Session surface operations. Direct user input must remain unchanged.',
+    parameters: [{ name: 'payload', description: '.signal - the current turn cancellation signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
+  },
+  {
     name: 'agent/request-error',
     mode: 'waterfall',
     signature: '\'agent/request-error\'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; provider: string; failure: LlmFailure; retryPolicy: ResolvedRetryPolicy | undefined; signal: AbortSignal }, next: () => Promise<RequestErrorAction>): Promise<RequestErrorAction>',
@@ -4324,6 +4506,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Single-slot decision for the next FileSystem.writeText.',
     description: 'Single-slot decision for the next FileSystem.writeText. Calling `next()` yields the bare provider\'s unconditional write; the first listener that returns an intent owns the decision rather than composing with peers.',
     parameters: [{ name: 'target', description: 'the resolved target about to be written.' }, { name: 'actor', description: 'the opaque tool-execution context the decider keys off.' }],
+  },
+  {
+    name: 'global-rules/saved',
+    mode: 'emit',
+    signature: '\'global-rules/saved\'(path: string): void',
+    summary: 'A Host editor committed changed global rule text.',
+    description: 'A Host editor committed changed global rule text. Carries no rule body.',
+    parameters: [{ name: 'path', description: 'absolute configured rule file path.' }],
   },
   {
     name: 'goal/activation-changed',
@@ -4658,6 +4848,10 @@ export const EVENT_API: readonly EventApiEntry[] = [
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
+    name: 'AcceptanceTaskId',
+    declaration: 'export type AcceptanceTaskId = Branded<\'AcceptanceTaskId\'>;',
+  },
+  {
     name: 'AccountBonusBatch',
     declaration: 'export interface AccountBonusBatch {\n    readonly accountId: AccountUserId;\n    readonly bonuses: readonly AccountBonusNotification[];\n}',
   },
@@ -4898,12 +5092,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AuthorizationAttemptView',
+    declaration: 'export interface AuthorizationAttemptView {\n    readonly key: string;\n    readonly status: \'running\' | \'authorized\' | \'cancelled\' | \'failed\';\n    readonly notices: readonly {\n        readonly message: string;\n        readonly url?: string;\n        readonly code?: string;\n    }[];\n    readonly pendingPrompt?: AuthorizationPromptView;\n    readonly message?: string;\n}',
+  },
+  {
+    name: 'AuthorizationDescribeValue',
+    declaration: 'export interface AuthorizationDescribeValue {\n    readonly flows: readonly AuthorizationFlowView[];\n    readonly attempts: readonly AuthorizationAttemptView[];\n}',
+  },
+  {
     name: 'AuthorizationEntry',
-    declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
+    declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: AuthorizationMethods;\n    inFlight: boolean;\n}',
   },
   {
     name: 'AuthorizationFlow',
-    declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: readonly [\n        AuthorizationMethod,\n        ...AuthorizationMethod[]\n    ];\n    run(session: AuthorizationSession): Promise<void>;\n}',
+    declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: AuthorizationMethods;\n    run(session: AuthorizationSession): Promise<void>;\n}',
+  },
+  {
+    name: 'AuthorizationFlowView',
+    declaration: 'export interface AuthorizationFlowView {\n    readonly key: string;\n    readonly label: string;\n    readonly methods: readonly {\n        readonly id: string;\n        readonly label: string;\n    }[];\n    readonly inFlight: boolean;\n}',
   },
   {
     name: 'AuthorizationInteraction',
@@ -4912,6 +5118,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AuthorizationMethod',
     declaration: 'export interface AuthorizationMethod {\n    id: string;\n    label: string;\n}',
+  },
+  {
+    name: 'AuthorizationMethods',
+    declaration: 'export type AuthorizationMethods = readonly [\n    AuthorizationMethod,\n    ...AuthorizationMethod[]\n];',
   },
   {
     name: 'AuthorizationNotice',
@@ -4928,6 +5138,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AuthorizationPromptOption',
     declaration: 'export interface AuthorizationPromptOption {\n    id: string;\n    label: string;\n    description?: string;\n}',
+  },
+  {
+    name: 'AuthorizationPromptView',
+    declaration: 'export interface AuthorizationPromptView {\n    readonly id: string;\n    readonly kind: \'text\' | \'secret\' | \'select\';\n    readonly message: string;\n    readonly options?: readonly {\n        readonly id: string;\n        readonly label: string;\n        readonly description?: string;\n    }[];\n    readonly placeholder?: string;\n}',
   },
   {
     name: 'AuthorizationRequest',
@@ -5474,6 +5688,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
   },
   {
+    name: 'EvidenceIO',
+    declaration: 'export interface EvidenceIO {\n    run(command: string, cwd: string, signal: AbortSignal): Promise<{\n        exitCode: number | null;\n        stdout: string;\n        stderr: string;\n        incomplete: boolean;\n        raw?: unknown;\n    }>;\n    read(path: string, signal: AbortSignal): Promise<Uint8Array>;\n}',
+  },
+  {
     name: 'FeedbackCategory',
     declaration: 'export type FeedbackCategory = \'task-result\' | \'instruction-following\' | \'product-interaction\' | \'service-stability\' | \'resource-cost\' | \'security-privacy-permission\' | \'other\';',
   },
@@ -5578,6 +5796,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GenericResultView {\n    card: \'generic\';\n    title?: string;\n    content?: ContentBlock[];\n}',
   },
   {
+    name: 'GlobalRulesDocument',
+    declaration: 'export interface GlobalRulesDocument {\n    readonly path: string;\n    readonly content: string;\n    readonly revision: string;\n    readonly exists: boolean;\n    readonly loadingEnabled: boolean;\n    readonly maxBytes: number;\n    readonly maxSourceBytes: number;\n}',
+  },
+  {
     name: 'GoalActivation',
     declaration: 'export type GoalActivation = \'armed\' | \'disarmed\';',
   },
@@ -5676,6 +5898,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ImageVariantId',
     declaration: 'export type ImageVariantId = Branded<\'ImageVariantId\'>;',
+  },
+  {
+    name: 'ImplementAttempt',
+    declaration: 'export interface ImplementAttempt {\n    readonly round: LoopRound;\n    readonly summary: string;\n    readonly agentsStarted: number;\n}',
   },
   {
     name: 'IncompatiblePlugin',
@@ -5919,11 +6145,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmConfigurableProvider',
-    declaration: 'export interface LlmConfigurableProvider {\n    provider: string;\n    displayName: string;\n    settingsNs: string;\n    settingsPath: readonly string[];\n    declared?: boolean;\n    defaultBaseURL?: string;\n    baseURLEnv?: readonly string[];\n    nativeAuth?: LlmNativeAuth;\n    error?: string;\n}',
+    declaration: 'export interface LlmConfigurableProvider {\n    provider: string;\n    displayName: string;\n    settingsNs: string;\n    settingsPath: readonly string[];\n    declared?: boolean;\n    defaultBaseURL?: string;\n    baseURLEnv?: readonly string[];\n    nativeAuth?: LlmNativeAuth;\n    error?: string;\n    directoryAt?: string;\n    retiredModels?: readonly string[];\n}',
   },
   {
     name: 'LlmDiscoveredModel',
-    declaration: 'export interface LlmDiscoveredModel {\n    id: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n    inputModalities?: readonly ModelModality[];\n}',
+    declaration: 'export interface LlmDiscoveredModel {\n    id: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n    inputModalities?: readonly ModelModality[];\n    reasoningEfforts?: Readonly<Record<string, string | null>>;\n}',
   },
   {
     name: 'LlmFailure',
@@ -5943,7 +6169,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmModelDiscoveryRequest',
-    declaration: 'export interface LlmModelDiscoveryRequest {\n    provider?: string;\n    baseURL?: string;\n    api?: string;\n    apiKey?: string;\n}',
+    declaration: 'export interface LlmModelDiscoveryRequest {\n    provider?: string;\n    refresh?: boolean;\n    baseURL?: string;\n    api?: string;\n    apiKey?: string;\n}',
   },
   {
     name: 'LlmModelInfo',
@@ -5984,6 +6210,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LogExporterOptions',
     declaration: 'export type LogExporterOptions = Omit<OTLPExporterNodeConfigBase, \'selfObsMeterProvider\'> & {\n    url: string;\n};',
+  },
+  {
+    name: 'LoopRound',
+    declaration: 'export type LoopRound = 1 | 2;',
   },
   {
     name: 'LspHover',
@@ -6606,6 +6836,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PtcBindingNamespace {\n    global: string;\n    functions: Record<string, PtcBindingFunction>;\n    errorClass?: PtcBindingErrorClass;\n}',
   },
   {
+    name: 'PtcDeadlineControl',
+    declaration: 'export interface PtcDeadlineControl {\n    pause(): void;\n    resume(): void;\n}',
+  },
+  {
     name: 'PtcDispatchLog',
     declaration: 'export interface PtcDispatchLog {\n    readonly exec: ToolExecution;\n    readonly agent?: Agent;\n    readonly subCallId: ToolCallId;\n    readonly name: string;\n    readonly isError: boolean;\n    readonly content: ContentBlock[];\n}',
   },
@@ -6619,7 +6853,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PtcRunRequest',
-    declaration: 'export interface PtcRunRequest {\n    program: string;\n    stateOwner?: object;\n    bindings: PtcBindingNamespace[];\n    cwd?: string;\n    timeoutMs?: number | null;\n    sandboxPolicy?: SandboxExecutionPolicy;\n    signal?: AbortSignal;\n}',
+    declaration: 'export interface PtcRunRequest {\n    program: string;\n    stateOwner?: object;\n    bindings: PtcBindingNamespace[];\n    cwd?: string;\n    timeoutMs?: number | null;\n    sandboxPolicy?: SandboxExecutionPolicy;\n    signal?: AbortSignal;\n    deadlineControl?: PtcDeadlineControl;\n}',
   },
   {
     name: 'PtcRunResult',
@@ -6668,6 +6902,62 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'Registry',
     declaration: 'export type Registry = string | null;',
+  },
+  {
+    name: 'ReliabilityLaneRoute',
+    declaration: 'export interface ReliabilityLaneRoute {\n    readonly provider: string;\n    readonly model: string;\n    readonly thinking?: string;\n}',
+  },
+  {
+    name: 'ReliabilityLoopHandle',
+    declaration: 'export interface ReliabilityLoopHandle {\n    readonly loopId: ReliabilityLoopId;\n    readonly result: Promise<ReliabilityLoopRecord>;\n    cancel(reason?: string): void;\n    dispose(): Promise<void>;\n    park?(): Promise<void>;\n}',
+  },
+  {
+    name: 'ReliabilityLoopId',
+    declaration: 'export type ReliabilityLoopId = Branded<\'ReliabilityLoopId\'>;',
+  },
+  {
+    name: 'ReliabilityLoopLane',
+    declaration: 'export interface ReliabilityLoopLane {\n    readonly provider: string;\n    readonly model: string;\n    readonly thinking?: string | undefined;\n}',
+  },
+  {
+    name: 'ReliabilityLoopRecord',
+    declaration: 'export interface ReliabilityLoopRecord {\n    readonly loopId: ReliabilityLoopId;\n    readonly ownerId?: string | undefined;\n    readonly objective: string;\n    readonly acceptanceTaskId?: AcceptanceTaskId | undefined;\n    readonly diagnostic?: string | undefined;\n    readonly createdAt: string;\n    readonly stage: ReliabilityLoopStage;\n    readonly implement?: ImplementAttempt | undefined;\n    readonly review?: ReviewAttempt | undefined;\n    readonly settledAt?: string | undefined;\n    readonly error?: string | undefined;\n    readonly implementationProvider?: string | undefined;\n    readonly implementationModel?: string | undefined;\n    readonly reviewProvider?: string | undefined;\n    readonly reviewModel?: string | undefined;\n    readonly implementationThinking?: string | undefined;\n    readonly reviewThinking?: string | undefined;\n    readonly roles?: ReliabilityLoopRoles | undefined;\n}',
+  },
+  {
+    name: 'ReliabilityLoopRoles',
+    declaration: 'export interface ReliabilityLoopRoles {\n    readonly planning?: ReliabilityLoopLane | undefined;\n    readonly frontend?: ReliabilityLoopLane | undefined;\n    readonly backend?: ReliabilityLoopLane | undefined;\n    readonly testing?: ReliabilityLoopLane | undefined;\n}',
+  },
+  {
+    name: 'ReliabilityLoopStage',
+    declaration: 'export type ReliabilityLoopStage = \'implementing\' | \'reviewing\' | \'rework-implementing\' | \'rework-reviewing\' | \'completed\' | \'blocked\' | \'failed\' | \'cancelled\';',
+  },
+  {
+    name: 'ReliabilityLoopStartRequest',
+    declaration: 'export interface ReliabilityLoopStartRequest {\n    parent: Agent;\n    objective: string;\n    acceptanceTaskId?: AcceptanceTaskId | undefined;\n    implementation?: ReliabilityLoopLane;\n    review?: ReliabilityLoopLane;\n    roles?: ReliabilityLoopRoles;\n}',
+  },
+  {
+    name: 'ReliabilityModelBadge',
+    declaration: 'export interface ReliabilityModelBadge {\n    readonly kind: \'channel\' | \'provider\';\n    readonly label: string;\n}',
+  },
+  {
+    name: 'ReliabilityModelOption',
+    declaration: 'export interface ReliabilityModelOption {\n    readonly selector: string;\n    readonly label: string;\n    readonly provider: string;\n    readonly model: string;\n    readonly badges: readonly ReliabilityModelBadge[];\n    readonly thinkingLevels: readonly ReliabilityThinking[];\n}',
+  },
+  {
+    name: 'ReliabilityPolicyConfigureRequest',
+    declaration: 'export interface ReliabilityPolicyConfigureRequest {\n    readonly sessionId: SessionId;\n    readonly enabled: boolean;\n    readonly implementationModel: string | null;\n    readonly implementationThinking: ReliabilityThinking | null;\n    readonly reviewModel: string | null;\n    readonly reviewThinking: ReliabilityThinking | null;\n    readonly planningModel?: string | null;\n    readonly planningThinking?: ReliabilityThinking | null;\n    readonly frontendModel?: string | null;\n    readonly frontendThinking?: ReliabilityThinking | null;\n    readonly backendModel?: string | null;\n    readonly backendThinking?: ReliabilityThinking | null;\n    readonly testingModel?: string | null;\n    readonly testingThinking?: ReliabilityThinking | null;\n}',
+  },
+  {
+    name: 'ReliabilityPolicyRequest',
+    declaration: 'export interface ReliabilityPolicyRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'ReliabilityPolicySnapshot',
+    declaration: 'export interface ReliabilityPolicySnapshot {\n    readonly sessionId: SessionId;\n    readonly revision: number;\n    readonly enabled: boolean;\n    readonly implementationModel: string | null;\n    readonly implementationThinking: ReliabilityThinking | null;\n    readonly reviewModel: string | null;\n    readonly reviewThinking: ReliabilityThinking | null;\n    readonly planningModel?: string | null;\n    readonly planningThinking?: ReliabilityThinking | null;\n    readonly frontendModel?: string | null;\n    readonly frontendThinking?: ReliabilityThinking | null;\n    readonly backendModel?: string | null;\n    readonly backendThinking?: ReliabilityThinking | null;\n    readonly testingModel?: string | null;\n    readonly testingThinking?: ReliabilityThinking | null;\n    readonly updatedAt: number;\n    readonly models: readonly ReliabilityModelOption[];\n}',
+  },
+  {
+    name: 'ReliabilityThinking',
+    declaration: 'export type ReliabilityThinking = string;',
   },
   {
     name: 'Reload',
@@ -6824,6 +7114,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResumeAgentOptions',
     declaration: 'export interface ResumeAgentOptions {\n    readonly resumeSessionId: SessionId;\n    readonly parentAgent?: Agent;\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+  },
+  {
+    name: 'ReviewAttempt',
+    declaration: 'export interface ReviewAttempt {\n    readonly round: LoopRound;\n    readonly verdict: ReviewVerdict;\n    readonly modelVerdict?: ReviewVerdict | undefined;\n    readonly feedback: string;\n    readonly agentsStarted: number;\n}',
+  },
+  {
+    name: 'ReviewVerdict',
+    declaration: 'export type ReviewVerdict = \'approved\' | \'changes-requested\';',
   },
   {
     name: 'RpcId',
@@ -8022,6 +8320,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TargetObservation',
+    declaration: 'export interface TargetObservation {\n    adapter: string;\n    digest: string;\n    detail: string;\n    identity?: Record<string, string>;\n}',
+  },
+  {
+    name: 'TargetProbe',
+    declaration: 'export type TargetProbe = (io: EvidenceIO, cwd: string, options: Record<string, string>, signal: AbortSignal) => Promise<TargetObservation>;',
+  },
+  {
     name: 'TeamId',
     declaration: 'export type TeamId = Branded<\'TeamId\'>;',
   },
@@ -8219,7 +8525,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolDefinition',
-    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    projectContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
+    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    projectContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    runCodeDeadline?: \'excluded\';\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
   },
   {
     name: 'ToolDispatchExecution',

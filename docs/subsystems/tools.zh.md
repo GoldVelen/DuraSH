@@ -69,6 +69,13 @@ interface ToolDefinition extends ToolSchema {
    */
   timeoutMs?: number
   /**
+   * Whether an enclosing run_code elapsed deadline bounds this call.
+   * `excluded` means the wait is not charged and a deadline abort is not a
+   * user cancellation. Omit to stay inside the caller deadline. Never
+   * model-visible.
+   */
+  runCodeDeadline?: 'excluded'
+  /**
    * Pure synchronous classifier for overlap with sibling tool calls. Only
    * `true` opts in; omission, exceptions, non-`true` returns, and invalid
    * `defineTool` arguments are exclusive. This metadata is never model-visible.

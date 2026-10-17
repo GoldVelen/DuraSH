@@ -11,6 +11,7 @@ import type {
 } from '@deepseek-ai/dsh-subagent'
 import PtcWorkflowEngine from '@deepseek-ai/dsh-workflow-ptc'
 import { fakeParent as workflowParent, mountWorkflowRuntime } from '../../../workflow/workflow-ptc/tests/setup.ts'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Storage from '@deepseek-ai/dsh-storage'
 import { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import type { StorageBackend } from '@deepseek-ai/dsh-storage'
@@ -175,6 +176,8 @@ async function harness(options: HarnessOptions = {}): Promise<{
   roots.add(root)
   const ctx = new Context()
   contexts.push(ctx)
+  // The subagent runtime injects the session working directory before it publishes.
+  provideWorkingDirectoryFixture(ctx, root)
   await ctx.plugin(SubagentRuntime)
   const manual = new ManualProvider()
   ctx.subagents.registerProvider(manual)

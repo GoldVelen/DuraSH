@@ -2,7 +2,7 @@
  * The reliability-loop domain declaration: record schema and the
  * `defineDomain` spec the runtime opens. The zod schema validates the shipped
  * format at the durability boundary; structural stage coherence is owned by
- * the `./invariant` companion, not by this schema.
+ * `assertReliabilityLoopRecord`, not by this schema.
  * @module @durash/dsh-reliability-loop/src/spec
  */
 

@@ -76,7 +76,7 @@ Pytest JUnit 和 xcresult 摘要、测试树结果必须完整解析。命令与
 
 ### 设计概念
 
-一个循环就是一条记录：`reliability-loop` domain 的 `loops` 表承载整个状态机，因此每次转换都是一次单记录持久写入，恢复也只读取记录。`workflow/*` 事件保持只读观察；驱动者从它拥有的 run 句柄（`run.result`）推导转换，所以一个阶段只有一个存活事实来源。记录的阶段与其已结算尝试槽位由 `./invariant` 伴随在每个读写点断言。
+一个循环就是一条记录：`reliability-loop` domain 的 `loops` 表承载整个状态机，因此每次转换都是一次单记录持久写入，恢复也只读取记录。`workflow/*` 事件保持只读观察；驱动者从它拥有的 run 句柄（`run.result`）推导转换，所以一个阶段只有一个存活事实来源。记录的阶段与其已结算尝试槽位由 `assertReliabilityLoopRecord` 在每次写入时断言。
 
 ### 源码映射
 
@@ -87,7 +87,7 @@ Pytest JUnit 和 xcresult 摘要、测试树结果必须完整解析。命令与
 | [`src/spec.ts`](src/spec.ts) | `defineDomain` 声明与 zod 模式 |
 | [`src/scripts.ts`](src/scripts.ts) | 固定阶段脚本、提示构建、报告校验 |
 | [`src/driver.ts`](src/driver.ts) | 每循环所有者：阶段机、run 生命周期、取消、静止 |
-| [`src/invariant.ts`](src/invariant.ts) | 不变量伴随：阶段/槽位一致性 |
+| [`src/checks.ts`](src/checks.ts) | 每次持久写入时断言阶段与槽位一致性 |
 
 ### 生命周期与所有权
 

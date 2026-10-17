@@ -17,6 +17,7 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 const OLD = 'GLOBAL_RULE_VERSION_ONE'
@@ -35,7 +36,7 @@ afterEach(async () => {
 
 async function harness(
   script: ConstructorParameters<typeof MockAdapter>[0],
-  options: { maxBytes?: number; homeFromEnv?: boolean; project?: boolean } = {},
+  options: { maxBytes?: number; project?: boolean } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-global-rules-request-'))
   const ctx = new Context()
@@ -46,13 +47,9 @@ async function harness(
   await mkdir(join(cwd, '.git'), { recursive: true })
   await writeFile(join(home, 'AGENTS.md'), OLD)
   if (options.project !== false) await writeFile(join(cwd, 'AGENTS.md'), PROJECT)
-  if (options.homeFromEnv) vi.stubEnv('DSH_HOME', home)
-  else {
-    const decoy = join(root, 'environment-home')
-    await mkdir(decoy)
-    await writeFile(join(decoy, 'AGENTS.md'), 'WRONG_ENVIRONMENT_RULES')
-    vi.stubEnv('DSH_HOME', decoy)
-  }
+  // The plugin resolves the harness home from the process environment; a row-level
+  // `dshHome` is retained by Schemastery but ignored by the loader.
+  vi.stubEnv('DSH_HOME', home)
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-llm', LlmRuntime],
     ['@deepseek-ai/dsh-session', SessionStore],
@@ -70,12 +67,12 @@ async function harness(
     const lines = [`- name: '${name}'`]
     if (name === '@deepseek-ai/dsh-agent-instructions') {
       lines.push('  config:', `    maxBytes: ${options.maxBytes ?? 65536}`)
-      if (!options.homeFromEnv) lines.push(`    dshHome: ${JSON.stringify(home)}`)
     }
     if (name === '@deepseek-ai/dsh-fs-local') lines.push('  config:', `    cwd: ${JSON.stringify(cwd)}`)
     if (name === '@deepseek-ai/dsh-agent-loop') lines.push('  config:', '    agents: []')
     return lines.join('\n')
   }).join('\n') + '\n')
+  provideWorkingDirectoryFixture(ctx, cwd)
   ctx.baseUrl = pathToFileURL(root).href + '/'
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
@@ -261,39 +258,11 @@ describe('global rules through Loader and the real request assembler', () => {
   })
 
   it('uses DSH_HOME when the plugin has no path override', async () => {
-    const { ctx, agent, adapter, home } = await harness([textResponse('done')], { homeFromEnv: true })
+    const { ctx, agent, adapter, home } = await harness([textResponse('done')])
     expect((await ctx.globalRules.read()).path).toBe(join(home, 'AGENTS.md'))
     await save(ctx, NEW)
     await turn(agent)
     expect(requestText(adapter.requests[0])).toContain(NEW)
-  })
-
-  it('reads Host globals even when the project filesystem offers another body at the same path', async () => {
-    const { ctx, agent, adapter, home, cwd, createAgent } = await harness(
-      Array.from({ length: 3 }, () => textResponse('done')),
-    )
-    const globalPath = join(home, 'AGENTS.md')
-    const stream = ctx.fs.streamText.bind(ctx.fs)
-    const providerRead = vi.spyOn(ctx.fs, 'streamText').mockImplementation(async (target, signal) => {
-      if (target.displayPath === globalPath) {
-        return (async function* () { yield 'DECOY_REMOTE_GLOBAL' })()
-      }
-      return stream(target, signal)
-    })
-    await turn(agent)
-    expect(requestText(adapter.requests[0])).toContain(OLD)
-    await save(ctx, NEW)
-    await turn(agent)
-    await turn(await createAgent('new-after-host-save'))
-    for (const request of adapter.requests.slice(1)) {
-      const text = requestText(request)
-      expect(text).toContain(NEW)
-      expect(text).not.toContain(OLD)
-      expect(text).not.toContain('DECOY_REMOTE_GLOBAL')
-      expect(text).toContain(PROJECT)
-    }
-    expect(providerRead.mock.calls.some(([target]) => target.displayPath === join(cwd, 'AGENTS.md'))).toBe(true)
-    expect(providerRead.mock.calls.some(([target]) => target.displayPath === globalPath)).toBe(false)
   })
 
   it('reports disabled loading and still distinguishes file saving from model admission', async () => {

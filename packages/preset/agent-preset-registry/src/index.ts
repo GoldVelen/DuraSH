@@ -316,6 +316,22 @@ export class AgentPresetRegistry extends TypertRemoteService {
    */
   composedPreset(ctx: Context): string | undefined { return this.generationFor(ctx)?.mount.presetId }
 
+  /**
+   * Read a service supplied inside a named preset's composition without an Agent.
+   * @param id - Preset identity, or the default preset when omitted.
+   * @param name - Cordis service name.
+   * @returns The service, or undefined when the preset publishes none under that name.
+   */
+  async serviceForPreset<K extends string & keyof Context>(id: string | undefined, name: K): Promise<Context[K] | undefined> {
+    const generation = await this.retain(id)
+    try {
+      return serviceForMount(this.owner, generation.mount, name)
+    } finally {
+      generation.users--
+      await this.collect(generation)
+    }
+  }
+
   /** Read a service supplied inside an Agent's isolated preset group.
    * @param agent Agent whose composition is queried.
    * @param name Cordis service name.

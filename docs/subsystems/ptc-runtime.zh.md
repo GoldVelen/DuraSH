@@ -47,6 +47,13 @@ interface PtcRunRequest {
    * binding calls are the CALLER's to settle — the runtime only stops asking.
    */
   signal?: AbortSignal
+  /**
+   * Mutable elapsed-deadline control. When present, a supporting runtime
+   * installs `pause` and `resume` before accepting binding calls. Pausing
+   * stops the elapsed budget; resume continues from the remainder. A runtime
+   * that ignores the control leaves the caller's no-op methods in place.
+   */
+  deadlineControl?: PtcDeadlineControl
 }
 ```
 

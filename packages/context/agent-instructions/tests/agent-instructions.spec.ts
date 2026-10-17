@@ -42,7 +42,7 @@ import {
   reconcileInstructionContext,
   type InstructionVersionCache,
 } from '../src/state.ts'
-import { resolveConfig, resolveDiscoveryConfig } from '../src/config.ts'
+import { resolveConfig } from '../src/config.ts'
 import { AGENTS_GLOBAL_DIRECTORY, candidateScopeKey, renderInstructionChanges, renderAgentInstructionSet, USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE } from '../src/render.ts'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import {
@@ -3154,7 +3154,7 @@ describe('workspace context request injection', () => {
     }
   })
 
-  it('loads global instructions from the Host and CLAUDE fallback through ctx.fs', async () => {
+  it('loads global instructions and the CLAUDE fallback through ctx.fs', async () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
@@ -3174,50 +3174,15 @@ describe('workspace context request injection', () => {
 
       await composeBaselinePrefix(ctx, agent)
 
-      expect(derivedText(agent)).toContain('node global rule')
+      expect(derivedText(agent)).toContain('ctx global rule')
       expect(derivedText(agent)).toContain('ctx claude rule')
-      expect(derivedText(agent)).not.toContain('ctx global rule')
-      expect(fs.readTargets).not.toContain(join(home, 'AGENTS.md'))
+      expect(fs.readTargets).toContain(join(home, 'AGENTS.md'))
+      expect(derivedText(agent)).not.toContain('node global rule')
       expect(derivedText(agent)).not.toContain('node claude rule')
     } finally {
       vi.unstubAllEnvs()
       await rm(root, { recursive: true, force: true })
       await rm(home, { recursive: true, force: true })
-    }
-  })
-
-  it('keeps Host global and provider project rules at the same path as separate instruction scopes', async () => {
-    const root = await tempRepo()
-    const ctx = new Context()
-    try {
-      await write(join(root, 'AGENTS.md'), 'Host global rule')
-      await ctx.plugin(RecordingFileSystem)
-      const fs = ctx.fs as RecordingFileSystem
-      fs.entries.set(join(root, '.git'), { type: 'directory' })
-      fs.entries.set(join(root, 'AGENTS.md'), { type: 'file', content: 'remote project rule' })
-      pinHarnessHome(root)
-      await mountAgentInstructionsPlugin(ctx, { maxBytes: 65536 })
-      const agent = await stubAgent(root)
-      await composeBaselinePrefix(ctx, agent)
-      expect(derivedText(agent)).toContain('Host global rule')
-      expect(derivedText(agent)).toContain('remote project rule')
-      const result = await reconcileInstructionContext(await stubAgent(root), {
-        ...resolveDiscoveryConfig({ dshHome: root, instructionFileCandidates: ['AGENTS.md'], localInstructionFileCandidates: [] }),
-        maxBytes: 65536,
-        maxSourceBytes: 1_048_576,
-      }, new WeakMap(), fs, {
-        cwd: root,
-        authorityMessages: [], scopeMessages: [], touchedPaths: [], includeBaselineScopes: true,
-      })
-      expect(result?.context.source).toMatchObject({ changes: [
-        { action: 'set', scope: sk(USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE) },
-        { action: 'set', scope: sk('.', 'AGENTS.md') },
-      ] })
-      expect(blocksText(result!.context.content)).toContain('Host global rule')
-      expect(blocksText(result!.context.content)).toContain('remote project rule')
-    } finally {
-      await ctx.fiber.dispose()
-      await rm(root, { recursive: true, force: true })
     }
   })
 
@@ -4435,42 +4400,6 @@ describe('dynamic nested workspace context injection', () => {
       await ctx.fiber.dispose()
       await rm(dirname(root), { recursive: true, force: true })
       await rm(dirname(home), { recursive: true, force: true })
-    }
-  })
-
-  it('keeps a provider-only project file out of the absent Host global scope', async () => {
-    const root = join(await tempRepo(), 'virtual-repo')
-    const ctx = new Context()
-    provideWorkingDirectoryFixture(ctx)
-    try {
-      await ctx.plugin(RecordingFileSystem)
-      const fs = ctx.fs as RecordingFileSystem
-      fs.entries.set(join(root, '.git'), { type: 'directory' })
-      fs.entries.set(join(root, 'AGENTS.md'), { type: 'file', content: 'shared rule' })
-      const agent = await stubAgent(root)
-      pinHarnessHome(root)
-      const resolved = resolveConfig({
-        maxBytes: 65536,
-        instructionFileCandidates: ['AGENTS.md'],
-        localInstructionFileCandidates: [],
-      })
-
-      const result = await reconcileInstructionContext(agent, resolved, new WeakMap(), fs, {
-        cwd: root,
-        authorityMessages: [],
-        scopeMessages: [],
-        touchedPaths: [],
-        includeBaselineScopes: true,
-        signal: testToolSignal,
-      })
-
-      expect(result?.context.source).toMatchObject({
-        changes: [{ action: 'set', scope: sk('.', 'AGENTS.md') }],
-      })
-    } finally {
-      vi.unstubAllEnvs()
-      await ctx.fiber.dispose()
-      await rm(dirname(root), { recursive: true, force: true })
     }
   })
 

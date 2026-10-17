@@ -422,9 +422,17 @@ export class ReactLoopAgent implements Agent {
       for (const { message, intent } of commits) {
         this.session.append('system/message', { turn, step, message }, intent)
       }
+      // Extension point: producers may rewrite or reject the admitted set (instruction
+      // refresh on a saved Host rule depends on it). Later attempts re-admit only runtime
+      // context, so the waterfall sees an empty list there.
+      const admissionMessages = firstAttempt ? decision.messages : []
+      const messages = await this.dispatch.waterfall(
+        'agent/request-context', { messages: admissionMessages, turn, step, signal },
+        () => Promise.resolve(admissionMessages),
+      )
       let contextAdmitted = false
       if (firstAttempt) {
-        for (const message of decision.messages) {
+        for (const message of messages) {
           if (message.source.kind === 'runtime-context') {
             if (context !== undefined && !contextAdmitted) {
               this.session.append('user/message', context, { surfaceOp: 'append' })

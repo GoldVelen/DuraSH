@@ -22,6 +22,33 @@ A form namespace is the local id of a uniquely addressed entry in the active pro
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxglobalrules--globalrules"></a>
+
+### `ctx.globalRules` — `GlobalRules`
+
+Atomic, revision-checked editor; it never stores a second copy of rule text.
+
+```ts cordis-catalog
+/**
+ * Read the configured file without creating it; missing files have empty content.
+ * @returns exact text, file revision, and current loading limits.
+ * @throws Error when the file cannot be read or is not valid UTF-8.
+ */
+async read(): Promise<GlobalRulesDocument>
+
+/**
+ * Replace exact text after checking the caller's revision before and after staging under the writer lock.
+ * Retains permission bits independently of umask; symlink targets are readable but cannot be replaced.
+ * @param content - complete next UTF-8 text, without normalization.
+ * @param expectedRevision - fingerprint returned by the caller's last read.
+ * @returns the committed file state; this is not a model-admission receipt.
+ * @throws GlobalRulesConflict when the file changed, or Error on permission and storage failures.
+ */
+async save(content: string, expectedRevision: string): Promise<GlobalRulesDocument>
+```
+
+Source: [`packages/context/agent-instructions/src/global-rules.ts`](../../packages/context/agent-instructions/src/global-rules.ts)
+
 <a id="ctxsettings--settingsforms"></a>
 
 ### `ctx.settings` — `SettingsForms`
@@ -88,6 +115,22 @@ Host service backing the generated `ctx.remote.settings` namespace. Every remote
 @Remote describe(): SettingsDescribeValue
 
 /**
+ * Read the sole global instruction file on this Host.
+ * @returns current text and revision, or null when instruction loading is not mounted.
+ * @throws RemoteError when the file cannot be read.
+ */
+@Remote async readGlobalRules(): Promise<GlobalRulesDocument | null>
+
+/**
+ * Save exact global rule text against the editor's last observed file revision.
+ * @param content - complete next text.
+ * @param expectedRevision - revision returned by readGlobalRules.
+ * @returns committed file state, without claiming model admission.
+ * @throws RemoteError when loading is absent, a concurrent edit conflicts, or storage refuses the write.
+ */
+@Remote async saveGlobalRules(content: string, expectedRevision: string): Promise<GlobalRulesDocument>
+
+/**
  * Merge a patch into one namespace's stored user section.
  * @param ns - namespace key to write.
  * @param patch - fields to merge into the user section.
@@ -129,6 +172,27 @@ Host service backing the generated `ctx.remote.settings` namespace. Every remote
 ```
 
 Source: [`packages/api/settings-controller/src/index.ts`](../../packages/api/settings-controller/src/index.ts)
+
+<a id="global-rules-events"></a>
+
+### `global-rules/*` events
+
+<a id="global-rulessaved--emit"></a>
+
+#### `global-rules/saved` — emit
+
+A Host editor committed changed global rule text. Carries no rule body.
+
+```ts cordis-catalog
+/**
+ * A Host editor committed changed global rule text. Carries no rule body.
+ * @mode emit
+ * @param path - absolute configured rule file path.
+ */
+'global-rules/saved'(path: string): void
+```
+
+Source: [`packages/context/agent-instructions/src/global-rules.ts`](../../packages/context/agent-instructions/src/global-rules.ts)
 
 <a id="settings-events"></a>
 

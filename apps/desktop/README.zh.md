@@ -226,6 +226,22 @@ Desktop 在 Host 启动后、打开工作区前检查模型 API Key 引用是否
 
 <a id="package"></a>
 
+<a id="local-durash-macos-application"></a>
+
+### macOS 本地 DuraSH 应用
+
+按当前 Mac 的原生架构构建工作区：
+
+```sh
+pnpm run package:desktop:local
+```
+
+[本地打包器](scripts/package-local.ts) 构建 DuraSH 客户端和 Electron 壳，并通过私有的 [local-runtime 项目](../desktop-local-runtime/package.json) 物化 Desktop Host 与 DuraSH 产品依赖。该项目没有应用入口。[Desktop profile 初始化](src/project-manager.ts) 按准备好的运行时包清单选择 bundle，使公开发行版独立于私有产品层。
+
+应用生成在 `.desktop-build/targets/<target>/durash-artifacts/` 下，`<target>` 为 `mac-arm64` 或 `mac-x64`。将生成的 `DuraSH.app` 复制到 `~/Applications`，即可为当前用户安装。本地构建保留工作区版本，使用 ad-hoc 签名，不使用 Apple 签名凭据或公证，也不包含自动更新源。下文的正式打包流程生成公开 Web 运行时。`--skip-build` 复用已有的 DuraSH 客户端和壳产物；`--prepare-only` 准备并检查运行时，不生成应用。
+
+已安装的应用与 DuraSH Web 读取同一份 `$DSH_HOME` 产品数据（默认 `~/.dsh`），但可执行包与插件激活保留在自己的 `profiles/desktop` 中。使用同一 home 启动 Desktop 前请先停止 Web Host：产品 JSON 存储按各 Host 的内存状态整体重写文档，并发 Host 会丢失更新。打包冒烟检查使用临时 home。
+
 ## 打包
 
 <a id="release-versions"></a>

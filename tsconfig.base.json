@@ -419,7 +419,6 @@
       "@deepseek-ai/dsh-hooks-claude-code": ["./packages/experimental/hooks-claude-code/src"],
       "@deepseek-ai/dsh-hooks-codex": ["./packages/experimental/hooks-codex/src"],
       "@deepseek-ai/dsh-http-proxy": ["./packages/util/http-proxy/src"],
-      "@deepseek-ai/dsh-invariants": ["./packages/runtime-diagnostics/invariants/src/index.ts"],
       "@deepseek-ai/dsh-jobs": ["./packages/jobs/jobs/src"],
       "@deepseek-ai/dsh-jobs-local": ["./packages/jobs/jobs-local/src"],
       "@deepseek-ai/dsh-launch-environment": ["./packages/util/launch-environment/src"],
@@ -565,9 +564,7 @@
       "@durash/dsh-client-ui-brand": ["./packages/client/ui-brand-durash/src"],
       "@durash/dsh-client-ui-reliability": ["./packages/client/ui-reliability/src"],
       "@durash/dsh-reliability-loop": ["./packages/reliability/durash-reliability-loop/src"],
-      "@durash/dsh-reliability-loop/invariant": ["./packages/reliability/durash-reliability-loop/src/invariant.ts"],
       "@durash/dsh-reliability-policy": ["./packages/reliability/durash-reliability-policy/src"],
-      "@durash/dsh-reliability-policy/invariant": ["./packages/reliability/durash-reliability-policy/src/invariant.ts"],
       "@durash/dsh-tool-reliability": ["./packages/reliability/durash-tool-reliability/src"],
       "@durash/dsh-web-profile": ["./packages/bundle/durash-web-profile/src"]
       // END generated package aliases

@@ -66,3 +66,41 @@ describe('global rules through the settings Remote API', () => {
     await expect(controller.saveGlobalRules('rules', initial!.revision)).rejects.toMatchObject({ code: 'global-rules/rejected', message: 'EACCES: write denied' })
   })
 })
+
+describe('global rules through a standing preset composition', () => {
+  it('resolves the isolated instruction service before any session exists', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-global-preset-api-'))
+    roots.push(root)
+    // The preset group owns the service; the Host controller sees only the registry.
+    const presetContext = new Context()
+    contexts.push(presetContext)
+    await presetContext.plugin(GlobalRules, {
+      ...resolveDiscoveryConfig({ dshHome: root }),
+      maxBytes: 8192,
+      maxSourceBytes: 1024 * 1024,
+    })
+    const rules = presetContext.globalRules
+    const path = join(root, 'AGENTS.md')
+    await writeFile(path, 'original preset rules')
+
+    const ctx = new Context()
+    contexts.push(ctx)
+    const lookups: string[] = []
+    ctx.provide('agentPresets', {
+      serviceForPreset: async (_id: string | undefined, name: string) => {
+        lookups.push(name)
+        return name === 'globalRules' ? rules : undefined
+      },
+    } as unknown as Context['agentPresets'])
+    await ctx.plugin(SettingsController)
+
+    const initial = await ctx.settingsController.readGlobalRules()
+    expect(initial).toMatchObject({ path, content: 'original preset rules', exists: true })
+    const saved = await ctx.settingsController.saveGlobalRules('updated preset rules', initial!.revision)
+    expect(await rules.read()).toEqual(saved)
+    expect(await readFile(path, 'utf8')).toBe('updated preset rules')
+    expect(lookups).toEqual(['globalRules', 'globalRules'])
+    // A root-level service still wins over the preset composition.
+    expect(ctx.get('globalRules')).toBeUndefined()
+  })
+})

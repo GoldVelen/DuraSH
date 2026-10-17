@@ -93,7 +93,7 @@ export interface ReviewAttempt {
  * slots name `| undefined` explicitly because the zod durable-boundary schema
  * produces that shape and the repo compiles with `exactOptionalPropertyTypes`.
  * Stage semantics (which attempt slots must be settled for which stage) are
- * owned by the runtime and asserted by the `./invariant` companion.
+ * owned by the runtime and asserted by `assertReliabilityLoopRecord` on every write.
  */
 export interface ReliabilityLoopRecord {
   /** The loop's id. */

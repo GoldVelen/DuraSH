@@ -226,6 +226,22 @@ The welcome window follows system appearance with the design’s Platform light/
 
 <a id="package"></a>
 
+<a id="local-durash-macos-application"></a>
+
+### Local DuraSH application on macOS
+
+Build the current checkout for the Mac's native architecture:
+
+```sh
+pnpm run package:desktop:local
+```
+
+The [local packer](scripts/package-local.ts) builds the DuraSH client and Electron shell and uses the private [local-runtime project](../desktop-local-runtime/package.json) to materialize the Desktop Host and DuraSH product dependencies. The project has no application entry point. [Desktop profile initialization](src/project-manager.ts) selects bundles from the prepared runtime's package inventory, keeping public releases independent of the private product layer.
+
+The application is generated under `.desktop-build/targets/<target>/durash-artifacts/`, with `<target>` set to `mac-arm64` or `mac-x64`. Copy the generated `DuraSH.app` into `~/Applications` to install it for the current user. This local build keeps the checkout's version, uses ad-hoc signing without Apple signing credentials or notarization, and includes no automatic-update feed. The formal packaging process below produces the public Web runtime. `--skip-build` reuses existing DuraSH client and shell artifacts; `--prepare-only` prepares and checks the runtime without generating an application.
+
+The installed application reads the same `$DSH_HOME` product data as DuraSH Web, defaulting to `~/.dsh`, while keeping executable packages and plugin activation in its own `profiles/desktop`. Stop the Web Host before starting Desktop with the same home: product JSON storage rewrites complete documents from each Host's in-memory state, so concurrent Hosts can lose updates. Packaging smoke checks use temporary homes.
+
 ## Package
 
 <a id="release-versions"></a>

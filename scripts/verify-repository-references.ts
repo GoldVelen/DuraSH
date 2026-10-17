@@ -163,6 +163,9 @@ export function repositoryCommits(repoRoot: string, sources: Iterable<string>): 
   const objects = gitLines(repoRoot, ['cat-file', '--batch-all-objects', '--batch-check=%(objectname)'], objectListingLimit).sort()
   const matches = new Map<string, string>()
   for (const candidate of candidates) {
+    // A bare decimal run is a measurement — a file size, a version, a wheel length —
+    // far more often than a Git object name, and its short prefixes collide often.
+    if (/^[0-9]+$/.test(candidate)) continue
     const object = uniquePrefixMatch(objects, candidate)
     if (object !== undefined) matches.set(candidate, object)
   }

@@ -333,11 +333,6 @@ export class WebServer extends Service {
     return this.config.host
   }
 
-  /** Whether the listener is TLS. Plain HTTP stays the default. */
-  get secure(): boolean {
-    return this.config.tls !== undefined && this.config.tls !== null
-  }
-
   /**
    * The protocol the listener speaks: `'https:'` when `tls` is configured. The
    * value follows configuration, never a socket or a request header, so a

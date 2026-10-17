@@ -238,7 +238,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-api-settings-controller`
 
-- `source`: [`packages/api/settings-controller/src/index.ts:35`](../packages/api/settings-controller/src/index.ts)
+- `source`: [`packages/api/settings-controller/src/index.ts:40`](../packages/api/settings-controller/src/index.ts)
 
 ```ts config-catalog
 /** Host integrations replaceable by direct unit tests. */
@@ -1777,11 +1777,15 @@ export interface Config extends ProtocolConfig {
 
 - `inject`: `llm`
 - `refs`: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`) · `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/llm/llm-pi-ai/src/config.ts:222`](../packages/llm/llm-pi-ai/src/config.ts)
+- `source`: [`packages/llm/llm-pi-ai/src/config.ts:268`](../packages/llm/llm-pi-ai/src/config.ts)
 
 ```ts config-catalog
 /** Plugin configuration: the provider routes this instance owns. */
 export interface Config {
+  /** Native-provider model catalog refresh interval in milliseconds; positive and at most the Node timer limit. */
+  modelCatalogRefreshMs?: number
+  /** Native-provider model catalog request deadline in milliseconds; positive and at most the Node timer limit. */
+  modelCatalogTimeoutMs?: number
   /**
    * pi-ai provider routes, keyed by provider. An empty (or omitted) dict is
    * the dormant settings-driven posture: the adapter mounts with no routes
@@ -1797,6 +1801,12 @@ export interface PiAiProviderProfile {
   /** Name shown by configuration surfaces; defaults to the route key. */
   displayName?: string
   /**
+   * Installed pi-ai provider whose model, endpoint, protocol, and auth
+   * defaults this route reuses. Omission uses the route key. The route keeps
+   * its own key and may override `api`, `baseURL`, credential, and model fields.
+   */
+  catalogProvider?: string
+  /**
    * Wire protocol every model on this route speaks. Omission keeps each
    * installed catalog model's own protocol, which is why a catalog route needs
    * no protocol at all; a route the catalog does not ship must name one.
@@ -1805,13 +1815,17 @@ export interface PiAiProviderProfile {
   /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
   baseURL?: string
   /**
-   * This route's model catalog. Omission serves the installed catalog for the
-   * route unchanged; an explicit list replaces it, each entry defaulting its
-   * unset fields from the installed model of the same id.
+   * This route's model catalog. Omission serves the runtime or installed catalog
+   * unchanged. An explicit list replaces its ids unless modelCatalogMode is live,
+   * when the list customizes matching ids; unset fields inherit the catalog model.
    */
   models?: PiAiModelProfile[]
+  /** Live mode follows account catalog ids while retaining matching configured model fields as customizations. */
+  modelCatalogMode?: 'live' | 'configured'
+  /** Codex model-directory compatibility version; older values can hide account models, independently of the SDK or local CLI. */
+  codexDirectoryClientVersion?: string
   /**
-   * Installed-catalog customizations by model id: each entry reshapes that
+   * Runtime or installed catalog customizations by model id: each entry reshapes that
    * one model with the same fields a {@link models} entry takes, while the
    * rest of the catalog keeps serving untouched. Only meaningful on a catalog
    * route with no `models` list — `models` already replaces the catalog, so
@@ -1862,6 +1876,8 @@ export interface PiAiProviderProfile {
   transport?: Transport
   /** HTTP/provider SDK timeout in milliseconds. */
   timeoutMs?: number
+  /** OpenCode Go refresh deadline, at most 15,000 ms; cancellation still lets a rotated grant be stored. */
+  oauthRefreshTimeoutMs?: number
   /** WebSocket connection timeout in milliseconds. */
   websocketConnectTimeoutMs?: number
   /** Maximum provider idle time while one stream read is outstanding. */
@@ -4220,7 +4236,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tools`
 
 - `inject`: `systemPrompt`
-- `source`: [`packages/core/tools/src/index.ts:675`](../packages/core/tools/src/index.ts)
+- `source`: [`packages/core/tools/src/index.ts:683`](../packages/core/tools/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: how the registered tools are presented to the model. */
@@ -4583,6 +4599,35 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-workspace-changes -->
 
+<!-- BEGIN GENERATED config-catalog:@durash/dsh-reliability-loop -->
+<a id="durashdsh-reliability-loop"></a>
+
+## `@durash/dsh-reliability-loop`
+
+- `inject`: `workflowEngine` · `storageDomain`
+- `source`: [`packages/reliability/durash-reliability-loop/src/index.ts:49`](../packages/reliability/durash-reliability-loop/src/index.ts)
+
+```ts config-catalog
+/** Config: the deployment-owned loop bounds. */
+export interface Config {
+  /**
+   * Maximum characters of any artifact crossing a stage boundary — the
+   * objective, an implementation summary, reviewer feedback. A longer
+   * artifact fails the stage loud (default 16384).
+   */
+  maxHandoffChars?: number
+  /** Maximum retained command attempts per task. */
+  maxEvidenceAttempts?: number
+  /** Maximum recorded plan revisions per task. */
+  maxAcceptanceRevisions?: number
+  /** Maximum raw command receipt characters. */
+  maxEvidenceChars?: number
+  /** Maximum bytes read from any evidence input file. */
+  maxEvidenceFileBytes?: number
+}
+```
+<!-- END GENERATED config-catalog:@durash/dsh-reliability-loop -->
+
 ## Loadable plugins with no config
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
@@ -4697,6 +4742,11 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
+| `@durash/dsh-client-ui-brand` | — | [`packages/client/ui-brand-durash/src/index.ts`](../packages/client/ui-brand-durash/src/index.ts) |
+| `@durash/dsh-client-ui-reliability` | — | [`packages/client/ui-reliability/src/index.ts`](../packages/client/ui-reliability/src/index.ts) |
+| `@durash/dsh-client-ui-settings-global-rules` | — | [`packages/client/ui-settings-global-rules/src/index.ts`](../packages/client/ui-settings-global-rules/src/index.ts) |
+| `@durash/dsh-reliability-policy` | `storageDomain` · `llm` | [`packages/reliability/durash-reliability-policy/src/index.ts`](../packages/reliability/durash-reliability-policy/src/index.ts) |
+| `@durash/dsh-tool-reliability` | `tools` · `systemPrompt` · `agents` · `reliabilityPolicy` · `reliabilityLoopRuntime` | [`packages/reliability/durash-tool-reliability/src/index.ts`](../packages/reliability/durash-tool-reliability/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->
 
 ## Seam packages (not directly loadable)
@@ -4798,4 +4848,5 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-util-values` | — | [`packages/util/values/src/index.ts`](../packages/util/values/src/index.ts) |
 | `@deepseek-ai/dsh-util-workspace-path` | — | [`packages/util/workspace-path/src/index.ts`](../packages/util/workspace-path/src/index.ts) |
 | `@deepseek-ai/dsh-win32-process` | — | [`packages/subprocess/win32-process/src/index.ts`](../packages/subprocess/win32-process/src/index.ts) |
+| `@durash/dsh-web-profile` | — | [`packages/bundle/durash-web-profile/src/index.ts`](../packages/bundle/durash-web-profile/src/index.ts) |
 <!-- END GENERATED config-catalog:library -->

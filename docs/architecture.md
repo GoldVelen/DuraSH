@@ -14,7 +14,7 @@ There is no privileged core to patch: you extend dsh by mounting a plugin beside
 
 A running `dsh` is a plugin tree composed at boot from ordered layers.
 
-A **profile** is a named composition stored in the Harness home. It lists the bundles it stacks, holds any out-of-tree plugins it installs, and keeps the user's own `cordis.patch.yml`. `web`, `headless`, `sdk`, `sdk-minimal`, and `acp` ship as templates. DuraSH source checkouts additionally supply `durash`, which adds the downstream-owned DuraSH layer after the upstream Web stack.
+A **profile** is a named composition stored in the Harness home. It lists the bundles it stacks, holds out-of-tree plugins it installs, and keeps the user's `cordis.patch.yml`. `web`, `headless`, `sdk`, `sdk-minimal`, and `acp` ship as templates. DuraSH checkouts also supply `durash`, adding the downstream DuraSH layer over the upstream Web stack.
 
 A **bundle** is a distribution format for Cordis config rows and the code they mount, so whatever it inserts stays patchable by the layers above it.
 
@@ -24,7 +24,7 @@ Each declares itself in its own `package.json` under a `dsh` field: `dsh.profile
 
 Layers apply to an empty entry list: the profile's ordered bundles, its `cordis.patch.yml`, the home patch, then `--patch` overlays. A patch targets a row by id and replaces its whole config, or inserts new rows. A `preset` patch applies these operations inside that declaration’s `config.plugins`, with the same layer precedence.
 
-YAML controls HMR: base enables config-only `dsh-hmr` for Web and DuraSH; headless, SDK and ACP disable it; `sdk-minimal` omits it. Profile patches override these defaults. HMR coordinates watching and reloads; the launcher provides profile data and readiness.
+YAML controls HMR: base enables config-only `dsh-hmr` for Web and DuraSH; headless, SDK and ACP disable it; `sdk-minimal` omits it. Profile patches override these defaults. HMR coordinates watching and reloads; the launcher supplies profile data and readiness.
 
 Base includes [Plugin Manager](../packages/boot/plugin-manager/README.md) for Web and agents.
 
@@ -40,7 +40,7 @@ Composition mechanics are in [app-boot](../packages/boot/app-boot/README.md#prof
 
 ## Application launch
 
-Supported Node applications launch through `dsh --profile <name>` or `dsh <name>`. Shipped profiles are `web`, `headless`, `sdk`, `sdk-minimal`, and `acp`; DuraSH source checkouts add private `durash`. Because `plugin` names the management command, that profile requires `--profile plugin`. The TypeScript SDK selects `sdk` through its same-version `dsh` dependency. Custom composition uses profiles and ordered patches, never another executable or inline application tree. `sdk-minimal` uses a repository-owned standalone bundle, not a caller-supplied Cordis tree.
+Node applications launch through `dsh --profile <name>` or `dsh <name>`. Shipped profiles are `web`, `headless`, `sdk`, `sdk-minimal`, and `acp`; DuraSH source checkouts add private `durash`. Because `plugin` is the management command, that profile requires `--profile plugin`. The TypeScript SDK selects `sdk` through its same-version `dsh` dependency. Custom composition uses profiles and ordered patches, never another executable or inline tree. `sdk-minimal` uses a repository-owned standalone bundle, not a caller-supplied tree.
 
 Vendored CLIs, build-only and test-only executables, direct in-process plugin mounting, and the private browser WebWorker preview are not Harness application launchers. [`verify-application-entrypoints`](../scripts/verify-application-entrypoints.ts) keeps every package bin, executable source, root demo, and the root `start:web` and `dev:web` scripts in an explicit class and rejects a Node application path that bypasses `dsh`.
 

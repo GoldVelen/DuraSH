@@ -31,10 +31,13 @@ This document separates current source truth from the older DSH fork's accepted 
 
 ## Merge coverage gaps
 
-The `dsh-v0.2.1-rc.2` merge removed upstream packages the product had built against. Two consequences are recorded here instead of being silently absorbed:
+The `dsh-v0.2.1-rc.2` merge removed upstream packages the product had built against. What that changed is recorded here instead of being silently absorbed:
 
-- Upstream deleted `@deepseek-ai/dsh-settings-file` and moved `settings.yaml` handling into `@deepseek-ai/dsh-settings`; the `llm-pi-ai` live-catalog Loader harness that mounted the removed provider was deleted with it. The runtime catalog paths it exercised (`catalog.ts`, `discovery.ts`, `opencode-go*.ts`) are unchanged and still covered by the adapter-level suites.
-- Upstream deleted the `agent-presets` package and its preset-scoped service lookup, so the global-rules tests for preset isolation and the `--lan` certificate helper (`web-app/src/lan-cert.ts`) no longer describe shipped behavior and were removed with their tests.
+- **Runtime model catalogs do not refresh.** Upstream deleted `@deepseek-ai/dsh-settings-file` and moved `settings.yaml` handling into `@deepseek-ai/dsh-settings`; the `llm-pi-ai` wiring that fed `runtimeCatalogs` from a `LiveCatalogSync` over that provider could not be carried across, so the table stays empty and `modelCatalogMode: 'live'` (the Models page's "follow account model list") currently publishes nothing. The read side (`runtimeModels`, `publishCatalog`, the two catalog timing fields) and the Loader-level regression suite were removed with it. Re-wiring the synchronizer onto the current settings, credential, and authorization events is outstanding work.
+- **Preset-scoped global rules use the registry.** Upstream replaced `agent-presets` with `agent-preset-registry`; the settings controller now resolves the shipped Host `AGENTS.md` through `agentPresets.serviceForPreset`, because a shipped Web profile disables the root instruction row and mounts it inside each preset.
+- **Invariant companions are gone.** Upstream deleted the `invariants` service, the `sdk-minimal` mount, and every package's `./invariant` companion. The reliability packages now rely on `assertReliabilityLoopRecord` on the durable write path instead of an independent observer.
+- **`dsh web --lan` was replaced by upstream options.** Upstream's launcher offers `--public-url` and `--tls-cert`/`--tls-key`; the DuraSH-only `--lan` self-signed LAN path and its certificate helper were removed with the launcher rewrite, so LAN HTTPS now needs an explicit certificate pair.
+- **Agent presets are declarative.** The `agent-presets` package and its preset-scoped service lookup are gone, so the preset-isolation tests for global rules went with them.
 
 ## Current upstream drift
 
