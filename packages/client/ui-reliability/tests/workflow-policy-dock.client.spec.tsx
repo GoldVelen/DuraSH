@@ -231,6 +231,7 @@ describe('WorkflowPolicyDock', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '应用' }))
     await waitFor(() => {
+      // The policy carries every lane; unused lanes are sent as explicit nulls.
       expect(configure).toHaveBeenLastCalledWith({
         sessionId: SID,
         enabled: true,
@@ -238,6 +239,14 @@ describe('WorkflowPolicyDock', () => {
         implementationThinking: 'high',
         reviewModel: 'cursor/deepseek-v4-pro',
         reviewThinking: 'xhigh',
+        planningModel: null,
+        planningThinking: null,
+        testingModel: null,
+        testingThinking: null,
+        backendModel: null,
+        backendThinking: null,
+        frontendModel: null,
+        frontendThinking: null,
       })
     })
   })
