@@ -89,6 +89,9 @@ export class ReliabilityLoopRuntime extends Service {
 
   private table: KvTable<ReliabilityLoopId, ReliabilityLoopRecord> | undefined
   private readonly live = new Map<ReliabilityLoopId, LoopDriver>()
+  private readonly liveByOwner = new Map<string, LoopDriver>()
+  private readonly owners = new Map<ReliabilityLoopId, string>()
+  private readonly waiters = new Map<ReliabilityLoopId, number>()
   private readonly maxHandoffChars: number
   private readonly acceptanceConfig: Required<Config>
   private acceptanceStore: AcceptanceStore | undefined
@@ -163,6 +166,7 @@ export class ReliabilityLoopRuntime extends Service {
     const loopId = ReliabilityLoopId(randomUUID())
     const record: ReliabilityLoopRecord = {
       loopId,
+      ownerId: String(request.parent.id),
       objective: request.objective,
       ...acceptanceTaskId ? { acceptanceTaskId } : {},
       createdAt: new Date().toISOString(),
@@ -182,6 +186,38 @@ export class ReliabilityLoopRuntime extends Service {
     // Durable before any run exists: a crash after this write is recoverable.
     await table.put(loopId, record)
     return this.own(loopId, request.parent)
+  }
+
+  /**
+   * Continue this parent's unfinished loop, or start one.
+   * A live driver is attached. An unsettled durable record resumes from its
+   * current stage. Otherwise a new loop is written and driven.
+   * @param request - the parent agent, objective, and optional routes.
+   * @returns a handle for one waiter. The last waiter releases the driver.
+   */
+  async handoff(request: ReliabilityLoopStartRequest): Promise<ReliabilityLoopHandle> {
+    const ownerId = String(request.parent.id)
+    const live = this.liveByOwner.get(ownerId)
+    if (live !== undefined) {
+      const current = this.get(live.loopId)
+      if (current !== undefined && current.objective !== request.objective) {
+        if (isTerminalStage(current.stage)) {
+          await this.releaseDriver(live)
+        } else {
+          throw new Error(`reliability loop is already ${current.stage} for a different objective; call dsh_reliability_handoff again with that objective to collect it`)
+        }
+      } else {
+        return this.openHandle(live)
+      }
+    }
+    const unsettled = this.unsettledOwned(ownerId)
+    if (unsettled !== undefined) {
+      if (unsettled.objective !== request.objective) {
+        throw new Error(`reliability loop is already ${unsettled.stage} for a different objective; call dsh_reliability_handoff again with that objective to collect it`)
+      }
+      return this.resume(unsettled.loopId, request.parent)
+    }
+    return this.start(request)
   }
 
   /**
@@ -223,22 +259,61 @@ export class ReliabilityLoopRuntime extends Service {
   private own(loopId: ReliabilityLoopId, parent: Agent): ReliabilityLoopHandle {
     if (this.live.has(loopId)) throw new Error(`reliability loop '${loopId}' already has a live owner`)
     const driver = new LoopDriver(this.ctx.workflowEngine, this.requireTable(), parent, this.maxHandoffChars, loopId, this.acceptance)
+    const ownerId = String(parent.id)
     this.live.set(loopId, driver)
+    this.owners.set(loopId, ownerId)
+    this.liveByOwner.set(ownerId, driver)
     void driver.drive()
+    return this.openHandle(driver)
+  }
+
+  /** One waiter on an already-driven loop. The last dispose releases the driver. */
+  private openHandle(driver: LoopDriver): ReliabilityLoopHandle {
+    this.waiters.set(driver.loopId, (this.waiters.get(driver.loopId) ?? 0) + 1)
+    let released = false
     return {
-      loopId,
+      loopId: driver.loopId,
       result: driver.result,
       cancel: (reason) => { driver.cancel(reason) },
-      dispose: () => this.releaseDriver(driver),
+      dispose: async () => {
+        if (released) return
+        released = true
+        const left = (this.waiters.get(driver.loopId) ?? 1) - 1
+        this.waiters.set(driver.loopId, left)
+        if (left <= 0) await this.releaseDriver(driver)
+      },
+      park: () => {
+        if (!released) {
+          released = true
+          const left = (this.waiters.get(driver.loopId) ?? 1) - 1
+          this.waiters.set(driver.loopId, Math.max(0, left))
+        }
+        return Promise.resolve()
+      },
     }
+  }
+
+  /** Newest unsettled record owned by this session, if one exists. */
+  private unsettledOwned(ownerId: string): ReliabilityLoopRecord | undefined {
+    let newest: ReliabilityLoopRecord | undefined
+    for (const record of this.list()) {
+      if (record.ownerId !== ownerId || isTerminalStage(record.stage)) continue
+      if (newest === undefined || record.createdAt > newest.createdAt) newest = record
+    }
+    return newest
   }
 
   /** Dispose one driver and free its single-ownership slot. */
   private async releaseDriver(driver: LoopDriver): Promise<void> {
+    if (!this.live.has(driver.loopId)) return
     try {
       await driver.dispose()
     } finally {
       this.live.delete(driver.loopId)
+      const ownerId = this.owners.get(driver.loopId)
+      this.owners.delete(driver.loopId)
+      this.waiters.delete(driver.loopId)
+      if (ownerId !== undefined && this.liveByOwner.get(ownerId) === driver) this.liveByOwner.delete(ownerId)
     }
   }
 
@@ -246,6 +321,9 @@ export class ReliabilityLoopRuntime extends Service {
   private async stopLiveLoops(): Promise<void> {
     await Promise.all([...this.live.values()].map(driver => driver.dispose()))
     this.live.clear()
+    this.liveByOwner.clear()
+    this.owners.clear()
+    this.waiters.clear()
   }
 
 

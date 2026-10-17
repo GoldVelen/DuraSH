@@ -160,12 +160,19 @@ export class NodePtcRuntime extends PtcRuntime {
     let overflowResult: PtcRunResult | undefined
     let stderr = ''
     let parsing = true
-    const wallTimer = spec.timeoutMs === null ? undefined
-      : setTimeout(() => { timedOut = true; controller.abort('execution deadline reached') }, spec.timeoutMs)
+    const deadline = new ElapsedDeadline(spec.timeoutMs, () => {
+      timedOut = true
+      controller.abort('execution deadline reached')
+    })
+    if (spec.deadlineControl !== undefined) {
+      spec.deadlineControl.pause = () => { deadline.pause() }
+      spec.deadlineControl.resume = () => { deadline.resume() }
+    }
+    deadline.start()
     const finish = (failure?: PtcRunFailure, value?: PtcJsonValue): void => {
       if (settled) return
       settled = true
-      clearTimeout(wallTimer)
+      deadline.stop()
       signal.removeEventListener('abort', onAbort)
       channel?.close()
       void (async () => {
@@ -355,3 +362,60 @@ export class NodePtcRuntime extends PtcRuntime {
 }
 
 export default NodePtcRuntime
+
+/**
+ * Elapsed budget that a caller can pause while a nested call is excluded.
+ * Paused time is not charged. A resume after the remainder is below the delivery
+ * grace waits 15 seconds so the program can receive the reply and return it.
+ */
+class ElapsedDeadline {
+  private remaining: number | null
+  private pauses = 0
+  private fired = false
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private startedAt = 0
+
+  constructor(budget: number | null, private readonly onFire: () => void) {
+    this.remaining = budget
+  }
+
+  start(): void { this.arm(false) }
+
+  stop(): void {
+    this.clear()
+    this.fired = true
+  }
+
+  pause(): void {
+    if (this.remaining === null || this.fired) return
+    this.pauses += 1
+    if (this.pauses === 1) this.clear()
+  }
+
+  resume(): void {
+    if (this.remaining === null || this.fired || this.pauses === 0) return
+    this.pauses -= 1
+    if (this.pauses === 0) this.arm(true)
+  }
+
+  private clear(): void {
+    if (this.timer === undefined) return
+    clearTimeout(this.timer)
+    this.timer = undefined
+    if (this.remaining !== null) {
+      this.remaining = Math.max(0, this.remaining - (Date.now() - this.startedAt))
+    }
+  }
+
+  private arm(afterPause: boolean): void {
+    if (this.remaining === null || this.fired || this.pauses > 0) return
+    const delay = Math.max(this.remaining, afterPause ? 15_000 : 1)
+    this.startedAt = Date.now()
+    this.timer = setTimeout(() => {
+      this.timer = undefined
+      if (this.pauses > 0 || this.fired) return
+      this.fired = true
+      this.onFire()
+    }, delay)
+  }
+}

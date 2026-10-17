@@ -33,7 +33,7 @@ Start a loop when work must be certified by an independent review before it coun
 
 ### Restart recovery
 
-The record is the single authoritative state. After a process restart, `resume(loopId, parent)` drives the state machine from the record's current stage: settled implementation summaries and review verdicts are never re-run; the first unsettled stage re-runs exactly once, because one live driver owns one loop and a second `resume` on the same loop fails loud. `list()` and `get()` project the durable records.
+The record is the single authoritative state. After a process restart, `resume(loopId, parent)` drives the state machine from the record's current stage: settled implementation summaries and review verdicts are never re-run; the first unsettled stage re-runs exactly once, because one live driver owns one loop and a second `resume` on the same loop fails loud. `list()` and `get()` project the durable records. `handoff({ parent, objective })` continues that owner's live or unsettled loop instead of starting another; an enclosing `run_code` deadline does not cancel it.
 
 ### Stages and the bounded rework
 

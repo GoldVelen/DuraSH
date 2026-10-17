@@ -165,6 +165,26 @@ describe('Node program process', () => {
     expect(result.error?.kind).toBe('timeout')
   })
 
+  it('does not charge a nested call while the caller pauses the deadline', async () => {
+    const control = { pause() {}, resume() {} }
+    const { run } = await setup({ timeoutMs: 400, graceMs: 50 })
+    const result = await run({
+      timeoutMs: 400,
+      deadlineControl: control,
+      program: 'await tools.hold({}); return "done"',
+      bindings: bindings({
+        hold: async () => {
+          control.pause()
+          await new Promise((resolve) => { setTimeout(resolve, 700) })
+          control.resume()
+          return null
+        },
+      }),
+    })
+    expect(result.error).toBeUndefined()
+    expect(result.value).toBe('done')
+  })
+
   it.each([{}, { timeoutMs: null }] as const)('cancels a live program and closes its managed process with %j', async (timing) => {
     const { run } = await setup()
     const entered = Promise.withResolvers<undefined>()

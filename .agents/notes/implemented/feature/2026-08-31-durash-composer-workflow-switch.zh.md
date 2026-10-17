@@ -14,7 +14,7 @@ Status: implemented
 
 - `@durash/dsh-reliability-policy`（`ctx.reliabilityPolicy`）— 每个会话一行持久的 `reliability_policy`：启用标志加上 `provider/model` 选择器与记下的思考强度。每次读取都从 `ctx.llm` 重建目录；选择器已离开目录的启用行会被关掉。
 - `@durash/dsh-client-ui-reliability` — 把 3081 的 composer 芯片接回 `conversation.input.left`（`id: workflow`）。只通过生成的 `reliabilityPolicy` Remote 通信。
-- `@durash/dsh-tool-reliability` — `dsh_reliability_handoff`，进程内注册，会话策略关闭时闭门失败，打开后用保存的实施/审查路由启动一次闭环。
+- `@durash/dsh-tool-reliability` — `dsh_reliability_handoff`，进程内注册，会话策略关闭时闭门失败，打开后用保存的实施/审查路由启动或继续该会话的闭环。截止时间所有权见[独立记录](../architecture/2026-10-17-reliability-handoff-deadline-ownership.zh.md)。
 
 Dock 选择性恢复 3081 中经过验证的呈现方式，不恢复它的状态模型。设置面板通过 portal 挂到 `document.body`，用共享的 `useAnchoredPosition` 与 `useAnchoredMaxHeight` primitive 固定在 composer 触发器上方，并受视口约束。思考强度使用共享的 portaled `Menu`；模型目录有自己的 body portal，因此两个界面都不会被面板滚动区裁剪。所有值仍来自当前 `reliabilityPolicy` 快照，并通过它生成的 Remote 保存。
 
@@ -36,7 +36,7 @@ Dock 选择性恢复 3081 中经过验证的呈现方式，不恢复它的状态
 
 ## 后果
 
-`durash` Web 会话在 composer 上显示「工作流」。即使 composer 靠近底部或右侧边缘，设置面板、思考强度菜单与模型目录也会保持在视口内。两条通道都选好模型后打开开关，会注入交接指导，并让模型调用 `dsh_reliability_handoff`，按所选路由启动可靠性闭环。默认关闭。面板里的思考强度按会话保存，尚未传给子代理。3081 的 Runs 控制台与三路审查流水线不属于本切片。
+`durash` Web 会话在 composer 上显示「工作流」。即使 composer 靠近底部或右侧边缘，设置面板、思考强度菜单与模型目录也会保持在视口内。两条通道都选好模型后打开开关，会注入交接指导，并让模型调用 `dsh_reliability_handoff`，按所选路由启动或继续可靠性闭环。默认关闭。面板里的思考强度按会话保存，尚未传给子代理。3081 的 Runs 控制台与三路审查流水线不属于本切片。
 
 ## 测试
 

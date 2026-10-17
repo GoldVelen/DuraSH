@@ -11,6 +11,7 @@ import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 export type {
   PtcBindingErrorClass,
   PtcBindingFunction,
+  PtcDeadlineControl,
   PtcBindingNamespace,
   PtcJsonValue,
   PtcRunFailure,

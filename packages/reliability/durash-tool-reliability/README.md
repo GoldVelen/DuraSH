@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-reliability` registers direct acceptance evidence through `dsh_acceptance` and workflow dispatch through `dsh_reliability_handoff`. The handoff tool is present process-wide and fails closed unless this Session's composer switch is on. When enabled, it starts one reliability loop with the Session's implementation and review routes and waits for a terminal record.
+`dsh-tool-reliability` registers direct acceptance evidence through `dsh_acceptance` and workflow dispatch through `dsh_reliability_handoff`. The handoff tool is present process-wide and fails closed unless this Session's composer switch is on. When enabled, it starts or continues that Session's reliability loop with the stored routes and waits for a terminal record. The wait is excluded from an enclosing run_code deadline.
 
 ## Table of Contents
 
@@ -43,7 +43,7 @@ Use `status` with `taskId` and `checkId` to inspect a check’s stored definitio
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The tool requires the live root agent, a direct human user message on that Session, and enabled policy routes. An already-cancelled call starts no loop; cancellation during startup cancels the loop as soon as its handle is available. The call releases its cancellation listener when the loop result settles and awaits disposal before returning. The compact result is the loop's terminal stage, a bounded summary, and the reviewer verdict when one exists.
+The tool requires the live root agent, a direct human user message on that Session, and enabled policy routes. An already-cancelled call starts no loop; a user cancellation during startup cancels the loop as soon as its handle is available. An enclosing run_code deadline does not cancel the loop: the call keeps waiting, and a later handoff attaches to that owner's live or unsettled record. The call releases its cancellation listener when the loop result settles and awaits disposal before returning, except when a deadline abort is still waiting. The compact result is the loop's terminal stage, a bounded summary, and the reviewer verdict when one exists.
 
 No runtime invariant companion is published because this tool owns no independent state or event stream; the policy and loop companions own the relationships it consumes.
 
@@ -72,7 +72,7 @@ The `tool:reliability-handoff` system-prompt section is assembled for a root age
 ##### Reliability handoff guidance
 
 ```markdown
-For this Session the reliability loop is enabled. This tool is the only implementer dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another model or agent. Analyze the human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only review stay on this Session and do not hand off. The call remains in the current model turn until the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain that result to the human. If the workflow is disabled, the tool fails closed.
+For this Session the reliability loop is enabled. This tool is the only implementer dispatch path. Never write an execution prompt or copy-paste brief for the human to give to another model or agent. Analyze the human request, present a concise implementation plan in the same Step, then call dsh_reliability_handoff with the complete objective. Ordinary questions and read-only review stay on this Session and do not hand off. The handoff wait is not part of the enclosing run_code deadline. If that call is reported as an execution deadline, the loop was not cancelled: call dsh_reliability_handoff again with the same objective and wait. A different objective is rejected while that loop is unfinished. Do not implement the objective in this Session. The call remains in the current model turn until the loop is completed, blocked, cancelled, or failed; after its compact result arrives, explain that result to the human. If the workflow is disabled, the tool fails closed.
 ```
 
 #### Token effect

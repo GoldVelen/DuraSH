@@ -39,6 +39,7 @@ function completedRecord(): ReliabilityLoopRecord {
 async function setup(options: {
   enabled?: boolean
   start?: ReturnType<typeof vi.fn>
+  handoff?: ReturnType<typeof vi.fn>
   agent?: Agent
   getAgent?: (id: string) => Agent | undefined
   currentInitiator?: () => Agent | undefined
@@ -67,7 +68,9 @@ async function setup(options: {
       : undefined,
   })
   ctx.provide('reliabilityLoopRuntime', {
-    start, acceptance: { activeTask: () => undefined }, acceptanceView: () => Promise.resolve(null),
+    start,
+    handoff: options.handoff ?? start,
+    acceptance: { activeTask: () => undefined }, acceptanceView: () => Promise.resolve(null),
   })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -375,5 +378,57 @@ describe('durash-tool-reliability', () => {
     } finally {
       await ctx.fiber.dispose()
     }
+  })
+
+  it('cancels the loop when the enclosing program settles without a deadline', async () => {
+    const settled = Promise.withResolvers<ReliabilityLoopRecord>()
+    const cancel = vi.fn()
+    const dispose = vi.fn(async () => undefined)
+    const start = vi.fn(async () => ({
+      loopId: 'loop-1', result: settled.promise, cancel, dispose,
+    }))
+    const { ctx, agent } = await setup({ enabled: true, start })
+    const controller = new AbortController()
+    const executing = ctx.tools.execute({
+      signal: controller.signal,
+      callId: ToolCallId('call-program-settled'),
+      name: 'dsh_reliability_handoff',
+      arguments: { objective: 'ship the widget' },
+      agent,
+    })
+    await vi.waitUntil(() => start.mock.calls.length === 1)
+    controller.abort('run_code settled')
+    expect(cancel).toHaveBeenCalledWith('reliability handoff cancelled')
+    settled.resolve(completedRecord())
+    await expect(executing).resolves.toMatchObject({ isError: true })
+    expect(dispose).toHaveBeenCalledOnce()
+    await ctx.fiber.dispose()
+  })
+
+  it('parks a finished loop when the enclosing run_code deadline discarded the result', async () => {
+    const { markEnclosingRunDeadline } = await import('@deepseek-ai/dsh-tools')
+    const settled = Promise.withResolvers<ReliabilityLoopRecord>()
+    const cancel = vi.fn()
+    const dispose = vi.fn(async () => undefined)
+    const park = vi.fn(async () => undefined)
+    const start = vi.fn(async () => ({
+      loopId: 'loop-1', result: settled.promise, cancel, dispose, park,
+    }))
+    const { ctx, agent } = await setup({ enabled: true, start })
+    markEnclosingRunDeadline(String(agent.id))
+    const executing = ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('call-deadline-park'),
+      name: 'dsh_reliability_handoff',
+      arguments: { objective: 'ship the widget' },
+      agent,
+    })
+    await vi.waitUntil(() => start.mock.calls.length === 1)
+    settled.resolve(completedRecord())
+    await expect(executing).resolves.toMatchObject({ isError: false })
+    expect(cancel).not.toHaveBeenCalled()
+    expect(park).toHaveBeenCalledOnce()
+    expect(dispose).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
   })
 })

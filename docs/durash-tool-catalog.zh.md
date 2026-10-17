@@ -80,7 +80,7 @@ Declare acceptance requirements, run a declared check, or read executor evidence
 
 ### `dsh_reliability_handoff`
 
-After presenting the implementation plan in the ordinary assistant response, hand the current objective to the enabled reliability loop and wait for one implementation stage, one independent review, and at most one rework pass to reach a terminal result. Supply the complete objective. This is a foreground call: do not poll or repeat the same handoff while it is pending.
+After presenting the implementation plan in the ordinary assistant response, hand the current objective to the enabled reliability loop and wait for one implementation stage, one independent review, and at most one rework pass to reach a terminal result. Supply the complete objective. This is a foreground call: do not poll or repeat the same handoff while it is pending. The wait is not part of an enclosing run_code deadline. A repeated call continues the unfinished loop.
 
 ```json
 {

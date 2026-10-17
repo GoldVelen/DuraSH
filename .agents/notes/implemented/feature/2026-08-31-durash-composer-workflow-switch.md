@@ -14,7 +14,7 @@ The `durash` profile mounts three sibling packages around the existing loop:
 
 - `@durash/dsh-reliability-policy` (`ctx.reliabilityPolicy`) — one durable `reliability_policy` row per Session: enabled flag plus `provider/model` selectors and stored thinking levels. Every read rebuilds the catalog from `ctx.llm`; an enabled row whose selectors left the catalog turns off.
 - `@durash/dsh-client-ui-reliability` — the 3081 composer chip restored onto `conversation.input.left` (`id: workflow`). It talks only to the generated `reliabilityPolicy` Remote.
-- `@durash/dsh-tool-reliability` — `dsh_reliability_handoff`, registered process-wide, fails closed unless the Session policy is on, then starts one loop with the stored implementation and review routes.
+- `@durash/dsh-tool-reliability` — `dsh_reliability_handoff`, registered process-wide, fails closed unless the Session policy is on, then starts or continues that Session's loop with the stored implementation and review routes. Deadline ownership is [separate](../architecture/2026-10-17-reliability-handoff-deadline-ownership.md).
 
 The dock selectively restores the proven 3081 presentation without restoring its state model. Its settings panel is portaled to `document.body`, fixed above the composer trigger through the shared `useAnchoredPosition` and `useAnchoredMaxHeight` primitives, and constrained to the viewport. Effort choices use the shared portaled `Menu`; the model directory has its own body portal so neither surface is clipped by the panel's scroll region. All values still come from the current `reliabilityPolicy` snapshot and are saved through its generated Remote.
 
@@ -36,7 +36,7 @@ This is the model-facing consumer the [first reliability-loop slice](2026-08-30-
 
 ## Consequences
 
-A `durash` Web session shows 工作流 / Workflow on the composer. Its settings panel, effort menus, and model directory remain inside the viewport even when the composer sits near the bottom or right edge. Turning it on with both models selected injects handoff guidance and lets the model call `dsh_reliability_handoff`, which starts a reliability loop on the selected routes. Off remains the default. Effort levels in the panel are session-persisted and not yet applied to children. The 3081 Runs console and three-review pipeline stay out of this slice.
+A `durash` Web session shows 工作流 / Workflow on the composer. Its settings panel, effort menus, and model directory remain inside the viewport even when the composer sits near the bottom or right edge. Turning it on with both models selected injects handoff guidance and lets the model call `dsh_reliability_handoff`, which starts or continues a reliability loop on the selected routes. Off remains the default. Effort levels in the panel are session-persisted and not yet applied to children. The 3081 Runs console and three-review pipeline stay out of this slice.
 
 ## Testing
 
