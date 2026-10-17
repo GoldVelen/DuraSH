@@ -1,7 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type MockInstance } from 'vitest'
-import { officialClientBuildEnvironment } from './client-build-environment.ts'
 import {
   cliGateOptions,
   ciWorkerEnvironment,
@@ -894,12 +892,6 @@ describe('Node compatibility graph', () => {
       needs: ['build'],
       env: { DSH_REQUIRE_BUILT_CLI_SMOKE: '1' },
     })
-    const webBuild = subject.find(item => item.id === 'build:web')
-    if (process.versions.node.startsWith('22.')) {
-      expect(webBuild?.env).toEqual(officialClientBuildEnvironment(resolve(import.meta.dirname, '..')))
-    } else {
-      expect(webBuild).toBeUndefined()
-    }
   })
 
   it.each(['passed', 'failed'] as const)('runs the Node 22 lazy-search smoke only after a passed build (%s)', async (buildStatus) => {

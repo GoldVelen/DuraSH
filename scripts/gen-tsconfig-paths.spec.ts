@@ -31,12 +31,10 @@ describe('generated tsconfig package aliases', () => {
     expect(aliases.find(alias => alias.specifier === '@durash/dsh-reliability-loop')).toEqual({
       specifier: '@durash/dsh-reliability-loop',
       source: './packages/reliability/durash-reliability-loop/src',
-      hasInvariant: true,
     })
     expect(aliases.find(alias => alias.specifier === '@durash/dsh-client-ui-brand')).toEqual({
       specifier: '@durash/dsh-client-ui-brand',
       source: './packages/client/ui-brand-durash/src',
-      hasInvariant: false,
     })
   })
 

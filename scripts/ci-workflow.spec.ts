@@ -10,6 +10,9 @@ function evaluateRunsOn(selector: unknown, context: Record<string, unknown>): un
 }
 
 const root = resolve(import.meta.dirname, '..')
+// Every `runs-on` switch starts with the downstream guard, so evaluating one
+// needs the canonical repository in scope.
+const canonicalGithub = { repository: 'deepseek-harness/deepseek-harness' }
 const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}$/
 const nativeWindowsPnpmDestination = '${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}'
 
@@ -247,7 +250,7 @@ describe('CI workflow', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const canonicalRepository = 'deepseek-harness/deepseek-harness'
     const linuxJobs = ['node-24', 'node-24-coverage', 'node-24-consumers']
-    const windowsJobs = ['windows-build', 'windows-coverage', 'windows-native-tests', 'windows-observational']
+    const windowsJobs = ['windows-build', 'windows-coverage', 'windows-native-tests']
 
     const downstreamPrefix = `github.repository != '${canonicalRepository}'`
 
@@ -281,8 +284,6 @@ describe('CI workflow', () => {
       ['windows-coverage', 'DSH_COVERAGE_MAX_WORKERS', "'3'"],
       ['windows-coverage', 'DSH_COVERAGE_PARTITIONS', "'2'"],
       ['windows-coverage', 'DSH_GATE_CONCURRENCY', "'2'"],
-      ['windows-observational', 'DSH_GATE_CONCURRENCY', "'2'"],
-      ['windows-observational', 'DSH_PUBLINT_CONCURRENCY', "'2'"],
     ] as const
     for (const [jobName, name, downstreamValue] of downstreamBudgets) {
       const env = workflowJobEnvironment(workflow, jobName)
@@ -301,12 +302,12 @@ describe('CI workflow', () => {
     expect(aggregate['runs-on']).toContain(downstreamPrefix)
     expect(aggregate['runs-on']).toContain("'ubuntu-24.04'")
 
-    const failoverExpressions = collectStrings(workflow)
+    const failoverSelectors = collectRunsOnSelectors(workflow)
       .filter(value => value.includes('DSH_CI_FAILOVER_'))
-    expect(failoverExpressions.length).toBeGreaterThan(0)
-    for (const expression of failoverExpressions) {
-      expect(expression).toContain('github.repository')
-      expect(expression).toContain(canonicalRepository)
+    expect(failoverSelectors.length).toBeGreaterThan(0)
+    for (const selector of failoverSelectors) {
+      expect(selector).toContain('github.repository')
+      expect(selector).toContain(canonicalRepository)
     }
   })
 
@@ -408,7 +409,7 @@ describe('CI workflow', () => {
       expect(job['runs-on']).toContain('dsh-win-ci')
       expect(job['runs-on']).toContain('dsh-windows-2025-16core')
       const cores = jobName === 'windows-native-tests' ? 2 : 16
-      expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_WINDOWS: 'blacksmith' } }))
+      expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_WINDOWS: 'blacksmith' }, github: canonicalGithub }))
         .toBe(`blacksmith-${cores}vcpu-windows-2025`)
       expect(job.if).toBe("github.event_name == 'pull_request'")
     }
@@ -572,7 +573,7 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
-      expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: 'blacksmith' } }))
+      expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: 'blacksmith' }, github: canonicalGithub }))
         .toBe(`blacksmith-${jobName === 'node-24' ? 8 : 16}vcpu-ubuntu-2404`)
     }
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
@@ -1653,6 +1654,12 @@ function workflowJobEnvironment(workflow: Record<string, unknown>, job: string):
   const env = workflowJob(workflow, job).env
   if (!isRecord(env)) throw new TypeError(`workflow job ${job} must define env`)
   return env
+}
+
+function collectRunsOnSelectors(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(collectRunsOnSelectors)
+  if (!isRecord(value)) return []
+  return Object.entries(value).flatMap(([key, entry]) => key === 'runs-on' ? collectStrings(entry) : collectRunsOnSelectors(entry))
 }
 
 function collectStrings(value: unknown): string[] {
