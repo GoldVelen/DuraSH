@@ -8,6 +8,13 @@
   "ui-plan/src/client/PlanPreview.module.css": [
     ".cardIcon: border-radius: 10px"
   ],
+  "ui-reliability/src/client/WorkflowPolicyDock.module.css": [
+    ".trigger: border-radius: 24px",
+    ".toggle: border-radius: 24px",
+    ".close: border-radius: 6px",
+    ".channelButton: border-radius: 6px",
+    ".modelOption: border-radius: 10px"
+  ],
   "ui-schedule/src/client/ClockPicker.module.css": [
     ".option: border-radius: 10px"
   ],
@@ -53,6 +60,10 @@
     ".dialogButton: border-radius: 12px",
     ".page .action: border-radius: 12px",
     ".indicator: border-radius: 6px"
+  ],
+  "ui-settings-models/src/client/SignInSection.module.css": [
+    ".prompt: border-radius: 6px",
+    ".promptInput: border-radius: 6px"
   ],
   "ui-shortcuts/src/client/Reference.module.css": [
     ".dialog: border-radius: 24px",

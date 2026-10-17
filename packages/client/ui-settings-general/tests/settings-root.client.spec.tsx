@@ -203,10 +203,10 @@ describe('SettingsRoot trigger', () => {
   it('shows outage, retry progress, and a two-second recovery confirmation', () => {
     vi.useFakeTimers()
     const mounted = mount()
-    expect(screen.queryByRole('button', { name: 'Disconnected, reconnect now' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Disconnected. The service host must stay online. Reconnect now' })).toBeNull()
 
     mounted.setConnectionState('disconnected')
-    const indicator = screen.getByRole('button', { name: 'Disconnected, reconnect now' })
+    const indicator = screen.getByRole('button', { name: 'Disconnected. The service host must stay online. Reconnect now' })
     expect(indicator.textContent).toContain('Disconnected')
     expect(indicator.hasAttribute('title')).toBe(false)
     expect(indicator.querySelector('svg')).toBeTruthy()
@@ -270,7 +270,7 @@ describe('SettingsRoot trigger', () => {
 
   it('keeps the reconnect indicator out of the collapsed rail', () => {
     mount({ wide: false, connectionState: 'disconnected' })
-    expect(screen.queryByRole('button', { name: 'Disconnected, reconnect now' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Disconnected. The service host must stay online. Reconnect now' })).toBeNull()
   })
 })
 

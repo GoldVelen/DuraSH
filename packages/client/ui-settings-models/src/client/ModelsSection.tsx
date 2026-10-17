@@ -297,7 +297,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const { controller, useSignIn, signIn, operations, schema, t } = injected
   const snapshot = injected.useSnapshot(value => value)
   const signInState = useSignIn(snapshot => snapshot)
-  const state = { ...snapshot, rows: (snapshot.rows ?? []).map(row => row.entry.provider === 'deepseek-account'
+  const state = { ...snapshot, rows: snapshot.rows.map(row => row.entry.provider === 'deepseek-account'
     ? { ...row, entry: { ...row.entry, displayName: t('deepSeekAccount') } } : row) }
   /** A new or failed surface waits for a current snapshot; background refreshes preserve its drafts. */
   const [hasReadySnapshot, setHasReadySnapshot] = useState(state.status === 'ready')

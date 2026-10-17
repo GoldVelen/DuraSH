@@ -29,7 +29,7 @@
 .flowRow {
   padding: 10px 12px;
   border: 1px solid var(--dsh-border, rgba(127, 127, 127, 0.35));
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .flowHead {
