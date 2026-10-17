@@ -56,7 +56,7 @@ async function bench() {
     mounted = true
     return disposeMount
   })
-  ctx.provide('remote', { reliabilityPolicy, $mount: mount })
+  ctx.provide('remote', { reliabilityPolicy, $mount: mount, $on: vi.fn(() => () => {}) })
   ctx.provide('remote.reliabilityPolicy', reliabilityPolicy)
   ctx.provide('locale', new LocaleRuntime(ctx))
   return { ctx, slots, reliabilityPolicy, mount, disposeMount, eventSource }

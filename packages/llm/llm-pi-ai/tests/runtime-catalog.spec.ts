@@ -42,8 +42,8 @@ describe('runtime model catalogs', () => {
     expect(profile?.configuredMaxTokens.size).toBe(0)
   })
 
-  it('serves gpt-6.1-sol through the native Codex protocol without a manual models list', () => {
-    const model = advertised('gpt-6.1-sol', 'openai-codex-responses', {
+  it('serves gpt-6.2-sol-runtime through the native Codex protocol without a manual models list', () => {
+    const model = advertised('gpt-6.2-sol-runtime', 'openai-codex-responses', {
       provider: 'openai-codex',
       baseUrl: 'https://chatgpt.com/backend-api',
       contextWindow: 272_000,
@@ -89,7 +89,7 @@ describe('runtime model catalogs', () => {
 
   it('follows all live Codex ids while retaining matching rows as user customizations', () => {
     const tuned = advertised('codex-tuned', 'openai-codex-responses', { provider: 'openai-codex' })
-    const newest = advertised('gpt-6.1-sol', 'openai-codex-responses', { provider: 'openai-codex' })
+    const newest = advertised('gpt-6.2-sol-runtime', 'openai-codex-responses', { provider: 'openai-codex' })
     const providers = {
       'openai-codex': {
         modelCatalogMode: 'live' as const,
@@ -125,7 +125,7 @@ describe('runtime model catalogs', () => {
   })
 
   it('waits for a live Codex id absent from the bootstrap catalog instead of guessing its API', () => {
-    const newest = advertised('gpt-6.1-sol', 'openai-codex-responses', { provider: 'openai-codex' })
+    const newest = advertised('gpt-6.2-sol-runtime', 'openai-codex-responses', { provider: 'openai-codex' })
     const providers = {
       'openai-codex': { modelCatalogMode: 'live' as const, models: [{ id: newest.id, maxTokens: 1024 }] },
     }
@@ -251,7 +251,7 @@ describe('model catalog timing', () => {
 
 describe('resolved Codex directory compatibility', () => {
   it('materializes the supported default independently of installed model metadata', () => {
-    const model = advertised('gpt-6.1-sol', 'openai-codex-responses', { provider: 'openai-codex' })
+    const model = advertised('gpt-6.2-sol-runtime', 'openai-codex-responses', { provider: 'openai-codex' })
     const profile = resolveProfiles({ 'openai-codex': {} }, 'strict',
       new Map([['openai-codex', [model]]])).get('openai-codex')
     expect(profile?.codexDirectoryClientVersion).toBe('0.162.1')

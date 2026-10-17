@@ -450,10 +450,12 @@ export function resolveModelCatalogTiming(
  * @throws Error naming the route and configuration entry that cannot be served.
  */
 export function assertServiceable(
-  config: { providers?: Record<string, PiAiProviderProfile> },
+  config: { providers?: Record<string, PiAiProviderProfile> } & Pick<Config, 'modelCatalogRefreshMs' | 'modelCatalogTimeoutMs'>,
   previous?: { providers?: Record<string, PiAiProviderProfile> },
   runtimeCatalogs?: ReadonlyMap<string, readonly Model<Api>[]>,
 ): void {
+  // A schema-free mount never runs the row schema, so the timing budgets are checked here.
+  resolveModelCatalogTiming(config)
   const changed = Object.fromEntries(Object.entries(config.providers ?? {}).filter(([provider, profile]) =>
     !deepEqualJson(profile, previous?.providers?.[provider])))
   resolveProfiles(changed, 'strict', runtimeCatalogs)

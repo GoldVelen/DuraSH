@@ -215,7 +215,13 @@ export function catalogProviderIds(): readonly string[] {
  * @returns catalog models by id; empty for a route {@link catalogProvider} does not return.
  */
 export function catalogModels(provider: string): Map<string, Model<Api>> {
-  const models = catalogProviders().get(provider)?.getModels() ?? []
+  const entry = catalogProviders().get(provider)
+  if (entry === undefined) return new Map()
+  // The Go route carries the overlay's canonical endpoints, so its models come from the
+  // constructed provider; every other route reads the installed catalog data directly.
+  const models = provider === 'opencode-go'
+    ? entry.getModels()
+    : getBuiltinModels(provider as BuiltinProvider) as Model<Api>[]
   return new Map(models.map(model => [model.id, model]))
 }
 

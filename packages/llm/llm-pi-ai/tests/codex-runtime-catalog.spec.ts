@@ -11,12 +11,12 @@ import { memoryAuth } from './auth-double.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
-it('sends a new gpt-6.1-sol with 500k context and max effort through native Codex SSE without a stale client version', async () => {
+it('sends a new gpt-6.2-sol-runtime with 500k context and max effort through native Codex SSE without a stale client version', async () => {
   const token = `e30.${Buffer.from(JSON.stringify({
     'https://api.openai.com/auth': { chatgpt_account_id: 'fixture-account' },
   })).toString('base64url')}.fixture-signature`
   const model: Model<'openai-codex-responses'> = {
-    id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', provider: 'openai-codex', api: 'openai-codex-responses',
+    id: 'gpt-6.2-sol-runtime', name: 'GPT-6.1 Sol', provider: 'openai-codex', api: 'openai-codex-responses',
     baseUrl: 'https://chatgpt.com/backend-api', contextWindow: 500_000, maxTokens: 32_768, input: ['text', 'image'],
     reasoning: true,
     thinkingLevelMap: { off: null, minimal: null, low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
@@ -70,7 +70,7 @@ it('sends a new gpt-6.1-sol with 500k context and max effort through native Code
   expect(assembler.finish).toEqual({ kind: 'stop' })
   expect(assembler.message({ provider: 'openai-codex', model: model.id }).content)
     .toEqual([{ type: 'text', text: 'fixture reply' }])
-  expect(body).toMatchObject({ model: 'gpt-6.1-sol', reasoning: { effort: 'max' }, store: false, stream: true })
+  expect(body).toMatchObject({ model: 'gpt-6.2-sol-runtime', reasoning: { effort: 'max' }, store: false, stream: true })
   expect(body).not.toHaveProperty('client_version')
   expect(headers?.get('chatgpt-account-id')).toBe('fixture-account')
   expect(headers?.get('originator')).toBe('pi')

@@ -426,6 +426,7 @@ describe('ModelsSection', () => {
       render(<ModelsSection
         controller={controller}
         useSnapshot={bindSnapshotSelector(controller.store)}
+        {...signInInjects()}
         operations={operationsWith(face)}
         schema={settingsSchema}
         t={t}
