@@ -1,3 +1,3 @@
 import { clientBundle } from '../tsdown.client.ts'
 
-export default clientBundle('@durash/dsh-client-ui-reliability', ['lib/types/index.js'])
+export default clientBundle(import.meta.dirname, ['lib/types/index.js'])
