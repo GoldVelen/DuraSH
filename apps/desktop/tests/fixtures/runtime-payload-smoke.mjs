@@ -94,6 +94,8 @@ async function checkFlock() {
     if (writer !== undefined) closeSync(writer)
     closeSync(contender)
   }
+}
+
 /** Exercise grep and glob operations with the search tool's resolved native executable. */
 async function checkSearch() {
   const { resolveRgPath } = await import(pathToFileURL(requireRuntime.resolve('@deepseek-ai/dsh-tool-fs-search')).href)

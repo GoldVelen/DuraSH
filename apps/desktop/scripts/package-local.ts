@@ -1,7 +1,7 @@
 /** Package the current DuraSH checkout as a relocatable local macOS application. */
 
 import { spawn, execFileSync } from 'node:child_process'
-import { cpSync, existsSync, globSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, globSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -39,6 +39,26 @@ function workspacePackages(): Map<string, string> {
   const workspace = load(readFileSync(join(REPOSITORY_ROOT, 'pnpm-workspace.yaml'), 'utf8')) as { packages: string[] }
   return new Map(globSync(workspace.packages.map(pattern => `${pattern}/package.json`), { cwd: REPOSITORY_ROOT })
     .map((path) => { const root = resolve(REPOSITORY_ROOT, path, '..'); return [manifest(root).name, root] }))
+}
+
+/**
+ * Drop workspace links the staging copy left unresolvable.
+ *
+ * `pnpm deploy --legacy` recreates each workspace link relative to the source
+ * checkout, so inside a temporary staging directory every non-materialized
+ * workspace package reads as a dangling symlink; copying it into a payload
+ * would either fail or embed developer paths.
+ * @param root - Staged `node_modules` directory.
+ */
+function pruneUnresolvedLinks(root: string): void {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name)
+    if (entry.isSymbolicLink()) {
+      if (!existsSync(path)) rmSync(path, { force: true })
+    } else if (entry.isDirectory()) {
+      pruneUnresolvedLinks(path)
+    }
+  }
 }
 
 /**
@@ -92,18 +112,24 @@ export function materializeLocalDesktopRuntime(
         const dependencyRoot = packages.get(dependency)
         if (dependencyRoot === undefined) throw new Error(`DuraSH local package: unknown workspace dependency ${dependency}`)
         const range = version.slice('workspace:'.length)
-        if (range !== '*' && range !== '^') throw new Error(`DuraSH local package: unsupported workspace range ${version}`)
+        if (range !== '*' && range !== '^' && range !== '~') throw new Error(`DuraSH local package: unsupported workspace range ${version}`)
         return [dependency, `${range === '*' ? '' : range}${manifest(dependencyRoot).version}`]
       }))
     }
     writeFileSync(join(prepared, 'package.json'), `${JSON.stringify(normalized, undefined, 2)}\n`)
-    if (existsSync(output)) {
+    try {
       if (lstatSync(output).isSymbolicLink()) unlinkSync(output)
       else rmSync(output, { recursive: true })
+    } catch (error) {
+      // The deploy links workspace packages relative to the staging root, so an
+      // uninstalled destination reads as a dangling symlink: existsSync() is
+      // false while rename() still refuses to replace it.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
     mkdirSync(resolve(output, '..'), { recursive: true })
     renameSync(prepared, output)
   }
+  pruneUnresolvedLinks(modules)
   const officeEngine = selectOfficeEngine(manifest(join(modules, '@deepseek-ai/libreoffice-kit')), target)
   const workspaceRoots = new Set([...packages.values()].map(root => realpathSync(root)))
   rmSync(destination, { recursive: true, force: true })
